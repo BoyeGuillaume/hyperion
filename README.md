@@ -6,7 +6,7 @@ This is a formal, symbolic engine for hyperion. It aims to provide a framework f
 We define the syntax of the formal system as a group of 3 elements: expressions, propositions and types. We can intuitively
 think of types as a *constrained* set of values, expressions as *terms* and propositions as *formulas*.
 
-$$
+```math
 \begin{aligned}
   P &:=\;& \text{true} \mid \text{false} \mid P \land P | P \lor P \\
   &&\mid \neg P \mid P \Rightarrow P
@@ -21,7 +21,7 @@ $$
   T &:=\;& \text{Bool} \mid \Omega \mid \dagger \mid T_1 \rightarrow T_2 \mid T_1 \times T_2 \mid \mathcal{P}(T) \mid x \\
   && 
 \end{aligned}
-$$
+```
 
 Where $x$ is a variable, $T$ is a type, $P$ is a proposition and $E$ is an expression. The term $\dagger$ symbolizes a never (crash or hang). Notice,
 that generic types can be represented using the power set constructor $\mathcal{P}(T)$, however a strict type hierarchy **must** be observed to avoid 
