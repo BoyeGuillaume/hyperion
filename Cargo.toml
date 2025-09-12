@@ -7,8 +7,7 @@ edition = "2024"
 readme = "README.md"
 description = "A formal, symbolic engine for hyperion"
 keywords = ["formal", "symbolic", "hyperion"]
-authors = [
-    "Guillaume Boyé <guillaume.boye@epfl.ch>",
-]
+authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
 
 [dependencies]
+strum = { version = ">0.26", features = ["derive"] }
