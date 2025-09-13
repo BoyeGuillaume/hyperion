@@ -10,4 +10,5 @@ keywords = ["formal", "symbolic", "hyperion"]
 authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
 
 [dependencies]
+smallvec = ">1.12"
 strum = { version = ">0.26", features = ["derive"] }
