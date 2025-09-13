@@ -1,7 +1,7 @@
 use crate::{
     dtype::DynDType,
+    expr::{DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
     prop::dispatch::PropDispatch,
-    term::{DynTerm, Term},
 };
 
 mod defs;
@@ -14,10 +14,10 @@ pub(crate) mod prop_sealed {
     impl<'a, T: Sealed> Sealed for &'a T {}
 }
 
-pub trait Prop: prop_sealed::Sealed + Sized {
+pub trait Prop: Expr + prop_sealed::Sealed + Sized {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType>;
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType>;
 
     fn and<Q: Prop>(self, other: Q) -> And<Self, Q>
     where
@@ -70,7 +70,7 @@ pub trait Prop: prop_sealed::Sealed + Sized {
 impl<'a, T: Prop> Prop for &'a T {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         (*self).decode()
     }
 }
@@ -78,10 +78,16 @@ impl<'a, T: Prop> Prop for &'a T {
 pub struct DynProp {}
 
 impl prop_sealed::Sealed for DynProp {}
+impl expr_sealed::Sealed for DynProp {}
+impl Expr for DynProp {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 impl Prop for DynProp {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, DynTerm, DynTerm, DynDType>::True
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
     }
 }

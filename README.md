@@ -4,7 +4,7 @@ This is a formal, symbolic engine for hyperion. It aims to provide a framework f
 ## Formal-system syntax
 
 We define the syntax of the formal system as a group of 3 elements: expressions, propositions and types. We can intuitively
-think of types as a *constrained* set of values, expressions as *terms* and propositions as *formulas*.
+think of types as a *constrained* set of values, expressions as *exprs* and propositions as *formulas*.
 
 ```math
 \begin{aligned}
@@ -19,18 +19,18 @@ think of types as a *constrained* set of values, expressions as *terms* and prop
   \\
 
   T &:=\;& \text{Bool} \mid \Omega \mid \dagger \mid T_1 \rightarrow T_2 \mid T_1 \times T_2 \mid \mathcal{P}(T) \mid x \\
-  && 
+  &&
 \end{aligned}
 ```
 
-Where $x$ is a variable, $T$ is a type, $P$ is a proposition and $E$ is an expression. The term $\dagger$ symbolizes a never (crash or hang). Notice,
-that generic types can be represented using the power set constructor $\mathcal{P}(T)$, however a strict type hierarchy **must** be observed to avoid 
+Where $x$ is a variable, $T$ is a type, $P$ is a proposition and $E$ is an expression. The expr $\dagger$ symbolizes a never (crash or hang). Notice,
+that generic types can be represented using the power set constructor $\mathcal{P}(T)$, however a strict type hierarchy **must** be observed to avoid
 the [Russell's paradox](https://en.wikipedia.org/wiki/Russell%27s_paradox). We also decided against defining other useful types like *integers* as they
 can be encoded as a type themselves.
 
 ## Axiom inference and automated proof
 
-This section outlines how axioms and inference rules can be represented and how an automated prover can search for proofs in this formalism. The API is evolving; examples below describe the intended workflow that maps to modules in `src/` (`prop`, `term`, `dtype`).
+This section outlines how axioms and inference rules can be represented and how an automated prover can search for proofs in this formalism. The API is evolving; examples below describe the intended workflow that maps to modules in `src/` (`prop`, `expr`, `dtype`).
 
 ### Core concepts
 
@@ -54,7 +54,7 @@ Propositional connectives:
 
 Quantifiers (first-order):
 - Forall-intro ($\forall$-I): if $x$ is fresh in $\Gamma$ and the proof, from $\Gamma \vdash P[x]$ derive $\Gamma \vdash \forall x: T.\; P[x]$.
-- Forall-elim ($\forall$-E): from $\Gamma \vdash \forall x: T.\; P[x]$ derive $\Gamma \vdash P[t]$ for any term $t:T$.
+- Forall-elim ($\forall$-E): from $\Gamma \vdash \forall x: T.\; P[x]$ derive $\Gamma \vdash P[t]$ for any expr $t:T$.
 - Exists-intro ($\exists$-I): from $\Gamma \vdash P[t]$ with $t:T$ derive $\Gamma \vdash \exists x: T.\; P[x]$.
 - Exists-elim ($\exists$-E): from $\Gamma \vdash \exists x: T.\; P[x]$ and $\Gamma,P[x] \vdash R$ with $x$ fresh in $R$ derive $\Gamma \vdash R$.
 
@@ -67,7 +67,7 @@ These rules constitute the kernel of the prover. Domain theories can add axioms 
 ### Representation in code (sketch)
 
 - Propositions: Types implementing `Prop` in `prop/defs.rs` (e.g., `PropTrue`, `PropFalse`). Extend with composite variants (`And`, `Or`, `Imp`, `Forall`, `Exists`, `Eq`, etc.). A private sealing trait (`prop_sealed::Sealed`) keeps construction controlled.
-- Terms and types: `term.rs` and `dtype.rs` hold terms and types; add typed variables, lambdas, application, product, function, power-set, etc., matching the grammar above.
+- Exprs and types: `expr.rs` and `dtype.rs` hold exprs and types; add typed variables, lambdas, application, product, function, power-set, etc., matching the grammar above.
 - Dispatch: `prop/dispatch.rs` can house a rule dispatcher mapping a goal to applicable rules (intro/elim, axioms, theory lemmas).
 
 ### Proof search strategy
@@ -76,7 +76,7 @@ We adopt a goal-directed, backward search with focusing:
 - Normalization: Convert the goal to a normal form when helpful (e.g., push negations inward using $\neg P := P \to \text{false}$).
 - Invertible rules first: Apply safe rules eagerly (e.g., $\wedge-E$, $\forall-E$, $\to-E$ on available assumptions) to reduce branching.
 - Introduction at goal: Use intro rules to structure subgoals (e.g., to prove $P \wedge Q$, prove $P$ then $Q$; to prove $P \to Q$, assume $P$ and prove $Q$).
-- Elimination on context: Use elim rules on $\Gamma$ to derive helpful intermediate facts; maintain a derived-facts queue.
+- Elimination on context: Use elim rules on $\Gamma$ to derive helpful inexprediate facts; maintain a derived-facts queue.
 - Unification: For $\forall/\exists$ and $=$, compute substitutions that make side-conditions type-correct; prefer most-general unifiers.
 - Loop checking: Cache visited sequents modulo $\alpha$-renaming and normalization to avoid cycles.
 - Resource bounds: Limit depth, breadth, and time; use iterative deepening with heuristics (size of goal, connective weights).
@@ -101,7 +101,7 @@ Goal: $\Gamma \vdash P \wedge Q$.
 ### Roadmap in this repo
 
 1) Extend `prop/defs.rs` with composite propositions and smart constructors.
-2) Add `term.rs` and `dtype.rs` representations (typed variables, binders, application) with capture-avoiding substitution and α-equivalence.
+2) Add `expr.rs` and `dtype.rs` representations (typed variables, binders, application) with capture-avoiding substitution and α-equivalence.
 3) Implement a minimal kernel of rules and a backtracking searcher in `prop/dispatch.rs` (goal-driven, bounded search), returning a proof tree.
 4) Add a proof checker and a compact, human-readable pretty-printer for derivations.
 5) Provide examples and tests (unit + property tests) to validate soundness of the kernel and completeness for propositional fragments.

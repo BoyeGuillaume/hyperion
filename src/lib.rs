@@ -1,4 +1,4 @@
 pub mod dtype;
+pub mod expr;
 pub mod prop;
-pub mod term;
 pub mod variable;

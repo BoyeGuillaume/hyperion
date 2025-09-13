@@ -1,7 +1,7 @@
 use crate::{
     dtype::{DType, DynDType},
+    expr::{DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
     prop::{DynProp, Prop, prop_sealed},
-    term::{DynTerm, Term},
     variable::InlineVariable,
 };
 
@@ -14,12 +14,19 @@ use super::dispatch::PropDispatch;
 pub struct PropTrue {}
 
 impl prop_sealed::Sealed for PropTrue {}
+impl expr_sealed::Sealed for PropTrue {}
+
+impl Expr for PropTrue {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl Prop for PropTrue {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, DynTerm, DynTerm, DynDType>::True
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
     }
 }
 
@@ -30,12 +37,19 @@ impl Prop for PropTrue {
 pub struct PropFalse {}
 
 impl prop_sealed::Sealed for PropFalse {}
+impl expr_sealed::Sealed for PropFalse {}
+
+impl Expr for PropFalse {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl Prop for PropFalse {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, DynTerm, DynTerm, DynDType>::False
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::False
     }
 }
 
@@ -48,12 +62,19 @@ pub struct Not<P: Prop> {
 }
 
 impl<P: Prop> prop_sealed::Sealed for Not<P> {}
+impl<P: Prop> expr_sealed::Sealed for Not<P> {}
+
+impl<P: Prop> Expr for Not<P> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<P: Prop> Prop for Not<P> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynTerm, DynTerm, DynDType>::Not(&self.inner)
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, DynProp, DynExpr, DynExpr, DynDType>::Not(&self.inner)
     }
 }
 
@@ -68,12 +89,19 @@ pub struct And<P: Prop, Q: Prop> {
 }
 
 impl<P: Prop, Q: Prop> prop_sealed::Sealed for And<P, Q> {}
+impl<P: Prop, Q: Prop> expr_sealed::Sealed for And<P, Q> {}
+
+impl<P: Prop, Q: Prop> Expr for And<P, Q> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<P: Prop, Q: Prop> Prop for And<P, Q> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynTerm, DynTerm, DynDType>::And(&self.left, &self.right)
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::And(&self.left, &self.right)
     }
 }
 
@@ -88,12 +116,19 @@ pub struct Or<P: Prop, Q: Prop> {
 }
 
 impl<P: Prop, Q: Prop> prop_sealed::Sealed for Or<P, Q> {}
+impl<P: Prop, Q: Prop> expr_sealed::Sealed for Or<P, Q> {}
+
+impl<P: Prop, Q: Prop> Expr for Or<P, Q> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<P: Prop, Q: Prop> Prop for Or<P, Q> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynTerm, DynTerm, DynDType>::Or(&self.left, &self.right)
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Or(&self.left, &self.right)
     }
 }
 
@@ -108,12 +143,19 @@ pub struct Imp<P: Prop, Q: Prop> {
 }
 
 impl<P: Prop, Q: Prop> prop_sealed::Sealed for Imp<P, Q> {}
+impl<P: Prop, Q: Prop> expr_sealed::Sealed for Imp<P, Q> {}
+
+impl<P: Prop, Q: Prop> Expr for Imp<P, Q> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<P: Prop, Q: Prop> Prop for Imp<P, Q> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynTerm, DynTerm, DynDType>::Implies(
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Implies(
             &self.antecedent,
             &self.consequent,
         )
@@ -131,12 +173,19 @@ pub struct Iff<P: Prop, Q: Prop> {
 }
 
 impl<P: Prop, Q: Prop> prop_sealed::Sealed for Iff<P, Q> {}
+impl<P: Prop, Q: Prop> expr_sealed::Sealed for Iff<P, Q> {}
+
+impl<P: Prop, Q: Prop> Expr for Iff<P, Q> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<P: Prop, Q: Prop> Prop for Iff<P, Q> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynTerm, DynTerm, DynDType>::Iff(&self.left, &self.right)
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Iff(&self.left, &self.right)
     }
 }
 
@@ -151,12 +200,19 @@ pub struct ForAll<DT: DType, P: Prop> {
 }
 
 impl<DT: DType, P: Prop> prop_sealed::Sealed for ForAll<DT, P> {}
+impl<DT: DType, P: Prop> expr_sealed::Sealed for ForAll<DT, P> {}
+
+impl<DT: DType, P: Prop> Expr for ForAll<DT, P> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<DT: DType, P: Prop> Prop for ForAll<DT, P> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynTerm, DynTerm, &DT>::ForAll {
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::ForAll {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -175,12 +231,19 @@ pub struct Exists<DT: DType, P: Prop> {
 }
 
 impl<DT: DType, P: Prop> prop_sealed::Sealed for Exists<DT, P> {}
+impl<DT: DType, P: Prop> expr_sealed::Sealed for Exists<DT, P> {}
+
+impl<DT: DType, P: Prop> Expr for Exists<DT, P> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
 
 impl<DT: DType, P: Prop> Prop for Exists<DT, P> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynTerm, DynTerm, &DT>::Exists {
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::Exists {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -188,21 +251,28 @@ impl<DT: DType, P: Prop> Prop for Exists<DT, P> {
     }
 }
 
-/// Represents the equality of two terms.
+/// Represents the equality of two exprs.
 ///
-/// If `T1` and `T2` are two terms, then `Eq<T1, T2>` represents the proposition "T1 is equal to T2".
-/// This struct holds two fields, `left` and `right`, which are the terms being compared for equality.
-pub struct Eq<T1: Term, T2: Term> {
+/// If `T1` and `T2` are two exprs, then `Eq<T1, T2>` represents the proposition "T1 is equal to T2".
+/// This struct holds two fields, `left` and `right`, which are the exprs being compared for equality.
+pub struct Eq<T1: Expr, T2: Expr> {
     pub left: T1,
     pub right: T2,
 }
 
-impl<T1: Term, T2: Term> prop_sealed::Sealed for Eq<T1, T2> {}
+impl<T1: Expr, T2: Expr> prop_sealed::Sealed for Eq<T1, T2> {}
+impl<T1: Expr, T2: Expr> expr_sealed::Sealed for Eq<T1, T2> {}
 
-impl<T1: Term, T2: Term> Prop for Eq<T1, T2> {
+impl<T1: Expr, T2: Expr> Expr for Eq<T1, T2> {
+    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    }
+}
+
+impl<T1: Expr, T2: Expr> Prop for Eq<T1, T2> {
     fn decode(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Term, impl Term, impl crate::dtype::DType> {
+    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, &T1, &T2, DynDType>::Equal(&self.left, &self.right)
     }
 }

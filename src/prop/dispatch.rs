@@ -1,11 +1,11 @@
 use strum::{EnumDiscriminants, EnumIs};
 
-use crate::{dtype::DType, prop::Prop, term::Term, variable::InlineVariable};
+use crate::{dtype::DType, expr::Expr, prop::Prop, variable::InlineVariable};
 
 #[derive(Debug, Clone, Copy, EnumIs, EnumDiscriminants)]
 #[strum_discriminants(derive(PartialOrd, Ord, Hash))]
 #[strum_discriminants(name(PropDispatchVariant))]
-pub enum PropDispatch<P1: Prop, P2: Prop, T1: Term, T2: Term, DT: DType> {
+pub enum PropDispatch<P1: Prop, P2: Prop, T1: Expr, T2: Expr, DT: DType> {
     True,
     False,
     Not(P1),
