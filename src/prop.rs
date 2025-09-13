@@ -15,7 +15,7 @@ pub(crate) mod prop_sealed {
 }
 
 pub trait Prop: Expr + prop_sealed::Sealed + Sized {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType>;
 
@@ -68,10 +68,10 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized {
 }
 
 impl<'a, T: Prop> Prop for &'a T {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        (*self).decode()
+        (*self).decode_prop()
     }
 }
 
@@ -80,12 +80,12 @@ pub struct DynProp {}
 impl prop_sealed::Sealed for DynProp {}
 impl expr_sealed::Sealed for DynProp {}
 impl Expr for DynProp {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 impl Prop for DynProp {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True

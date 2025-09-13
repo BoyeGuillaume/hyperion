@@ -9,7 +9,7 @@ use crate::{
 /// A variable expr is simply a reference to a variable identified by its name.
 impl expr_sealed::Sealed for InlineVariable {}
 impl Expr for InlineVariable {
-    fn dispatch(
+    fn decode_expr(
         &self,
     ) -> crate::expr::dispatch::ExprDispatch<
         impl crate::prop::Prop,
@@ -32,7 +32,7 @@ pub struct Unreachable;
 
 impl expr_sealed::Sealed for Unreachable {}
 impl Expr for Unreachable {
-    fn dispatch(
+    fn decode_expr(
         &self,
     ) -> crate::expr::dispatch::ExprDispatch<
         impl crate::prop::Prop,
@@ -58,7 +58,7 @@ pub struct App<A: Expr> {
 
 impl<A: Expr> expr_sealed::Sealed for App<A> {}
 impl<A: Expr> Expr for App<A> {
-    fn dispatch(
+    fn decode_expr(
         &self,
     ) -> crate::expr::dispatch::ExprDispatch<
         impl crate::prop::Prop,
@@ -84,7 +84,7 @@ pub struct If<P: Prop, T: Expr, E: Expr> {
 
 impl<P: Prop, T: Expr, E: Expr> expr_sealed::Sealed for If<P, T, E> {}
 impl<P: Prop, T: Expr, E: Expr> Expr for If<P, T, E> {
-    fn dispatch(
+    fn decode_expr(
         &self,
     ) -> crate::expr::dispatch::ExprDispatch<
         impl crate::prop::Prop,
@@ -113,7 +113,7 @@ pub struct ETuple<A: Expr, B: Expr> {
 
 impl<A: Expr, B: Expr> expr_sealed::Sealed for ETuple<A, B> {}
 impl<A: Expr, B: Expr> Expr for ETuple<A, B> {
-    fn dispatch(
+    fn decode_expr(
         &self,
     ) -> crate::expr::dispatch::ExprDispatch<
         impl crate::prop::Prop,

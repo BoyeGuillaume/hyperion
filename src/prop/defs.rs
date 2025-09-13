@@ -17,13 +17,13 @@ impl prop_sealed::Sealed for PropTrue {}
 impl expr_sealed::Sealed for PropTrue {}
 
 impl Expr for PropTrue {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl Prop for PropTrue {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
@@ -40,13 +40,13 @@ impl prop_sealed::Sealed for PropFalse {}
 impl expr_sealed::Sealed for PropFalse {}
 
 impl Expr for PropFalse {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl Prop for PropFalse {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::False
@@ -65,13 +65,13 @@ impl<P: Prop> prop_sealed::Sealed for Not<P> {}
 impl<P: Prop> expr_sealed::Sealed for Not<P> {}
 
 impl<P: Prop> Expr for Not<P> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop> Prop for Not<P> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, DynProp, DynExpr, DynExpr, DynDType>::Not(&self.inner)
@@ -92,13 +92,13 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for And<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for And<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for And<P, Q> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for And<P, Q> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::And(&self.left, &self.right)
@@ -119,13 +119,13 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Or<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Or<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Or<P, Q> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Or<P, Q> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Or(&self.left, &self.right)
@@ -146,13 +146,13 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Imp<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Imp<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Imp<P, Q> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Imp<P, Q> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Implies(
@@ -176,13 +176,13 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Iff<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Iff<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Iff<P, Q> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Iff<P, Q> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Iff(&self.left, &self.right)
@@ -203,13 +203,13 @@ impl<DT: DType, P: Prop> prop_sealed::Sealed for ForAll<DT, P> {}
 impl<DT: DType, P: Prop> expr_sealed::Sealed for ForAll<DT, P> {}
 
 impl<DT: DType, P: Prop> Expr for ForAll<DT, P> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<DT: DType, P: Prop> Prop for ForAll<DT, P> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::ForAll {
@@ -234,13 +234,13 @@ impl<DT: DType, P: Prop> prop_sealed::Sealed for Exists<DT, P> {}
 impl<DT: DType, P: Prop> expr_sealed::Sealed for Exists<DT, P> {}
 
 impl<DT: DType, P: Prop> Expr for Exists<DT, P> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<DT: DType, P: Prop> Prop for Exists<DT, P> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::Exists {
@@ -264,13 +264,13 @@ impl<T1: Expr, T2: Expr> prop_sealed::Sealed for Eq<T1, T2> {}
 impl<T1: Expr, T2: Expr> expr_sealed::Sealed for Eq<T1, T2> {}
 
 impl<T1: Expr, T2: Expr> Expr for Eq<T1, T2> {
-    fn dispatch(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<T1: Expr, T2: Expr> Prop for Eq<T1, T2> {
-    fn decode(
+    fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, &T1, &T2, DynDType>::Equal(&self.left, &self.right)
