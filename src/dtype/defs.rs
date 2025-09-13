@@ -13,6 +13,12 @@ impl DType for TBool {
     }
 }
 
+impl crate::encoding::RawEncodable for TBool {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::T_BOOL);
+    }
+}
+
 /// Universe of well-formed types (aka Type or Set depending on reading)
 pub struct TOmega;
 
@@ -20,6 +26,12 @@ impl dtype_sealed::Sealed for TOmega {}
 impl DType for TOmega {
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
         DTypeDispatch::<Self, Self>::Omega
+    }
+}
+
+impl crate::encoding::RawEncodable for TOmega {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::T_OMEGA);
     }
 }
 
@@ -33,6 +45,12 @@ impl DType for TNever {
     }
 }
 
+impl crate::encoding::RawEncodable for TNever {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::T_NEVER);
+    }
+}
+
 /// Type variable
 impl dtype_sealed::Sealed for InlineVariable {}
 impl DType for InlineVariable {
@@ -40,6 +58,8 @@ impl DType for InlineVariable {
         DTypeDispatch::<Self, Self>::Var(*self)
     }
 }
+
+// Variable RawEncodable is implemented in variable.rs and shared.
 
 /// Function type: A -> B
 pub struct TFun<A: DType, B: DType> {
@@ -51,6 +71,21 @@ impl<A: DType, B: DType> dtype_sealed::Sealed for TFun<A, B> {}
 impl<A: DType, B: DType> DType for TFun<A, B> {
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
         DTypeDispatch::<&A, &B>::Arrow(&self.from, &self.to)
+    }
+}
+
+impl<A: DType + crate::encoding::RawEncodable, B: DType + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for TFun<A, B>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        let start = buf.len();
+        self.from.encode_raw(buf);
+        let right_start = buf.len();
+        self.to.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::T_ARROW);
+        debug_assert!(buf.len() >= start);
     }
 }
 
@@ -67,6 +102,19 @@ impl<A: DType, B: DType> DType for TTuple<A, B> {
     }
 }
 
+impl<A: DType + crate::encoding::RawEncodable, B: DType + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for TTuple<A, B>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.first.encode_raw(buf);
+        let right_start = buf.len();
+        self.second.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::T_TUPLE);
+    }
+}
+
 /// Powerset type: P(A)
 pub struct TPowerSet<A: DType> {
     pub inner: A,
@@ -76,5 +124,12 @@ impl<A: DType> dtype_sealed::Sealed for TPowerSet<A> {}
 impl<A: DType> DType for TPowerSet<A> {
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
         DTypeDispatch::<&A, crate::dtype::DynDType>::Power(&self.inner)
+    }
+}
+
+impl<A: DType + crate::encoding::RawEncodable> crate::encoding::RawEncodable for TPowerSet<A> {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.inner.encode_raw(buf);
+        buf.push(crate::encoding::magic::T_POWER);
     }
 }

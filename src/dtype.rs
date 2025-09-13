@@ -28,3 +28,10 @@ impl DType for DynDType {
         DTypeDispatch::<crate::dtype::DynDType, crate::dtype::DynDType>::Omega
     }
 }
+
+impl crate::encoding::RawEncodable for DynDType {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        // By convention, DynDType encodes to Omega unless specified otherwise by a concrete type.
+        buf.push(crate::encoding::magic::T_OMEGA);
+    }
+}

@@ -30,6 +30,12 @@ impl Prop for PropTrue {
     }
 }
 
+impl crate::encoding::RawEncodable for PropTrue {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::P_TRUE);
+    }
+}
+
 /// Represents a false proposition.
 ///
 /// An atomic proposition that is always false.
@@ -50,6 +56,12 @@ impl Prop for PropFalse {
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::False
+    }
+}
+
+impl crate::encoding::RawEncodable for PropFalse {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::P_FALSE);
     }
 }
 
@@ -75,6 +87,13 @@ impl<P: Prop> Prop for Not<P> {
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, DynProp, DynExpr, DynExpr, DynDType>::Not(&self.inner)
+    }
+}
+
+impl<P: Prop + crate::encoding::RawEncodable> crate::encoding::RawEncodable for Not<P> {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.inner.encode_raw(buf);
+        buf.push(crate::encoding::magic::P_NOT);
     }
 }
 
@@ -105,6 +124,19 @@ impl<P: Prop, Q: Prop> Prop for And<P, Q> {
     }
 }
 
+impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for And<P, Q>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.left.encode_raw(buf);
+        let right_start = buf.len();
+        self.right.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::P_AND);
+    }
+}
+
 /// Represents the disjunction (logical OR) of two propositions.
 ///
 /// If `P` and `Q` are propositions, then `Or<P, Q>` represents the proposition "P or Q".
@@ -129,6 +161,19 @@ impl<P: Prop, Q: Prop> Prop for Or<P, Q> {
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Or(&self.left, &self.right)
+    }
+}
+
+impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for Or<P, Q>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.left.encode_raw(buf);
+        let right_start = buf.len();
+        self.right.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::P_OR);
     }
 }
 
@@ -162,6 +207,19 @@ impl<P: Prop, Q: Prop> Prop for Imp<P, Q> {
     }
 }
 
+impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for Imp<P, Q>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.antecedent.encode_raw(buf);
+        let right_start = buf.len();
+        self.consequent.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::P_IMPLIES);
+    }
+}
+
 /// Represents the biconditional (logical IF AND ONLY IF) between two propositions.
 ///
 /// If `P` and `Q` are propositions, then `Iff<P, Q>` represents the proposition "P if and only if Q".
@@ -186,6 +244,19 @@ impl<P: Prop, Q: Prop> Prop for Iff<P, Q> {
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Iff(&self.left, &self.right)
+    }
+}
+
+impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for Iff<P, Q>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.left.encode_raw(buf);
+        let right_start = buf.len();
+        self.right.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::P_IFF);
     }
 }
 
@@ -220,6 +291,22 @@ impl<DT: DType, P: Prop> Prop for ForAll<DT, P> {
     }
 }
 
+impl<DT, P> crate::encoding::RawEncodable for ForAll<DT, P>
+where
+    DT: DType + crate::encoding::RawEncodable,
+    P: Prop + crate::encoding::RawEncodable,
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.dtype.encode_raw(buf);
+        let inner_start = buf.len();
+        self.inner.encode_raw(buf);
+        let inner_len = buf.len() - inner_start;
+        crate::encoding::push_len(inner_len, buf);
+        crate::encoding::integer::encode_u64(self.variable.id(), buf);
+        buf.push(crate::encoding::magic::P_FORALL);
+    }
+}
+
 /// Represents an existentially quantified proposition.
 ///
 /// If `P` is a proposition and `DT` is a type, then `Exists<DT, P>` represents the proposition
@@ -251,6 +338,22 @@ impl<DT: DType, P: Prop> Prop for Exists<DT, P> {
     }
 }
 
+impl<DT, P> crate::encoding::RawEncodable for Exists<DT, P>
+where
+    DT: DType + crate::encoding::RawEncodable,
+    P: Prop + crate::encoding::RawEncodable,
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.dtype.encode_raw(buf);
+        let inner_start = buf.len();
+        self.inner.encode_raw(buf);
+        let inner_len = buf.len() - inner_start;
+        crate::encoding::push_len(inner_len, buf);
+        crate::encoding::integer::encode_u64(self.variable.id(), buf);
+        buf.push(crate::encoding::magic::P_EXISTS);
+    }
+}
+
 /// Represents the equality of two exprs.
 ///
 /// If `T1` and `T2` are two exprs, then `Eq<T1, T2>` represents the proposition "T1 is equal to T2".
@@ -274,5 +377,18 @@ impl<T1: Expr, T2: Expr> Prop for Eq<T1, T2> {
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         PropDispatch::<DynProp, DynProp, &T1, &T2, DynDType>::Equal(&self.left, &self.right)
+    }
+}
+
+impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for Eq<T1, T2>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.left.encode_raw(buf);
+        let right_start = buf.len();
+        self.right.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::P_EQUAL);
     }
 }

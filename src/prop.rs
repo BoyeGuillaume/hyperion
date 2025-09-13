@@ -93,3 +93,10 @@ impl Prop for DynProp {
         PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
     }
 }
+
+impl crate::encoding::RawEncodable for DynProp {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        // By convention, encode as True if the dynamic value has no additional info.
+        buf.push(crate::encoding::magic::P_TRUE);
+    }
+}

@@ -46,3 +46,10 @@ impl Expr for DynExpr {
         >::Unreachable
     }
 }
+
+impl crate::encoding::RawEncodable for DynExpr {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        // Default dynamic expr encodes as unreachable
+        buf.push(crate::encoding::magic::E_UNREACHABLE);
+    }
+}

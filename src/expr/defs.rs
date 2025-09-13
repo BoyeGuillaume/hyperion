@@ -24,6 +24,7 @@ impl Expr for InlineVariable {
     }
 }
 
+
 /// Note: Propositions implement `Expr` individually in `prop::defs` to avoid
 /// overlapping blanket implementations with references.
 
@@ -44,6 +45,12 @@ impl Expr for Unreachable {
             crate::expr::DynExpr,
             crate::expr::DynExpr,
         >::Unreachable
+    }
+}
+
+impl crate::encoding::RawEncodable for Unreachable {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        buf.push(crate::encoding::magic::E_UNREACHABLE);
     }
 }
 
@@ -69,6 +76,15 @@ impl<A: Expr> Expr for App<A> {
             func: self.func,
             arg: &self.arg,
         }
+    }
+}
+
+impl<A: Expr + crate::encoding::RawEncodable> crate::encoding::RawEncodable for App<A> {
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.arg.encode_raw(buf);
+        // func id payload
+    crate::encoding::integer::encode_u64(self.func.id(), buf);
+        buf.push(crate::encoding::magic::E_APP);
     }
 }
 
@@ -99,6 +115,26 @@ impl<P: Prop, T: Expr, E: Expr> Expr for If<P, T, E> {
     }
 }
 
+impl<P, T, E> crate::encoding::RawEncodable for If<P, T, E>
+where
+    P: Prop + crate::encoding::RawEncodable,
+    T: Expr + crate::encoding::RawEncodable,
+    E: Expr + crate::encoding::RawEncodable,
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.condition.encode_raw(buf);
+        let then_start = buf.len();
+        self.then_branch.encode_raw(buf);
+        let then_len = buf.len() - then_start;
+        let else_start = buf.len();
+        self.else_branch.encode_raw(buf);
+        let else_len = buf.len() - else_start;
+        crate::encoding::push_len(else_len, buf);
+        crate::encoding::push_len(then_len, buf);
+        buf.push(crate::encoding::magic::E_IF);
+    }
+}
+
 /// Represents a tuple expr (distinct from a type tuple `TTuple`).
 ///
 /// If `A` and `B` are exprs, then `ETuple<A, B>` represents the expr `(A, B)`.
@@ -124,5 +160,18 @@ impl<A: Expr, B: Expr> Expr for ETuple<A, B> {
             &self.first,
             &self.second,
         )
+    }
+}
+
+impl<A: Expr + crate::encoding::RawEncodable, B: Expr + crate::encoding::RawEncodable>
+    crate::encoding::RawEncodable for ETuple<A, B>
+{
+    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+        self.first.encode_raw(buf);
+        let right_start = buf.len();
+        self.second.encode_raw(buf);
+        let right_len = buf.len() - right_start;
+        crate::encoding::push_len(right_len, buf);
+        buf.push(crate::encoding::magic::E_TUPLE);
     }
 }
