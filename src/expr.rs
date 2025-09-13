@@ -1,5 +1,9 @@
 pub mod defs;
 pub mod dispatch;
+use crate::encoding::{DynBuf, RawEncodable};
+use crate::expr::dispatch::ExprDispatch;
+use crate::prop::{DynBorrowedProp, Prop};
+use crate::{encoding, variable::InlineVariable};
 
 pub(crate) mod expr_sealed {
     pub trait Sealed {}
@@ -7,49 +11,161 @@ pub(crate) mod expr_sealed {
     impl<'a, T: Sealed> Sealed for &'a T {}
 }
 
-pub trait Expr: expr_sealed::Sealed + Sized {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    >;
+pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr>;
+
+    /// Encode this expr into a dynamic, byte-backed representation.
+    #[inline]
+    fn encode(&self) -> DynExpr {
+        let mut buf = DynBuf::new();
+        self.encode_raw(&mut buf);
+        DynExpr { bytes: buf }
+    }
 }
 
 impl<'a, T: Expr> Expr for &'a T {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         (*self).decode_expr()
     }
 }
 
-pub struct DynExpr {}
+/// Dynamically-encoded Expr backed by a compact byte buffer.
+pub struct DynExpr {
+    pub(crate) bytes: DynBuf,
+}
 impl expr_sealed::Sealed for DynExpr {}
 impl Expr for DynExpr {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<
-            crate::prop::DynProp,
-            crate::expr::DynExpr,
-            crate::expr::DynExpr,
-        >::Unreachable
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        self.as_borrowed().decode_expr_concrete()
     }
 }
 
-impl crate::encoding::RawEncodable for DynExpr {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        // Default dynamic expr encodes as unreachable
-        buf.push(crate::encoding::magic::E_UNREACHABLE);
+impl RawEncodable for DynExpr {
+    #[inline]
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.extend_from_slice(&self.bytes);
+    }
+}
+
+impl DynExpr {
+    /// Borrow these bytes as a zero-copy dynamic expr.
+    #[inline]
+    pub fn as_borrowed(&self) -> DynBorrowedExpr<'_> {
+        DynBorrowedExpr {
+            bytes: self.bytes.as_slice(),
+        }
+    }
+
+    /// Zero-copy decode returning borrowed children.
+    #[inline]
+    pub fn decode_expr_borrowed(
+        &self,
+    ) -> ExprDispatch<DynBorrowedProp<'_>, DynBorrowedExpr<'_>, DynBorrowedExpr<'_>> {
+        self.as_borrowed().decode_expr_concrete()
+    }
+}
+
+/// Zero-copy dynamically-encoded Expr backed by a borrowed byte slice.
+pub struct DynBorrowedExpr<'a> {
+    pub(crate) bytes: &'a [u8],
+}
+
+impl<'a> expr_sealed::Sealed for DynBorrowedExpr<'a> {}
+
+impl<'a> DynBorrowedExpr<'a> {
+    fn raw_decode_expr(
+        bytes: &'a [u8],
+    ) -> ExprDispatch<DynBorrowedProp<'a>, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>> {
+        assert!(!bytes.is_empty(), "Attempted to decode empty buffer");
+
+        let (rest, op) = bytes.split_at(bytes.len() - 1);
+        let mut s: &[u8] = rest;
+
+        use encoding::magic::*;
+        match op[0] {
+            E_UNREACHABLE => ExprDispatch::Unreachable,
+            E_APP => {
+                // arg payload(func_id) OP
+                let func_id = encoding::integer::decode_u64(&mut s)
+                    .expect("Invalid encoding: expected function id after E_APP opcode");
+                ExprDispatch::App {
+                    func: InlineVariable::new(func_id),
+                    arg: DynBorrowedExpr { bytes: s },
+                }
+            }
+            E_IF => {
+                // cond then else len(else) len(then) OP
+                let then_len = encoding::integer::decode_u64(&mut s)
+                    .expect("Invalid encoding: expected then-branch length after E_IF opcode");
+                let else_len = encoding::integer::decode_u64(&mut s).expect(
+                    "Invalid encoding: expected else-branch length after then-branch length",
+                );
+                assert!(
+                    (then_len as usize) + (else_len as usize) <= s.len(),
+                    "Invalid encoding: then-branch or else-branch length exceeds available bytes"
+                );
+
+                let slen = s.len();
+                let (prefix, else_bytes) = s.split_at(slen - else_len as usize);
+                let (cond_bytes, then_bytes) = prefix.split_at(prefix.len() - then_len as usize);
+
+                ExprDispatch::If {
+                    condition: DynBorrowedProp { bytes: cond_bytes },
+                    then_branch: DynBorrowedExpr { bytes: then_bytes },
+                    else_branch: DynBorrowedExpr { bytes: else_bytes },
+                }
+            }
+            E_TUPLE => {
+                // Binary: A B len(B) OP
+                let right_len = encoding::integer::decode_u64(&mut s)
+                    .expect("Invalid encoding: expected length of right child before tuple opcode");
+                assert!(
+                    right_len as usize <= s.len(),
+                    "Invalid encoding: right length exceeds available bytes"
+                );
+
+                let split_at = s.len() - right_len as usize;
+                let (left_bytes, right_bytes) = s.split_at(split_at);
+                ExprDispatch::Tuple(
+                    DynBorrowedExpr { bytes: left_bytes },
+                    DynBorrowedExpr { bytes: right_bytes },
+                )
+            }
+            VAR_INLINE => {
+                let id = encoding::integer::decode_u64(&mut s)
+                    .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
+
+                ExprDispatch::Var(InlineVariable::new(id))
+            }
+            P_TRUE | P_FALSE | P_NOT | P_AND | P_OR | P_IMPLIES | P_IFF | P_FORALL | P_EXISTS
+            | P_EQUAL => ExprDispatch::Prop(DynBorrowedProp { bytes }),
+            _ => panic!("Invalid encoding: unknown expr opcode {}", op[0]),
+        }
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    /// Decode with concrete borrowed types (no allocations).
+    #[inline]
+    pub fn decode_expr_concrete(
+        &self,
+    ) -> ExprDispatch<DynBorrowedProp<'a>, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>> {
+        Self::raw_decode_expr(self.bytes)
+    }
+}
+
+impl<'a> Expr for DynBorrowedExpr<'a> {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        Self::raw_decode_expr(self.bytes)
+    }
+}
+
+impl<'a> RawEncodable for DynBorrowedExpr<'a> {
+    #[inline]
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.extend_from_slice(self.bytes);
     }
 }
