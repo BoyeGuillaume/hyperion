@@ -79,11 +79,13 @@ pub struct DynProp {}
 
 impl prop_sealed::Sealed for DynProp {}
 impl expr_sealed::Sealed for DynProp {}
+
 impl Expr for DynProp {
     fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
         ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
+
 impl Prop for DynProp {
     fn decode_prop(
         &self,
