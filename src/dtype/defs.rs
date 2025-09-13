@@ -1,5 +1,6 @@
 use crate::{
     dtype::{DType, dispatch::DTypeDispatch, dtype_sealed},
+    encoding::{DynBuf, RawEncodable, magic, push_len},
     variable::InlineVariable,
 };
 
@@ -13,9 +14,9 @@ impl DType for TBool {
     }
 }
 
-impl crate::encoding::RawEncodable for TBool {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::T_BOOL);
+impl RawEncodable for TBool {
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::T_BOOL);
     }
 }
 
@@ -29,9 +30,9 @@ impl DType for TOmega {
     }
 }
 
-impl crate::encoding::RawEncodable for TOmega {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::T_OMEGA);
+impl RawEncodable for TOmega {
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::T_OMEGA);
     }
 }
 
@@ -45,9 +46,9 @@ impl DType for TNever {
     }
 }
 
-impl crate::encoding::RawEncodable for TNever {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::T_NEVER);
+impl RawEncodable for TNever {
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::T_NEVER);
     }
 }
 
@@ -74,17 +75,15 @@ impl<A: DType, B: DType> DType for TFun<A, B> {
     }
 }
 
-impl<A: DType + crate::encoding::RawEncodable, B: DType + crate::encoding::RawEncodable>
-    crate::encoding::RawEncodable for TFun<A, B>
-{
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TFun<A, B> {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         let start = buf.len();
         self.from.encode_raw(buf);
         let right_start = buf.len();
         self.to.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::T_ARROW);
+        push_len(right_len, buf);
+        buf.push(magic::T_ARROW);
         debug_assert!(buf.len() >= start);
     }
 }
@@ -102,16 +101,14 @@ impl<A: DType, B: DType> DType for TTuple<A, B> {
     }
 }
 
-impl<A: DType + crate::encoding::RawEncodable, B: DType + crate::encoding::RawEncodable>
-    crate::encoding::RawEncodable for TTuple<A, B>
-{
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TTuple<A, B> {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.first.encode_raw(buf);
         let right_start = buf.len();
         self.second.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::T_TUPLE);
+        push_len(right_len, buf);
+        buf.push(magic::T_TUPLE);
     }
 }
 
@@ -127,9 +124,9 @@ impl<A: DType> DType for TPowerSet<A> {
     }
 }
 
-impl<A: DType + crate::encoding::RawEncodable> crate::encoding::RawEncodable for TPowerSet<A> {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+impl<A: DType + RawEncodable> RawEncodable for TPowerSet<A> {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.inner.encode_raw(buf);
-        buf.push(crate::encoding::magic::T_POWER);
+        buf.push(magic::T_POWER);
     }
 }

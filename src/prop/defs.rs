@@ -1,5 +1,6 @@
 use crate::{
     dtype::{DType, DynDType},
+    encoding::{DynBuf, magic, push_len},
     expr::{DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
     prop::{DynProp, Prop, prop_sealed},
     variable::InlineVariable,
@@ -31,8 +32,8 @@ impl Prop for PropTrue {
 }
 
 impl crate::encoding::RawEncodable for PropTrue {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::P_TRUE);
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::P_TRUE);
     }
 }
 
@@ -60,8 +61,8 @@ impl Prop for PropFalse {
 }
 
 impl crate::encoding::RawEncodable for PropFalse {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::P_FALSE);
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::P_FALSE);
     }
 }
 
@@ -91,9 +92,9 @@ impl<P: Prop> Prop for Not<P> {
 }
 
 impl<P: Prop + crate::encoding::RawEncodable> crate::encoding::RawEncodable for Not<P> {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.inner.encode_raw(buf);
-        buf.push(crate::encoding::magic::P_NOT);
+        buf.push(magic::P_NOT);
     }
 }
 
@@ -127,13 +128,13 @@ impl<P: Prop, Q: Prop> Prop for And<P, Q> {
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for And<P, Q>
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.left.encode_raw(buf);
         let right_start = buf.len();
         self.right.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::P_AND);
+        push_len(right_len, buf);
+        buf.push(magic::P_AND);
     }
 }
 
@@ -167,13 +168,13 @@ impl<P: Prop, Q: Prop> Prop for Or<P, Q> {
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Or<P, Q>
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.left.encode_raw(buf);
         let right_start = buf.len();
         self.right.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::P_OR);
+        push_len(right_len, buf);
+        buf.push(magic::P_OR);
     }
 }
 
@@ -210,13 +211,13 @@ impl<P: Prop, Q: Prop> Prop for Imp<P, Q> {
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Imp<P, Q>
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.antecedent.encode_raw(buf);
         let right_start = buf.len();
         self.consequent.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::P_IMPLIES);
+        push_len(right_len, buf);
+        buf.push(magic::P_IMPLIES);
     }
 }
 
@@ -250,13 +251,13 @@ impl<P: Prop, Q: Prop> Prop for Iff<P, Q> {
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Iff<P, Q>
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.left.encode_raw(buf);
         let right_start = buf.len();
         self.right.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::P_IFF);
+        push_len(right_len, buf);
+        buf.push(magic::P_IFF);
     }
 }
 
@@ -296,14 +297,14 @@ where
     DT: DType + crate::encoding::RawEncodable,
     P: Prop + crate::encoding::RawEncodable,
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.dtype.encode_raw(buf);
         let inner_start = buf.len();
         self.inner.encode_raw(buf);
         let inner_len = buf.len() - inner_start;
-        crate::encoding::push_len(inner_len, buf);
+        push_len(inner_len, buf);
         crate::encoding::integer::encode_u64(self.variable.id(), buf);
-        buf.push(crate::encoding::magic::P_FORALL);
+        buf.push(magic::P_FORALL);
     }
 }
 
@@ -343,14 +344,14 @@ where
     DT: DType + crate::encoding::RawEncodable,
     P: Prop + crate::encoding::RawEncodable,
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.dtype.encode_raw(buf);
         let inner_start = buf.len();
         self.inner.encode_raw(buf);
         let inner_len = buf.len() - inner_start;
-        crate::encoding::push_len(inner_len, buf);
+        push_len(inner_len, buf);
         crate::encoding::integer::encode_u64(self.variable.id(), buf);
-        buf.push(crate::encoding::magic::P_EXISTS);
+        buf.push(magic::P_EXISTS);
     }
 }
 
@@ -383,12 +384,12 @@ impl<T1: Expr, T2: Expr> Prop for Eq<T1, T2> {
 impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Eq<T1, T2>
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.left.encode_raw(buf);
         let right_start = buf.len();
         self.right.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::P_EQUAL);
+        push_len(right_len, buf);
+        buf.push(magic::P_EQUAL);
     }
 }

@@ -1,3 +1,5 @@
+use crate::encoding::RawEncodable;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InlineVariable(u64);
 
@@ -30,7 +32,7 @@ impl std::fmt::Display for InlineVariable {
     }
 }
 
-impl crate::encoding::RawEncodable for InlineVariable {
+impl RawEncodable for InlineVariable {
     fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
         crate::encoding::integer::encode_u64(self.id(), buf);
         buf.push(crate::encoding::magic::VAR_INLINE);

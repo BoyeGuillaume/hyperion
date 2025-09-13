@@ -19,7 +19,6 @@ pub const E_UNREACHABLE: u8 = 0x20;
 pub const E_APP: u8 = 0x21; // encode: arg payload(func_id) OP
 pub const E_IF: u8 = 0x22; // encode: cond then else len(else) len(then) OP
 pub const E_TUPLE: u8 = 0x23; // encode: A B len(B) OP
-pub const E_PROP_WRAP: u8 = 0x24; // wrap a Prop subtree into an Expr
 
 // Prop opcodes
 pub const P_TRUE: u8 = 0x40;

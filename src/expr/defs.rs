@@ -1,6 +1,7 @@
 use crate::{
-    expr::{Expr, expr_sealed},
-    prop::Prop,
+    encoding::{DynBuf, RawEncodable, integer::encode_u64, magic, push_len},
+    expr::{Expr, dispatch::ExprDispatch, expr_sealed},
+    prop::{DynProp, Prop},
     variable::InlineVariable,
 };
 
@@ -9,21 +10,10 @@ use crate::{
 /// A variable expr is simply a reference to a variable identified by its name.
 impl expr_sealed::Sealed for InlineVariable {}
 impl Expr for InlineVariable {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<
-            crate::prop::DynProp,
-            crate::expr::DynExpr,
-            crate::expr::DynExpr,
-        >::Var(*self)
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<DynProp, crate::expr::DynExpr, crate::expr::DynExpr>::Var(*self)
     }
 }
-
 
 /// Note: Propositions implement `Expr` individually in `prop::defs` to avoid
 /// overlapping blanket implementations with references.
@@ -33,24 +23,14 @@ pub struct Unreachable;
 
 impl expr_sealed::Sealed for Unreachable {}
 impl Expr for Unreachable {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<
-            crate::prop::DynProp,
-            crate::expr::DynExpr,
-            crate::expr::DynExpr,
-        >::Unreachable
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<DynProp, crate::expr::DynExpr, crate::expr::DynExpr>::Unreachable
     }
 }
 
-impl crate::encoding::RawEncodable for Unreachable {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        buf.push(crate::encoding::magic::E_UNREACHABLE);
+impl RawEncodable for Unreachable {
+    fn encode_raw(&self, buf: &mut DynBuf) {
+        buf.push(magic::E_UNREACHABLE);
     }
 }
 
@@ -65,26 +45,20 @@ pub struct App<A: Expr> {
 
 impl<A: Expr> expr_sealed::Sealed for App<A> {}
 impl<A: Expr> Expr for App<A> {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<crate::prop::DynProp, &A, crate::expr::DynExpr>::App {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<DynProp, &A, crate::expr::DynExpr>::App {
             func: self.func,
             arg: &self.arg,
         }
     }
 }
 
-impl<A: Expr + crate::encoding::RawEncodable> crate::encoding::RawEncodable for App<A> {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+impl<A: Expr + RawEncodable> RawEncodable for App<A> {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.arg.encode_raw(buf);
         // func id payload
-    crate::encoding::integer::encode_u64(self.func.id(), buf);
-        buf.push(crate::encoding::magic::E_APP);
+        encode_u64(self.func.id(), buf);
+        buf.push(magic::E_APP);
     }
 }
 
@@ -100,14 +74,8 @@ pub struct If<P: Prop, T: Expr, E: Expr> {
 
 impl<P: Prop, T: Expr, E: Expr> expr_sealed::Sealed for If<P, T, E> {}
 impl<P: Prop, T: Expr, E: Expr> Expr for If<P, T, E> {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<&P, &T, &E>::If {
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<&P, &T, &E>::If {
             condition: &self.condition,
             then_branch: &self.then_branch,
             else_branch: &self.else_branch,
@@ -115,13 +83,13 @@ impl<P: Prop, T: Expr, E: Expr> Expr for If<P, T, E> {
     }
 }
 
-impl<P, T, E> crate::encoding::RawEncodable for If<P, T, E>
+impl<P, T, E> RawEncodable for If<P, T, E>
 where
-    P: Prop + crate::encoding::RawEncodable,
-    T: Expr + crate::encoding::RawEncodable,
-    E: Expr + crate::encoding::RawEncodable,
+    P: Prop + RawEncodable,
+    T: Expr + RawEncodable,
+    E: Expr + RawEncodable,
 {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.condition.encode_raw(buf);
         let then_start = buf.len();
         self.then_branch.encode_raw(buf);
@@ -129,9 +97,9 @@ where
         let else_start = buf.len();
         self.else_branch.encode_raw(buf);
         let else_len = buf.len() - else_start;
-        crate::encoding::push_len(else_len, buf);
-        crate::encoding::push_len(then_len, buf);
-        buf.push(crate::encoding::magic::E_IF);
+        push_len(else_len, buf);
+        push_len(then_len, buf);
+        buf.push(magic::E_IF);
     }
 }
 
@@ -149,29 +117,18 @@ pub struct ETuple<A: Expr, B: Expr> {
 
 impl<A: Expr, B: Expr> expr_sealed::Sealed for ETuple<A, B> {}
 impl<A: Expr, B: Expr> Expr for ETuple<A, B> {
-    fn decode_expr(
-        &self,
-    ) -> crate::expr::dispatch::ExprDispatch<
-        impl crate::prop::Prop,
-        impl crate::expr::Expr,
-        impl crate::expr::Expr,
-    > {
-        crate::expr::dispatch::ExprDispatch::<crate::prop::DynProp, &A, &B>::Tuple(
-            &self.first,
-            &self.second,
-        )
+    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+        ExprDispatch::<DynProp, &A, &B>::Tuple(&self.first, &self.second)
     }
 }
 
-impl<A: Expr + crate::encoding::RawEncodable, B: Expr + crate::encoding::RawEncodable>
-    crate::encoding::RawEncodable for ETuple<A, B>
-{
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
+impl<A: Expr + RawEncodable, B: Expr + RawEncodable> RawEncodable for ETuple<A, B> {
+    fn encode_raw(&self, buf: &mut DynBuf) {
         self.first.encode_raw(buf);
         let right_start = buf.len();
         self.second.encode_raw(buf);
         let right_len = buf.len() - right_start;
-        crate::encoding::push_len(right_len, buf);
-        buf.push(crate::encoding::magic::E_TUPLE);
+        push_len(right_len, buf);
+        buf.push(magic::E_TUPLE);
     }
 }
