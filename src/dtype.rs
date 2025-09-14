@@ -22,6 +22,38 @@ pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
         self.encode_raw(&mut buf);
         DynDType { bytes: buf }
     }
+
+    #[inline]
+    fn application<Q: DType>(self, arg: Q) -> defs::TApp<Self, Q> {
+        defs::TApp {
+            from: self,
+            to: arg,
+        }
+    }
+
+    #[inline]
+    fn app<Q: DType>(self, arg: Q) -> defs::TApp<Self, Q> {
+        self.application(arg)
+    }
+
+    #[inline]
+    fn tuple<Q: DType>(self, other: Q) -> defs::TTuple<Self, Q>
+    where
+        Self: Sized,
+    {
+        defs::TTuple {
+            first: self,
+            second: other,
+        }
+    }
+
+    #[inline]
+    fn powerset(self) -> defs::TPowerSet<Self>
+    where
+        Self: Sized,
+    {
+        defs::TPowerSet { inner: self }
+    }
 }
 
 impl<'a, T: DType> DType for &'a T {
@@ -117,12 +149,6 @@ impl<'a> DynBorrowedDType<'a> {
             }
             _ => panic!("Invalid encoding: unknown dtype opcode {}", op[0]),
         }
-    }
-
-    /// Access the underlying bytes.
-    #[inline]
-    pub fn as_slice(&self) -> &'a [u8] {
-        self.bytes
     }
 }
 

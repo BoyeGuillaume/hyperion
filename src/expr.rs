@@ -2,7 +2,7 @@ pub mod defs;
 pub mod dispatch;
 use crate::encoding::{DynBuf, RawEncodable};
 use crate::expr::dispatch::ExprDispatch;
-use crate::prop::{DynBorrowedProp, Prop};
+use crate::prop::{DynBorrowedProp, Eq, Prop};
 use crate::{encoding, variable::InlineVariable};
 
 pub(crate) mod expr_sealed {
@@ -20,6 +20,28 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
         let mut buf = DynBuf::new();
         self.encode_raw(&mut buf);
         DynExpr { bytes: buf }
+    }
+
+    #[inline]
+    fn equals<Q: Expr>(self, other: Q) -> Eq<Self, Q>
+    where
+        Self: Sized,
+    {
+        Eq {
+            left: self,
+            right: other,
+        }
+    }
+
+    #[inline]
+    fn make_tuple<Q: Expr>(self, other: Q) -> defs::ETuple<Self, Q>
+    where
+        Self: Sized,
+    {
+        defs::ETuple {
+            first: self,
+            second: other,
+        }
     }
 }
 
@@ -141,11 +163,6 @@ impl<'a> DynBorrowedExpr<'a> {
             | P_EQUAL => ExprDispatch::Prop(DynBorrowedProp { bytes }),
             _ => panic!("Invalid encoding: unknown expr opcode {}", op[0]),
         }
-    }
-
-    #[inline]
-    pub fn as_slice(&self) -> &'a [u8] {
-        self.bytes
     }
 
     /// Decode with concrete borrowed types (no allocations).

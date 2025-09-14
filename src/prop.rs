@@ -1,7 +1,7 @@
 use crate::{
     dtype::DynBorrowedDType,
     encoding::{DynBuf, RawEncodable},
-    expr::{DynBorrowedExpr, DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
+    expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, dispatch::ExprDispatch, expr_sealed},
     prop::dispatch::PropDispatch,
 };
 
@@ -73,6 +73,17 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         Self: Sized,
     {
         Not { inner: self }
+    }
+
+    fn if_then<T: Expr, E: Expr>(self, then_branch: T, else_branch: E) -> If<Self, T, E>
+    where
+        Self: Sized,
+    {
+        If {
+            condition: self,
+            then_branch,
+            else_branch,
+        }
     }
 }
 

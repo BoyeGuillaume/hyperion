@@ -63,19 +63,19 @@ impl DType for InlineVariable {
 // Variable RawEncodable is implemented in variable.rs and shared.
 
 /// Function type: A -> B
-pub struct TFun<A: DType, B: DType> {
+pub struct TApp<A: DType, B: DType> {
     pub from: A,
     pub to: B,
 }
 
-impl<A: DType, B: DType> dtype_sealed::Sealed for TFun<A, B> {}
-impl<A: DType, B: DType> DType for TFun<A, B> {
+impl<A: DType, B: DType> dtype_sealed::Sealed for TApp<A, B> {}
+impl<A: DType, B: DType> DType for TApp<A, B> {
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
         DTypeDispatch::<&A, &B>::Arrow(&self.from, &self.to)
     }
 }
 
-impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TFun<A, B> {
+impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TApp<A, B> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         let start = buf.len();
         self.from.encode_raw(buf);

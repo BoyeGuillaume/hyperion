@@ -1,4 +1,7 @@
-use crate::encoding::RawEncodable;
+use crate::{
+    encoding::RawEncodable,
+    expr::{Expr, defs::App},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InlineVariable(u64);
@@ -19,6 +22,11 @@ impl InlineVariable {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn apply<A: Expr>(self, arg: A) -> App<A> {
+        App { func: self, arg }
     }
 }
 
