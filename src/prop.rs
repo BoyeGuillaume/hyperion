@@ -114,13 +114,6 @@ impl RawEncodable for DynProp {
 }
 
 impl DynProp {
-    /// Construct a dynamic proposition from raw encoded bytes.
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Self {
-        let mut buf = DynBuf::new();
-        buf.extend_from_slice(bytes.as_ref());
-        Self { bytes: buf }
-    }
-
     /// Borrow these bytes as a zero-copy dynamic proposition.
     #[inline]
     pub fn as_borrowed(&self) -> DynBorrowedProp<'_> {
@@ -128,6 +121,10 @@ impl DynProp {
             bytes: self.bytes.as_slice(),
         }
     }
+}
+
+define_ops_prop! {
+    DynProp
 }
 
 /// Zero-copy dynamically-encoded Prop backed by a borrowed byte slice.
@@ -280,4 +277,8 @@ impl<'a> DynBorrowedProp<'a> {
     > {
         Self::raw_decode_prop(self.bytes)
     }
+}
+
+define_ops_prop! {
+    DynBorrowedProp<'a>
 }

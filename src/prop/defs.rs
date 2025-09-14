@@ -12,7 +12,7 @@ use super::dispatch::PropDispatch;
 ///
 /// An atomic proposition that is always true.
 ///
-pub struct PropTrue {}
+pub struct PropTrue;
 
 impl prop_sealed::Sealed for PropTrue {}
 impl expr_sealed::Sealed for PropTrue {}
@@ -37,11 +37,15 @@ impl crate::encoding::RawEncodable for PropTrue {
     }
 }
 
+define_ops_prop! {
+    PropTrue
+}
+
 /// Represents a false proposition.
 ///
 /// An atomic proposition that is always false.
 ///
-pub struct PropFalse {}
+pub struct PropFalse;
 
 impl prop_sealed::Sealed for PropFalse {}
 impl expr_sealed::Sealed for PropFalse {}
@@ -64,6 +68,10 @@ impl crate::encoding::RawEncodable for PropFalse {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::P_FALSE);
     }
+}
+
+define_ops_prop! {
+    PropFalse
 }
 
 /// Represents the negation of a proposition.
@@ -96,6 +104,10 @@ impl<P: Prop + crate::encoding::RawEncodable> crate::encoding::RawEncodable for 
         self.inner.encode_raw(buf);
         buf.push(magic::P_NOT);
     }
+}
+
+define_ops_prop! {
+    Not<P: Prop>
 }
 
 /// Represents the conjunction (logical AND) of two propositions.
@@ -138,6 +150,10 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
     }
 }
 
+define_ops_prop! {
+    And<P: Prop, Q: Prop>
+}
+
 /// Represents the disjunction (logical OR) of two propositions.
 ///
 /// If `P` and `Q` are propositions, then `Or<P, Q>` represents the proposition "P or Q".
@@ -176,6 +192,10 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         push_len(right_len, buf);
         buf.push(magic::P_OR);
     }
+}
+
+define_ops_prop! {
+    Or<P: Prop, Q: Prop>
 }
 
 /// Represents the implication (logical IF-THEN) between two propositions.
@@ -221,6 +241,10 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
     }
 }
 
+define_ops_prop! {
+    Imp<P: Prop, Q: Prop>
+}
+
 /// Represents the biconditional (logical IF AND ONLY IF) between two propositions.
 ///
 /// If `P` and `Q` are propositions, then `Iff<P, Q>` represents the proposition "P if and only if Q".
@@ -259,6 +283,10 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         push_len(right_len, buf);
         buf.push(magic::P_IFF);
     }
+}
+
+define_ops_prop! {
+    Iff<P: Prop, Q: Prop>
 }
 
 /// Represents a universally quantified proposition.
@@ -308,6 +336,10 @@ where
     }
 }
 
+define_ops_prop! {
+    ForAll<DT: DType, P: Prop>
+}
+
 /// Represents an existentially quantified proposition.
 ///
 /// If `P` is a proposition and `DT` is a type, then `Exists<DT, P>` represents the proposition
@@ -355,6 +387,10 @@ where
     }
 }
 
+define_ops_prop! {
+    Exists<DT: DType, P: Prop>
+}
+
 /// Represents the equality of two exprs.
 ///
 /// If `T1` and `T2` are two exprs, then `Eq<T1, T2>` represents the proposition "T1 is equal to T2".
@@ -392,4 +428,8 @@ impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEn
         push_len(right_len, buf);
         buf.push(magic::P_EQUAL);
     }
+}
+
+define_ops_prop! {
+    Eq<T1: Expr, T2: Expr>
 }

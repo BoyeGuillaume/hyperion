@@ -53,7 +53,7 @@ impl<A: Expr> Expr for App<A> {
     }
 }
 
-impl<A: Expr + RawEncodable> RawEncodable for App<A> {
+impl<A: Expr> RawEncodable for App<A> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.arg.encode_raw(buf);
         // func id payload
@@ -83,12 +83,7 @@ impl<P: Prop, T: Expr, E: Expr> Expr for If<P, T, E> {
     }
 }
 
-impl<P, T, E> RawEncodable for If<P, T, E>
-where
-    P: Prop + RawEncodable,
-    T: Expr + RawEncodable,
-    E: Expr + RawEncodable,
-{
+impl<P: Prop, T: Expr, E: Expr> RawEncodable for If<P, T, E> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.condition.encode_raw(buf);
         let then_start = buf.len();
@@ -122,7 +117,7 @@ impl<A: Expr, B: Expr> Expr for ETuple<A, B> {
     }
 }
 
-impl<A: Expr + RawEncodable, B: Expr + RawEncodable> RawEncodable for ETuple<A, B> {
+impl<A: Expr, B: Expr> RawEncodable for ETuple<A, B> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.first.encode_raw(buf);
         let right_start = buf.len();
