@@ -1,3 +1,7 @@
+//! Expression constructors and zero-copy dynamic expressions.
+//!
+//! Build expressions with typed helpers, encode them to a compact buffer, and
+//! decode later as borrowed views without allocations.
 pub mod defs;
 pub mod dispatch;
 use crate::encoding::{DynBuf, RawEncodable};
@@ -11,7 +15,9 @@ pub(crate) mod expr_sealed {
     impl<'a, T: Sealed> Sealed for &'a T {}
 }
 
+/// Trait implemented by all expression nodes provided by this crate.
 pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
+    /// Describe the expression's outer constructor and expose children.
     fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr>;
 
     /// Encode this expr into a dynamic, byte-backed representation.
@@ -23,6 +29,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
     }
 
     #[inline]
+    /// Build an equality proposition `self == other`.
     fn equals<Q: Expr>(self, other: Q) -> Eq<Self, Q>
     where
         Self: Sized,
@@ -34,6 +41,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
     }
 
     #[inline]
+    /// Build a tuple expression `(self, other)`.
     fn make_tuple<Q: Expr>(self, other: Q) -> defs::ETuple<Self, Q>
     where
         Self: Sized,

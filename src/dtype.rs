@@ -1,3 +1,12 @@
+//! Type constructors and zero-copy dynamic types.
+//!
+//! This module exposes:
+//! - concrete type constructors like [`defs::TBool`], [`defs::TTuple`], [`defs::TApp`], …
+//! - the [`DType`] trait implemented by all type expressions
+//! - dynamic encodings via [`DynDType`] and [`DynBorrowedDType`]
+//!
+//! Types can be composed with ergonomic helpers on [`DType`], then encoded to a compact
+//! byte buffer and decoded later without allocation.
 pub mod defs;
 pub mod dispatch;
 pub use defs::*;
@@ -12,7 +21,14 @@ pub(crate) mod dtype_sealed {
     impl<'a, T: Sealed> Sealed for &'a T {}
 }
 
+/// Trait implemented by all type expressions provided by this crate.
+///
+/// The main entry points are:
+/// - [`encode`](Self::encode): produce a compact dynamic representation
+/// - [`decode_dtype`](Self::decode_dtype): describe the top-level shape
+/// - helpers like [`app`](Self::app), [`tuple`](Self::tuple), and [`powerset`](Self::powerset)
 pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
+    /// Describe the type's outer constructor and expose its children in a dispatch enum.
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType>;
 
     /// Encode this type into a dynamic, byte-backed representation.
@@ -23,6 +39,9 @@ pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
         DynDType { bytes: buf }
     }
 
+    /// Construct a function type from `self` to `arg`.
+    ///
+    /// Equivalent to [`Self::app`].
     #[inline]
     fn application<Q: DType>(self, arg: Q) -> defs::TApp<Self, Q> {
         defs::TApp {
@@ -31,11 +50,13 @@ pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Construct a function type from `self` to `arg`.
     #[inline]
     fn app<Q: DType>(self, arg: Q) -> defs::TApp<Self, Q> {
         self.application(arg)
     }
 
+    /// Construct a binary product type `self x other`.
     #[inline]
     fn tuple<Q: DType>(self, other: Q) -> defs::TTuple<Self, Q>
     where
@@ -47,6 +68,7 @@ pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Construct the powerset type `P(self)`.
     #[inline]
     fn powerset(self) -> defs::TPowerSet<Self>
     where
@@ -63,6 +85,8 @@ impl<'a, T: DType> DType for &'a T {
 }
 
 /// Dynamically-encoded DType backed by a compact byte buffer.
+///
+/// Stores up to 32 bytes inline before spilling to the heap.
 pub struct DynDType {
     pub(crate) bytes: DynBuf,
 }
@@ -91,6 +115,8 @@ impl DynDType {
     }
 
     /// Zero-copy decode returning borrowed children.
+    ///
+    /// This avoids allocations and returns borrowed subtypes when traversing.
     pub fn decode_dtype_concrete(
         &self,
     ) -> DTypeDispatch<DynBorrowedDType<'_>, DynBorrowedDType<'_>> {

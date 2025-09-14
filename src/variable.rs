@@ -1,20 +1,30 @@
+//! Inline variable identifiers used across the crate.
+//!
+//! A compact newtype around `u64` with helpers for display and application.
 use crate::{
     encoding::RawEncodable,
     expr::{Expr, defs::App},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Identifier for an inline variable.
 pub struct InlineVariable(u64);
 
 impl InlineVariable {
+    /// Create a new identifier with the given numeric id.
     pub fn new(id: u64) -> Self {
         Self(id)
     }
 
+    /// Get the raw numeric id.
     pub fn id(&self) -> u64 {
         self.0
     }
 
+    /// Return a short printable symbol for small ids.
+    ///
+    /// For `variant = false`, the range 0..=25 maps to `A..Z`; for `true`, to `a..z`.
+    /// Larger ids return `None`.
     pub fn symbol(&self, variant: bool) -> Option<char> {
         let base = if variant { b'a' } else { b'A' };
         if self.0 < 26 {
@@ -25,6 +35,7 @@ impl InlineVariable {
     }
 
     #[inline]
+    /// Apply this variable as a function to an argument, producing an application expression.
     pub fn apply<A: Expr>(self, arg: A) -> App<A> {
         App { func: self, arg }
     }

@@ -1,3 +1,6 @@
+//! Concrete proposition constructors used to build formulas.
+//!
+//! These types implement [`crate::prop::Prop`] and also [`crate::expr::Expr`].
 use crate::{
     dtype::{DType, DynDType},
     encoding::{DynBuf, magic, push_len},
@@ -79,6 +82,7 @@ define_ops_prop! {
 /// If `P` is a proposition, then `Not<P>` represents the proposition "not P".
 ///
 pub struct Not<P: Prop> {
+    /// Inner proposition being negated.
     pub inner: P,
 }
 
@@ -116,7 +120,9 @@ define_ops_prop! {
 ///
 /// This struct holds two fields, `left` and `right`, which are the two propositions being conjoined.
 pub struct And<P: Prop, Q: Prop> {
+    /// Left-hand proposition.
     pub left: P,
+    /// Right-hand proposition.
     pub right: Q,
 }
 
@@ -160,7 +166,9 @@ define_ops_prop! {
 ///
 /// This struct holds two fields, `left` and `right`, which are the two propositions being disjoined.
 pub struct Or<P: Prop, Q: Prop> {
+    /// Left-hand proposition.
     pub left: P,
+    /// Right-hand proposition.
     pub right: Q,
 }
 
@@ -204,7 +212,9 @@ define_ops_prop! {
 /// This struct holds two fields, `antecedent` and `consequent`, which are the
 /// propositions involved in the implication.
 pub struct Imp<P: Prop, Q: Prop> {
+    /// Antecedent (premise).
     pub antecedent: P,
+    /// Consequent (conclusion).
     pub consequent: Q,
 }
 
@@ -251,7 +261,9 @@ define_ops_prop! {
 /// This struct holds two fields, `left` and `right`, which are the propositions involved
 /// in the biconditional.
 pub struct Iff<P: Prop, Q: Prop> {
+    /// Left-hand proposition.
     pub left: P,
+    /// Right-hand proposition.
     pub right: Q,
 }
 
@@ -294,8 +306,11 @@ define_ops_prop! {
 /// If `P` is a proposition and `DT` is a type, then `ForAll<DT, P>` represents the proposition
 /// "for all x of type DT, P(x)".
 pub struct ForAll<DT: DType, P: Prop> {
+    /// Bound variable identifier.
     pub variable: InlineVariable,
+    /// Domain type of the bound variable.
     pub dtype: DT,
+    /// Inner proposition.
     pub inner: P,
 }
 
@@ -345,8 +360,11 @@ define_ops_prop! {
 /// If `P` is a proposition and `DT` is a type, then `Exists<DT, P>` represents the proposition
 /// "there exists an x of type DT such that P(x)".
 pub struct Exists<DT: DType, P: Prop> {
+    /// Bound variable identifier.
     pub variable: InlineVariable,
+    /// Domain type of the bound variable.
     pub dtype: DT,
+    /// Inner proposition.
     pub inner: P,
 }
 
@@ -396,7 +414,9 @@ define_ops_prop! {
 /// If `T1` and `T2` are two exprs, then `Eq<T1, T2>` represents the proposition "T1 is equal to T2".
 /// This struct holds two fields, `left` and `right`, which are the exprs being compared for equality.
 pub struct Eq<T1: Expr, T2: Expr> {
+    /// Left expression.
     pub left: T1,
+    /// Right expression.
     pub right: T2,
 }
 

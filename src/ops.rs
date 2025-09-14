@@ -1,3 +1,7 @@
+//! Operator sugar for propositions.
+//!
+//! The `define_ops_prop!` macro implements `BitAnd`, `BitOr`, and `Not` on the given
+//! proposition-like type, so you can write `p & q`, `p | q`, and `!p`.
 macro_rules! define_ops_prop {
     (
         $name:ident

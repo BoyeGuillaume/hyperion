@@ -1,3 +1,7 @@
+//! Varint encoding helpers for compact u64 representation.
+//!
+//! These are internal utilities, but are documented to clarify size and performance
+//! characteristics of the on-wire format used by this crate.
 use crate::encoding::DynBuf;
 
 /// Encode an unsigned 64-bit integer into `buf` using a compact base-128 scheme.

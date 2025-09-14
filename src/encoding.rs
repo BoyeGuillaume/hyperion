@@ -1,3 +1,7 @@
+//! Internal encoding utilities shared by dtype, expr, and prop.
+//!
+//! Users typically interact with higher-level modules; this module documents
+//! the layout and performance characteristics for completeness.
 use smallvec::SmallVec;
 pub mod integer;
 pub mod magic;
@@ -7,6 +11,7 @@ pub mod magic;
 /// Backed by `smallvec`, this stores up to 32 bytes inline before spilling to the heap.
 pub type DynBuf = SmallVec<[u8; 32]>;
 
+/// Trait for types that can append their raw encoding into a buffer.
 pub trait RawEncodable {
     fn encode_raw(&self, buf: &mut DynBuf);
 }

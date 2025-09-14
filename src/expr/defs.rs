@@ -1,3 +1,6 @@
+//! Concrete expression constructors used to build expressions.
+//!
+//! These types implement [`crate::expr::Expr`] and support encoding/decoding.
 use crate::{
     encoding::{DynBuf, RawEncodable, integer::encode_u64, magic, push_len},
     expr::{Expr, dispatch::ExprDispatch, expr_sealed},
@@ -5,9 +8,7 @@ use crate::{
     variable::InlineVariable,
 };
 
-/// Represents a variable expr.
-///
-/// A variable expr is simply a reference to a variable identified by its name.
+/// Variable expression referencing an inline variable identifier.
 impl expr_sealed::Sealed for InlineVariable {}
 impl Expr for InlineVariable {
     fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
@@ -18,7 +19,7 @@ impl Expr for InlineVariable {
 /// Note: Propositions implement `Expr` individually in `prop::defs` to avoid
 /// overlapping blanket implementations with references.
 
-/// A dynamic expr that holds whenever a expr is deemed unreachable.
+/// An expression that denotes unreachable code (no value can be produced).
 pub struct Unreachable;
 
 impl expr_sealed::Sealed for Unreachable {}
@@ -34,12 +35,11 @@ impl RawEncodable for Unreachable {
     }
 }
 
-/// Represents the application of a function to an argument.
-///
-/// If `f` is a variable representing a function and `A` is a expr representing an argument,
-/// then `App<A>` represents the expr `f(A)`.
+/// Application of a function variable to an argument: `f(arg)`.
 pub struct App<A: Expr> {
+    /// Function variable identifier.
     pub func: InlineVariable,
+    /// Argument expression.
     pub arg: A,
 }
 
@@ -62,13 +62,13 @@ impl<A: Expr> RawEncodable for App<A> {
     }
 }
 
-/// Represents a conditional expr.
-///
-/// If `P` is a proposition, `T` and `E` are exprs, then `If<P, T, E>` represents the expr
-/// that evaluates to `T` if `P` is true, and `E` otherwise.
+/// Conditional expression `if condition { then } else { else }`.
 pub struct If<P: Prop, T: Expr, E: Expr> {
+    /// Condition to test.
     pub condition: P,
+    /// Expression evaluated when `condition` holds.
     pub then_branch: T,
+    /// Expression evaluated otherwise.
     pub else_branch: E,
 }
 
@@ -98,15 +98,11 @@ impl<P: Prop, T: Expr, E: Expr> RawEncodable for If<P, T, E> {
     }
 }
 
-/// Represents a tuple expr (distinct from a type tuple `TTuple`).
-///
-/// If `A` and `B` are exprs, then `ETuple<A, B>` represents the expr `(A, B)`.
-/// Tuples can be nested to create tuples of arbitrary length.
-/// For example, `ETuple<A, ETuple<B, C>>` represents the expr `(A, (B, C))`.
-///
-/// Note that this is a binary tuple, so the second element can be another tuple.
+/// Tuple expression `(A, B)` (binary; can be nested for longer tuples).
 pub struct ETuple<A: Expr, B: Expr> {
+    /// First component.
     pub first: A,
+    /// Second component.
     pub second: B,
 }
 

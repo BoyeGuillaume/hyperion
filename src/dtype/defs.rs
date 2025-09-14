@@ -1,10 +1,14 @@
+//! Concrete type constructors used to build type expressions.
+//!
+//! These types implement [`crate::dtype::DType`] and can be composed using methods like
+//! [`crate::dtype::DType::app`], [`crate::dtype::DType::tuple`], and [`crate::dtype::DType::powerset`].
 use crate::{
     dtype::{DType, dispatch::DTypeDispatch, dtype_sealed},
     encoding::{DynBuf, RawEncodable, magic, push_len},
     variable::InlineVariable,
 };
 
-/// Boolean type
+/// Boolean type.
 pub struct TBool;
 
 impl dtype_sealed::Sealed for TBool {}
@@ -20,7 +24,7 @@ impl RawEncodable for TBool {
     }
 }
 
-/// Universe of well-formed types (aka Type or Set depending on reading)
+/// Universe of well-formed types (the type of types).
 pub struct TOmega;
 
 impl dtype_sealed::Sealed for TOmega {}
@@ -36,7 +40,7 @@ impl RawEncodable for TOmega {
     }
 }
 
-/// Uninhabited type
+/// Uninhabited type (the empty type; no values inhabit it).
 pub struct TNever;
 
 impl dtype_sealed::Sealed for TNever {}
@@ -52,7 +56,7 @@ impl RawEncodable for TNever {
     }
 }
 
-/// Type variable
+/// Type variable.
 impl dtype_sealed::Sealed for InlineVariable {}
 impl DType for InlineVariable {
     fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
@@ -62,9 +66,11 @@ impl DType for InlineVariable {
 
 // Variable RawEncodable is implemented in variable.rs and shared.
 
-/// Function type: A -> B
+/// Function type: `A -> B`.
 pub struct TApp<A: DType, B: DType> {
+    /// Domain type `A`.
     pub from: A,
+    /// Codomain type `B`.
     pub to: B,
 }
 
@@ -88,9 +94,11 @@ impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TApp<A, 
     }
 }
 
-/// Product type: A x B
+/// Product type: `A x B`.
 pub struct TTuple<A: DType, B: DType> {
+    /// Left component type `A`.
     pub first: A,
+    /// Right component type `B`.
     pub second: B,
 }
 
@@ -112,8 +120,9 @@ impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TTuple<A
     }
 }
 
-/// Powerset type: P(A)
+/// Powerset type: `P(A)`.
 pub struct TPowerSet<A: DType> {
+    /// The element type whose powerset is taken.
     pub inner: A,
 }
 

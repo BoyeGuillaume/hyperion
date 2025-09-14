@@ -1,3 +1,7 @@
+//! Propositions (logical formulas), with encoding and zero-copy decoding.
+//!
+//! Propositions implement [`Expr`] and can be embedded in expressions. Use the
+//! builder types in [`defs`] or convenience methods on [`Prop`] to compose them.
 use crate::{
     dtype::DynBorrowedDType,
     encoding::{DynBuf, RawEncodable},
@@ -15,7 +19,9 @@ pub(crate) mod prop_sealed {
     impl<'a, T: Sealed> Sealed for &'a T {}
 }
 
+/// Trait implemented by all propositions.
 pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
+    /// Describe the proposition's outer constructor and expose children.
     fn decode_prop(
         &self,
     ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType>;
@@ -28,6 +34,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         DynProp { bytes: buf }
     }
 
+    /// Conjunction `self ∧ other`.
     fn and<Q: Prop>(self, other: Q) -> And<Self, Q>
     where
         Self: Sized,
@@ -38,6 +45,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Disjunction `self ∨ other`.
     fn or<Q: Prop>(self, other: Q) -> Or<Self, Q>
     where
         Self: Sized,
@@ -48,6 +56,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Implication `self → other`.
     fn implies<Q: Prop>(self, other: Q) -> Imp<Self, Q>
     where
         Self: Sized,
@@ -58,6 +67,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Biconditional `self ↔ other`.
     fn iff<Q: Prop>(self, other: Q) -> Iff<Self, Q>
     where
         Self: Sized,
@@ -68,6 +78,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         }
     }
 
+    /// Negation `¬self`.
     fn not(self) -> Not<Self>
     where
         Self: Sized,
@@ -75,6 +86,7 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
         Not { inner: self }
     }
 
+    /// Conditional expression controlled by this proposition.
     fn if_then<T: Expr, E: Expr>(self, then_branch: T, else_branch: E) -> If<Self, T, E>
     where
         Self: Sized,
