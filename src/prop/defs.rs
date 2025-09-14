@@ -346,7 +346,7 @@ where
         self.inner.encode_raw(buf);
         let inner_len = buf.len() - inner_start;
         push_len(inner_len, buf);
-        crate::encoding::integer::encode_u64(self.variable.id(), buf);
+        crate::encoding::integer::encode_u64(self.variable.raw(), buf);
         buf.push(magic::P_FORALL);
     }
 }
@@ -400,7 +400,7 @@ where
         self.inner.encode_raw(buf);
         let inner_len = buf.len() - inner_start;
         push_len(inner_len, buf);
-        crate::encoding::integer::encode_u64(self.variable.id(), buf);
+        crate::encoding::integer::encode_u64(self.variable.raw(), buf);
         buf.push(magic::P_EXISTS);
     }
 }

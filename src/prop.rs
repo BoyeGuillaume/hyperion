@@ -262,7 +262,7 @@ impl<'a> DynBorrowedProp<'a> {
                 let (dtype_bytes, inner_bytes) = s.split_at(split_at);
                 let dt = DynBorrowedDType { bytes: dtype_bytes };
                 let inner = DynBorrowedProp { bytes: inner_bytes };
-                let var = InlineVariable::new(var_id);
+                let var = InlineVariable::new_from_raw(var_id);
                 match op[0] {
                     P_FORALL => PropDispatch::ForAll { variable: var, dtype: dt, inner },
                     _ /* P_EXISTS */ => PropDispatch::Exists { variable: var, dtype: dt, inner },

@@ -57,7 +57,7 @@ impl<A: Expr> RawEncodable for App<A> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.arg.encode_raw(buf);
         // func id payload
-        encode_u64(self.func.id(), buf);
+        encode_u64(self.func.raw(), buf);
         buf.push(magic::E_APP);
     }
 }

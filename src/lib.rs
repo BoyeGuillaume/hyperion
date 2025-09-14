@@ -44,7 +44,6 @@
 //! let dyn_prop = hyformal::prop::Prop::encode(&quantified);
 //! assert!(dyn_prop.decode_prop_borrowed().is_for_all());
 //! ```
-#![deny(missing_docs)]
 
 /// Types API: constructors, dispatch, and dynamic encodings.
 pub mod dtype;

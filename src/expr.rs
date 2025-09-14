@@ -119,7 +119,7 @@ impl<'a> DynBorrowedExpr<'a> {
                 let func_id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected function id after E_APP opcode");
                 ExprDispatch::App {
-                    func: InlineVariable::new(func_id),
+                    func: InlineVariable::new_from_raw(func_id),
                     arg: DynBorrowedExpr { bytes: s },
                 }
             }
@@ -165,7 +165,7 @@ impl<'a> DynBorrowedExpr<'a> {
                 let id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
 
-                ExprDispatch::Var(InlineVariable::new(id))
+                ExprDispatch::Var(InlineVariable::new_from_raw(id))
             }
             P_TRUE | P_FALSE | P_NOT | P_AND | P_OR | P_IMPLIES | P_IFF | P_FORALL | P_EXISTS
             | P_EQUAL => ExprDispatch::Prop(DynBorrowedProp { bytes }),

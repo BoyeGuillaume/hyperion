@@ -171,7 +171,7 @@ impl<'a> DynBorrowedDType<'a> {
             VAR_INLINE => {
                 let id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
-                DTypeDispatch::Var(InlineVariable::new(id))
+                DTypeDispatch::Var(InlineVariable::new_from_raw(id))
             }
             _ => panic!("Invalid encoding: unknown dtype opcode {}", op[0]),
         }
