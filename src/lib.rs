@@ -57,3 +57,4 @@ pub mod expr;
 pub mod prop;
 /// Inline variables used across types, expressions, and propositions.
 pub mod variable;
+pub mod walker;

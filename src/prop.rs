@@ -7,6 +7,7 @@ use crate::{
     encoding::{DynBuf, RawEncodable},
     expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, dispatch::ExprDispatch, expr_sealed},
     prop::dispatch::PropDispatch,
+    variable::InlineVariable,
 };
 
 mod defs;
@@ -214,22 +215,16 @@ impl<'a> DynBorrowedProp<'a> {
         DynBorrowedExpr<'a>,
         DynBorrowedDType<'a>,
     > {
-        if bytes.is_empty() {
-            return PropDispatch::<
-                DynBorrowedProp<'a>,
-                DynBorrowedProp<'a>,
-                DynBorrowedExpr<'a>,
-                DynBorrowedExpr<'a>,
-                DynBorrowedDType<'a>,
-            >::True;
+        use crate::encoding;
+        use crate::encoding::magic::*;
+
+        let (mut op, mut rest) = bytes.split_last().unwrap();
+        while *op == MISC_NOP {
+            (op, rest) = rest.split_last().unwrap();
         }
-
-        use crate::{encoding, encoding::magic::*, variable::InlineVariable};
-
-        let (rest, op) = bytes.split_at(bytes.len() - 1);
         let mut s: &[u8] = rest;
 
-        match op[0] {
+        match *op {
             P_TRUE => PropDispatch::True,
             P_FALSE => PropDispatch::False,
             P_NOT => PropDispatch::Not(DynBorrowedProp { bytes: s }),
@@ -247,11 +242,12 @@ impl<'a> DynBorrowedProp<'a> {
                 let (left_bytes, right_bytes) = s.split_at(split_at);
                 let l = DynBorrowedProp { bytes: left_bytes };
                 let r = DynBorrowedProp { bytes: right_bytes };
-                match op[0] {
+                match *op {
                     P_AND => PropDispatch::And(l, r),
                     P_OR => PropDispatch::Or(l, r),
                     P_IMPLIES => PropDispatch::Implies(l, r),
-                    _ /* P_IFF */ => PropDispatch::Iff(l, r),
+                    P_IFF => PropDispatch::Iff(l, r),
+                    _ => unreachable!(),
                 }
             }
             P_FORALL | P_EXISTS => {
@@ -271,9 +267,18 @@ impl<'a> DynBorrowedProp<'a> {
                 let dt = DynBorrowedDType { bytes: dtype_bytes };
                 let inner = DynBorrowedProp { bytes: inner_bytes };
                 let var = InlineVariable::new_from_raw(var_id);
-                match op[0] {
-                    P_FORALL => PropDispatch::ForAll { variable: var, dtype: dt, inner },
-                    _ /* P_EXISTS */ => PropDispatch::Exists { variable: var, dtype: dt, inner },
+                match *op {
+                    P_FORALL => PropDispatch::ForAll {
+                        variable: var,
+                        dtype: dt,
+                        inner,
+                    },
+                    P_EXISTS => PropDispatch::Exists {
+                        variable: var,
+                        dtype: dt,
+                        inner,
+                    },
+                    _ => unreachable!(),
                 }
             }
             P_EQUAL => {
@@ -291,7 +296,7 @@ impl<'a> DynBorrowedProp<'a> {
                 let r = DynBorrowedExpr { bytes: right_bytes };
                 PropDispatch::Equal(l, r)
             }
-            _ => panic!("Invalid encoding: unknown prop opcode {}", op[0]),
+            _ => panic!("Invalid encoding: unknown prop opcode {}", *op),
         }
     }
 

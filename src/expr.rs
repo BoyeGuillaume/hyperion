@@ -112,11 +112,15 @@ impl<'a> DynBorrowedExpr<'a> {
     ) -> ExprDispatch<DynBorrowedProp<'a>, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>> {
         assert!(!bytes.is_empty(), "Attempted to decode empty buffer");
 
-        let (rest, op) = bytes.split_at(bytes.len() - 1);
+        // Strip trailing NOPs, find opcode
+        let (mut op, mut rest) = bytes.split_last().unwrap();
+        while *op == MISC_NOP {
+            (op, rest) = rest.split_last().unwrap();
+        }
         let mut s: &[u8] = rest;
 
         use encoding::magic::*;
-        match op[0] {
+        match *op {
             E_UNREACHABLE => ExprDispatch::Unreachable,
             E_APP => {
                 // arg payload(func_id) OP
@@ -165,7 +169,7 @@ impl<'a> DynBorrowedExpr<'a> {
                     DynBorrowedExpr { bytes: right_bytes },
                 )
             }
-            VAR_INLINE => {
+            MISC_VAR => {
                 let id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
 
@@ -173,7 +177,7 @@ impl<'a> DynBorrowedExpr<'a> {
             }
             P_TRUE | P_FALSE | P_NOT | P_AND | P_OR | P_IMPLIES | P_IFF | P_FORALL | P_EXISTS
             | P_EQUAL => ExprDispatch::Prop(DynBorrowedProp { bytes }),
-            _ => panic!("Invalid encoding: unknown expr opcode {}", op[0]),
+            _ => panic!("Invalid encoding: unknown expr opcode {}", *op),
         }
     }
 

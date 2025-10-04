@@ -141,11 +141,15 @@ impl<'a> DynBorrowedDType<'a> {
     ) -> DTypeDispatch<DynBorrowedDType<'a>, DynBorrowedDType<'a>> {
         assert!(!bytes.is_empty(), "Attempted to decode empty buffer");
 
-        let (rest, op) = bytes.split_at(bytes.len() - 1);
+        // Strip trailing NOPs, find opcode
+        let (mut op, mut rest) = bytes.split_last().unwrap();
+        while *op == MISC_NOP {
+            (op, rest) = rest.split_last().unwrap();
+        }
         let mut s: &[u8] = rest;
 
         use encoding::magic::*;
-        match op[0] {
+        match *op {
             T_BOOL => DTypeDispatch::Bool,
             T_OMEGA => DTypeDispatch::Omega,
             T_NEVER => DTypeDispatch::Never,
@@ -167,17 +171,18 @@ impl<'a> DynBorrowedDType<'a> {
                 let (left_bytes, right_bytes) = s.split_at(split_at);
                 let l = DynBorrowedDType { bytes: left_bytes };
                 let r = DynBorrowedDType { bytes: right_bytes };
-                match op[0] {
+                match *op {
                     T_ARROW => DTypeDispatch::Arrow(l, r),
-                    _ /* T_TUPLE */ => DTypeDispatch::Tuple(l, r),
+                    T_TUPLE => DTypeDispatch::Tuple(l, r),
+                    _ => unreachable!(),
                 }
             }
-            VAR_INLINE => {
+            MISC_VAR => {
                 let id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
                 DTypeDispatch::Var(InlineVariable::new_from_raw(id))
             }
-            _ => panic!("Invalid encoding: unknown dtype opcode {}", op[0]),
+            _ => panic!("Invalid encoding: unknown dtype opcode {}", *op),
         }
     }
 }
