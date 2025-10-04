@@ -4,7 +4,10 @@
 use strum::{EnumIs, EnumTryAs};
 
 use crate::{
-    encoding::RawEncodable,
+    encoding::{
+        RawEncodable,
+        integer::{encode_u64, encoded_size_u64},
+    },
     expr::{Expr, defs::App},
 };
 
@@ -116,8 +119,12 @@ impl std::fmt::Display for InlineVariable {
 
 impl RawEncodable for InlineVariable {
     fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        crate::encoding::integer::encode_u64(self.raw(), buf);
+        encode_u64(self.raw(), buf);
         buf.push(crate::encoding::magic::VAR_INLINE);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        encoded_size_u64(self.raw()) + 1
     }
 }
 

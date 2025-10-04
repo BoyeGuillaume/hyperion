@@ -2,7 +2,11 @@
 //!
 //! These types implement [`crate::expr::Expr`] and support encoding/decoding.
 use crate::{
-    encoding::{DynBuf, RawEncodable, integer::encode_u64, magic, push_len},
+    encoding::{
+        DynBuf, RawEncodable,
+        integer::{encode_u64, encoded_size_u64},
+        magic, push_len,
+    },
     expr::{Expr, dispatch::ExprDispatch, expr_sealed},
     prop::{DynProp, Prop},
     variable::InlineVariable,
@@ -33,6 +37,10 @@ impl RawEncodable for Unreachable {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::E_UNREACHABLE);
     }
+
+    fn encoded_size(&self) -> u64 {
+        1
+    }
 }
 
 /// Application of a function variable to an argument: `f(arg)`.
@@ -59,6 +67,10 @@ impl<A: Expr> RawEncodable for App<A> {
         // func id payload
         encode_u64(self.func.raw(), buf);
         buf.push(magic::E_APP);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.arg.encoded_size() + encoded_size_u64(self.func.raw()) + 1
     }
 }
 
@@ -96,6 +108,15 @@ impl<P: Prop, T: Expr, E: Expr> RawEncodable for If<P, T, E> {
         push_len(then_len, buf);
         buf.push(magic::E_IF);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.condition.encoded_size()
+            + self.then_branch.encoded_size()
+            + self.else_branch.encoded_size()
+            + encoded_size_u64(self.then_branch.encoded_size())
+            + encoded_size_u64(self.else_branch.encoded_size())
+            + 1
+    }
 }
 
 /// Tuple expression `(A, B)` (binary; can be nested for longer tuples).
@@ -121,5 +142,12 @@ impl<A: Expr, B: Expr> RawEncodable for ETuple<A, B> {
         let right_len = buf.len() - right_start;
         push_len(right_len, buf);
         buf.push(magic::E_TUPLE);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.first.encoded_size()
+            + self.second.encoded_size()
+            + encoded_size_u64(self.second.encoded_size())
+            + 1
     }
 }

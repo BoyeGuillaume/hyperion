@@ -4,7 +4,7 @@
 //! [`crate::dtype::DType::app`], [`crate::dtype::DType::tuple`], and [`crate::dtype::DType::powerset`].
 use crate::{
     dtype::{DType, dispatch::DTypeDispatch, dtype_sealed},
-    encoding::{DynBuf, RawEncodable, magic, push_len},
+    encoding::{DynBuf, RawEncodable, integer::encoded_size_u64, magic, push_len},
     variable::InlineVariable,
 };
 
@@ -22,6 +22,10 @@ impl RawEncodable for TBool {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::T_BOOL);
     }
+
+    fn encoded_size(&self) -> u64 {
+        1
+    }
 }
 
 /// Universe of well-formed types (the type of types).
@@ -38,6 +42,10 @@ impl RawEncodable for TOmega {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::T_OMEGA);
     }
+
+    fn encoded_size(&self) -> u64 {
+        1
+    }
 }
 
 /// Uninhabited type (the empty type; no values inhabit it).
@@ -53,6 +61,10 @@ impl DType for TNever {
 impl RawEncodable for TNever {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::T_NEVER);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        1
     }
 }
 
@@ -92,6 +104,13 @@ impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TApp<A, 
         buf.push(magic::T_ARROW);
         debug_assert!(buf.len() >= start);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.from.encoded_size()
+            + self.to.encoded_size()
+            + encoded_size_u64(self.to.encoded_size())
+            + 1
+    }
 }
 
 /// Product type: `A x B`.
@@ -118,6 +137,13 @@ impl<A: DType + RawEncodable, B: DType + RawEncodable> RawEncodable for TTuple<A
         push_len(right_len, buf);
         buf.push(magic::T_TUPLE);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.first.encoded_size()
+            + self.second.encoded_size()
+            + encoded_size_u64(self.second.encoded_size())
+            + 1
+    }
 }
 
 /// Powerset type: `P(A)`.
@@ -137,5 +163,9 @@ impl<A: DType + RawEncodable> RawEncodable for TPowerSet<A> {
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.inner.encode_raw(buf);
         buf.push(magic::T_POWER);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.inner.encoded_size() + 1
     }
 }

@@ -103,6 +103,10 @@ impl RawEncodable for DynDType {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.extend_from_slice(&self.bytes);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.bytes.len() as u64
+    }
 }
 
 impl DynDType {
@@ -188,6 +192,10 @@ impl<'a> RawEncodable for DynBorrowedDType<'a> {
     #[inline]
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.extend_from_slice(self.bytes);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.bytes.len() as u64
     }
 }
 

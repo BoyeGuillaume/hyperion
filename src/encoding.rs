@@ -14,6 +14,8 @@ pub type DynBuf = SmallVec<[u8; 32]>;
 /// Trait for types that can append their raw encoding into a buffer.
 pub trait RawEncodable {
     fn encode_raw(&self, buf: &mut DynBuf);
+
+    fn encoded_size(&self) -> u64;
 }
 
 #[inline]
@@ -25,5 +27,10 @@ impl<T: RawEncodable> RawEncodable for &T {
     #[inline]
     fn encode_raw(&self, buf: &mut DynBuf) {
         (*self).encode_raw(buf)
+    }
+
+    #[inline]
+    fn encoded_size(&self) -> u64 {
+        (*self).encoded_size()
     }
 }

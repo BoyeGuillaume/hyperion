@@ -70,6 +70,18 @@ pub fn decode_u64(buf: &mut &[u8]) -> Option<u64> {
     }
 }
 
+/// Compute the encoded size in bytes of a u64 value using the varint scheme.
+///
+/// This is useful for preallocating buffers or estimating storage requirements
+///
+pub fn encoded_size_u64(value: u64) -> u64 {
+    // Find the MSB position (0-based) of the highest set bit.
+    let msb_pos = 63 - value.leading_zeros() as u64;
+
+    // Each byte encodes 7 bits, so the number of bytes is (msb_pos / 7) + 1.
+    (msb_pos / 7) + 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,5 +155,29 @@ mod tests {
         let v = decode_u64(&mut s);
         assert_eq!(v, None);
         assert!(s.is_empty());
+    }
+
+    #[test]
+    fn encoded_size_matches_actual() {
+        let test_values = [
+            0_u64,
+            1,
+            42,
+            127,
+            128,
+            300,
+            16383,
+            16384,
+            1_000_000,
+            2_u64.pow(32) - 1,
+            2_u64.pow(32),
+            u64::MAX,
+        ];
+        for &v in &test_values {
+            let mut buf = DynBuf::new();
+            encode_u64(v, &mut buf);
+            let computed_size = encoded_size_u64(v);
+            assert_eq!(buf.len() as u64, computed_size, "value {v} size mismatch");
+        }
     }
 }

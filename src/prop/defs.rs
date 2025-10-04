@@ -3,7 +3,7 @@
 //! These types implement [`crate::prop::Prop`] and also [`crate::expr::Expr`].
 use crate::{
     dtype::{DType, DynDType},
-    encoding::{DynBuf, magic, push_len},
+    encoding::{DynBuf, integer::encoded_size_u64, magic, push_len},
     expr::{DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
     prop::{DynProp, Prop, prop_sealed},
     variable::InlineVariable,
@@ -38,6 +38,10 @@ impl crate::encoding::RawEncodable for PropTrue {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::P_TRUE);
     }
+
+    fn encoded_size(&self) -> u64 {
+        1
+    }
 }
 
 define_ops_prop! {
@@ -70,6 +74,10 @@ impl Prop for PropFalse {
 impl crate::encoding::RawEncodable for PropFalse {
     fn encode_raw(&self, buf: &mut DynBuf) {
         buf.push(magic::P_FALSE);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        1
     }
 }
 
@@ -107,6 +115,10 @@ impl<P: Prop + crate::encoding::RawEncodable> crate::encoding::RawEncodable for 
     fn encode_raw(&self, buf: &mut DynBuf) {
         self.inner.encode_raw(buf);
         buf.push(magic::P_NOT);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.inner.encoded_size() + 1
     }
 }
 
@@ -154,6 +166,13 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         push_len(right_len, buf);
         buf.push(magic::P_AND);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.left.encoded_size()
+            + self.right.encoded_size()
+            + encoded_size_u64(self.right.encoded_size())
+            + 1
+    }
 }
 
 define_ops_prop! {
@@ -199,6 +218,13 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         let right_len = buf.len() - right_start;
         push_len(right_len, buf);
         buf.push(magic::P_OR);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.left.encoded_size()
+            + self.right.encoded_size()
+            + encoded_size_u64(self.right.encoded_size())
+            + 1
     }
 }
 
@@ -249,6 +275,13 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         push_len(right_len, buf);
         buf.push(magic::P_IMPLIES);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.antecedent.encoded_size()
+            + self.consequent.encoded_size()
+            + encoded_size_u64(self.consequent.encoded_size())
+            + 1
+    }
 }
 
 define_ops_prop! {
@@ -294,6 +327,13 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
         let right_len = buf.len() - right_start;
         push_len(right_len, buf);
         buf.push(magic::P_IFF);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.left.encoded_size()
+            + self.right.encoded_size()
+            + encoded_size_u64(self.right.encoded_size())
+            + 1
     }
 }
 
@@ -349,6 +389,14 @@ where
         crate::encoding::integer::encode_u64(self.variable.raw(), buf);
         buf.push(magic::P_FORALL);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.dtype.encoded_size()
+            + self.inner.encoded_size()
+            + encoded_size_u64(self.inner.encoded_size())
+            + encoded_size_u64(self.variable.raw())
+            + 1
+    }
 }
 
 define_ops_prop! {
@@ -403,6 +451,14 @@ where
         crate::encoding::integer::encode_u64(self.variable.raw(), buf);
         buf.push(magic::P_EXISTS);
     }
+
+    fn encoded_size(&self) -> u64 {
+        self.dtype.encoded_size()
+            + self.inner.encoded_size()
+            + encoded_size_u64(self.inner.encoded_size())
+            + encoded_size_u64(self.variable.raw())
+            + 1
+    }
 }
 
 define_ops_prop! {
@@ -447,6 +503,13 @@ impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEn
         let right_len = buf.len() - right_start;
         push_len(right_len, buf);
         buf.push(magic::P_EQUAL);
+    }
+
+    fn encoded_size(&self) -> u64 {
+        self.left.encoded_size()
+            + self.right.encoded_size()
+            + encoded_size_u64(self.right.encoded_size())
+            + 1
     }
 }
 
