@@ -82,7 +82,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
     /// Useful for composing or rendering manually.
     #[inline]
     fn pretty_doc(&self) -> ::pretty::RcDoc<'static, crate::expr::pretty::Style> {
-        crate::expr::pretty::to_doc(self)
+        crate::expr::pretty::to_doc_with_depth(self, 0)
     }
 
     /// Render this expression with colors to any termcolor writer at the given width.

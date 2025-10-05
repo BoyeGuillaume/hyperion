@@ -3,16 +3,20 @@
 //! This module builds annotated `RcDoc<Style>` trees from `Expr` and renders
 //! them to a `termcolor::WriteColor` sink with width-aware layout.
 
+use crate::expr::view::ExprDispatchVariant;
 use crate::expr::{Expr, view::ExprView};
 use crate::variable::InlineVariable;
 use pretty::{RcDoc, RenderAnnotated};
 use std::io::{self, Write};
+use strum::IntoDiscriminant;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 /// Styles that we annotate parts of the document with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Style {
-    Punct,    // parentheses, commas, arrows
+    Punct, // commas, arrows, colons, periods
+    /// Parentheses are colored by nesting depth so matching pairs share a color.
+    Paren(u8),
     Keyword,  // if, then, else, forall, exists
     Operator, // +, *, &&, ||, =>, <=>, ==
     Ident,    // variables
@@ -25,6 +29,19 @@ impl Style {
         match self {
             Style::Punct => {
                 s.set_dimmed(true);
+            }
+            Style::Paren(depth) => {
+                // Rotate through a palette for nested parentheses. Use intense colors for clarity.
+                let fg = match depth % 6 {
+                    0 => Color::Blue,
+                    1 => Color::Green,
+                    2 => Color::White,
+                    3 => Color::Yellow,
+                    4 => Color::Red,
+                    5 => Color::Magenta,
+                    _ => unreachable!(),
+                };
+                s.set_fg(Some(fg)).set_dimmed(true);
             }
             Style::Keyword => {
                 s.set_fg(Some(Color::Cyan)).set_bold(true);
@@ -51,6 +68,16 @@ fn punct(s: &'static str) -> RcDoc<'static, Style> {
     styled(Style::Punct, s)
 }
 
+#[inline]
+fn lparen(depth: u8) -> RcDoc<'static, Style> {
+    RcDoc::as_string("(").annotate(Style::Paren(depth))
+}
+
+#[inline]
+fn rparen(depth: u8) -> RcDoc<'static, Style> {
+    RcDoc::as_string(")").annotate(Style::Paren(depth))
+}
+
 fn kw(s: &'static str) -> RcDoc<'static, Style> {
     styled(Style::Keyword, s)
 }
@@ -63,16 +90,62 @@ fn ident(v: InlineVariable) -> RcDoc<'static, Style> {
     RcDoc::as_string(v).annotate(Style::Ident)
 }
 
-/// Build a pretty document for any `Expr` by pattern-matching on its `ExprView`.
-pub fn to_doc<E: Expr>(e: &E) -> RcDoc<'static, Style> {
+pub fn calculate_precedence(e: ExprDispatchVariant) -> u8 {
+    use ExprDispatchVariant::*;
+
+    match e {
+        App | If | ForAll | Exists => 2,
+        Func | Tuple => 1,
+        And | Or | Implies | Iff | Equal => 2,
+        Not => 3,
+        Var | Unreachable | True | False | Bool | Omega | Never | Powerset => 4,
+        // _ => unreachable!(),
+    }
+}
+
+#[inline]
+fn requires_parens(
+    current_type: ExprDispatchVariant,
+    parent_type: Option<ExprDispatchVariant>,
+) -> bool {
+    match parent_type {
+        None => false,
+        Some(pt) => {
+            let current_prec = calculate_precedence(current_type);
+            let parent_prec = calculate_precedence(pt);
+            (parent_prec > current_prec) || (parent_prec == current_prec && current_type != pt)
+        }
+    }
+}
+
+#[inline]
+pub fn to_doc_parenthesized_with_depth<E: Expr>(
+    e: &E,
+    parent_type: ExprDispatchVariant,
+    depth: u8,
+) -> RcDoc<'static, Style> {
+    let current_type = e.view_expr().discriminant();
+    let need = requires_parens(current_type, Some(parent_type));
+    if need {
+        lparen(depth)
+            .append(to_doc_with_depth(e, depth + 1))
+            .append(rparen(depth))
+            .group()
+    } else {
+        to_doc_with_depth(e, depth)
+    }
+}
+
+/// Depth-aware variant that colors parentheses by nesting level.
+pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
     match e.view_expr() {
         // Term-level
         ExprView::Var(v) => ident(v),
         ExprView::Unreachable => kw("unreachable"),
         ExprView::App { func, arg } => ident(func)
-            .append(punct("("))
-            .append(to_doc(&arg))
-            .append(punct(")"))
+            .append(lparen(depth))
+            .append(to_doc_with_depth(&arg, depth + 1))
+            .append(rparen(depth))
             .group(),
         ExprView::If {
             condition,
@@ -80,51 +153,95 @@ pub fn to_doc<E: Expr>(e: &E) -> RcDoc<'static, Style> {
             else_branch,
         } => kw("if")
             .append(RcDoc::space())
-            .append(to_doc(&condition))
+            .append(to_doc_parenthesized_with_depth(
+                &condition,
+                ExprDispatchVariant::If,
+                depth,
+            ))
             .append(RcDoc::line())
             .append(kw("then"))
             .append(RcDoc::space())
-            .append(to_doc(&then_branch))
+            .append(to_doc_parenthesized_with_depth(
+                &then_branch,
+                ExprDispatchVariant::If,
+                depth,
+            ))
             .append(RcDoc::line())
             .append(kw("else"))
             .append(RcDoc::space())
-            .append(to_doc(&else_branch))
+            .append(to_doc_parenthesized_with_depth(
+                &else_branch,
+                ExprDispatchVariant::If,
+                depth,
+            ))
             .group()
             .nest(2),
-        ExprView::Tuple(a, b) => punct("(")
-            .append(to_doc(&a))
+        ExprView::Tuple(a, b) => lparen(depth)
+            .append(to_doc_parenthesized_with_depth(
+                &a,
+                ExprDispatchVariant::Tuple,
+                depth + 1,
+            ))
             .append(punct(", "))
-            .append(to_doc(&b))
-            .append(punct(")"))
+            .append(to_doc_parenthesized_with_depth(
+                &b,
+                ExprDispatchVariant::Tuple,
+                depth + 1,
+            ))
+            .append(rparen(depth))
             .group(),
 
         // Logic-level
         ExprView::True => kw("true"),
         ExprView::False => kw("false"),
-        ExprView::Not(p) => op("¬").append(to_doc(&p)).group(),
-        ExprView::And(a, b) => to_doc(&a)
-            .append(RcDoc::space())
-            .append(op("∧"))
-            .append(RcDoc::space())
-            .append(to_doc(&b))
+        ExprView::Not(p) => op("\u{00AC}")
+            .append(to_doc_parenthesized_with_depth(
+                &p,
+                ExprDispatchVariant::Not,
+                depth,
+            ))
             .group(),
-        ExprView::Or(a, b) => to_doc(&a)
+        ExprView::And(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::And, depth)
             .append(RcDoc::space())
-            .append(op("∨"))
+            .append(op("/\\"))
             .append(RcDoc::space())
-            .append(to_doc(&b))
+            .append(to_doc_parenthesized_with_depth(
+                &b,
+                ExprDispatchVariant::And,
+                depth,
+            ))
             .group(),
-        ExprView::Implies(a, b) => to_doc(&a)
+        ExprView::Or(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Or, depth)
             .append(RcDoc::space())
-            .append(op("=>"))
+            .append(op("\\/"))
             .append(RcDoc::space())
-            .append(to_doc(&b))
+            .append(to_doc_parenthesized_with_depth(
+                &b,
+                ExprDispatchVariant::Or,
+                depth,
+            ))
             .group(),
-        ExprView::Iff(a, b) => to_doc(&a)
+        ExprView::Implies(a, b) => {
+            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Implies, depth)
+                .append(RcDoc::space())
+                .append(op("=>"))
+                .append(RcDoc::space())
+                .append(to_doc_parenthesized_with_depth(
+                    &b,
+                    ExprDispatchVariant::Implies,
+                    depth,
+                ))
+                .group()
+        }
+        ExprView::Iff(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Iff, depth)
             .append(RcDoc::space())
             .append(op("<=>"))
             .append(RcDoc::space())
-            .append(to_doc(&b))
+            .append(to_doc_parenthesized_with_depth(
+                &b,
+                ExprDispatchVariant::Iff,
+                depth,
+            ))
             .group(),
         ExprView::ForAll {
             variable,
@@ -136,11 +253,19 @@ pub fn to_doc<E: Expr>(e: &E) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(punct(":"))
             .append(RcDoc::space())
-            .append(to_doc(&dtype))
+            .append(to_doc_parenthesized_with_depth(
+                &dtype,
+                ExprDispatchVariant::ForAll,
+                depth,
+            ))
             .append(RcDoc::space())
             .append(punct("."))
             .append(RcDoc::space())
-            .append(to_doc(&inner))
+            .append(to_doc_parenthesized_with_depth(
+                &inner,
+                ExprDispatchVariant::ForAll,
+                depth,
+            ))
             .group(),
         ExprView::Exists {
             variable,
@@ -152,34 +277,54 @@ pub fn to_doc<E: Expr>(e: &E) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(punct(":"))
             .append(RcDoc::space())
-            .append(to_doc(&dtype))
+            .append(to_doc_parenthesized_with_depth(
+                &dtype,
+                ExprDispatchVariant::ForAll,
+                depth,
+            ))
             .append(RcDoc::space())
             .append(punct("."))
             .append(RcDoc::space())
-            .append(to_doc(&inner))
+            .append(to_doc_parenthesized_with_depth(
+                &inner,
+                ExprDispatchVariant::ForAll,
+                depth,
+            ))
             .group(),
-        ExprView::Equal(a, b) => to_doc(&a)
-            .append(RcDoc::space())
-            .append(op("="))
-            .append(RcDoc::space())
-            .append(to_doc(&b))
-            .group(),
+        ExprView::Equal(a, b) => {
+            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Equal, depth)
+                .append(RcDoc::space())
+                .append(op("="))
+                .append(RcDoc::space())
+                .append(to_doc_parenthesized_with_depth(
+                    &b,
+                    ExprDispatchVariant::Equal,
+                    depth,
+                ))
+                .group()
+        }
 
         // Type-level
         ExprView::Bool => styled(Style::Type, "Bool"),
-        ExprView::Omega => styled(Style::Type, "Ω"),
+        ExprView::Omega => styled(Style::Type, "\u{03A9}"),
         ExprView::Never => styled(Style::Type, "Never"),
         ExprView::Powerset(a) => styled(Style::Type, "P")
-            .append(punct("("))
-            .append(to_doc(&a))
-            .append(punct(")"))
+            .append(lparen(depth))
+            .append(to_doc_with_depth(&a, depth + 1))
+            .append(rparen(depth))
             .group(),
-        ExprView::Func(a, b) => to_doc(&a)
-            .append(RcDoc::space())
-            .append(punct("->"))
-            .append(RcDoc::space())
-            .append(to_doc(&b))
-            .group(),
+        ExprView::Func(a, b) => {
+            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Func, depth)
+                .append(RcDoc::space())
+                .append(punct("->"))
+                .append(RcDoc::space())
+                .append(to_doc_parenthesized_with_depth(
+                    &b,
+                    ExprDispatchVariant::Func,
+                    depth,
+                ))
+                .group()
+        }
     }
 }
 
@@ -225,14 +370,14 @@ pub fn render_to<W: WriteColor + Write>(
 pub fn print_colored<E: Expr>(e: &E, width: usize) -> std::io::Result<()> {
     let stdout = StandardStream::stdout(ColorChoice::Auto);
     let mut stdout = stdout.lock();
-    let doc = to_doc(e);
+    let doc = to_doc_with_depth(e, 0);
     render_to(&doc, width, &mut stdout)
 }
 
 /// Convenience: format to a plain string without colors.
 pub fn to_plain_string<E: Expr>(e: &E, width: usize) -> String {
     let mut buf = String::new();
-    let _ = to_doc(e).render_fmt(width, &mut buf);
+    let _ = to_doc_with_depth(e, 0).render_fmt(width, &mut buf);
     buf
 }
 
