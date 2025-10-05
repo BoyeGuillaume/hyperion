@@ -12,3 +12,6 @@ authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
 [dependencies]
 smallvec = ">1.12"
 strum = { version = ">0.26", features = ["derive"] }
+pretty = { version = ">=0.12.5", features = ["termcolor"] }
+termcolor = ">=1.4"
+term_size = "0.3.2"

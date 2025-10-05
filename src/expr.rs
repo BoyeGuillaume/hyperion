@@ -3,6 +3,7 @@
 //! Build unified expressions (types, terms, and logic), encode to a compact buffer,
 //! and decode later as borrowed views without allocations.
 pub mod defs;
+mod pretty;
 pub mod view;
 use crate::encoding::{DynBuf, RawEncodable};
 use crate::expr::view::ExprView;
@@ -73,6 +74,52 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
             first: self,
             second: other,
         }
+    }
+
+    // ===================== Pretty printing helpers =====================
+
+    /// Build an RcDoc representation of this expression with style annotations.
+    /// Useful for composing or rendering manually.
+    #[inline]
+    fn pretty_doc(&self) -> ::pretty::RcDoc<'static, crate::expr::pretty::Style> {
+        crate::expr::pretty::to_doc(self)
+    }
+
+    /// Render this expression with colors to any termcolor writer at the given width.
+    #[inline]
+    fn pretty_render_to<W: ::termcolor::WriteColor + ::std::io::Write>(
+        &self,
+        width: usize,
+        out: &mut W,
+    ) -> ::std::io::Result<()> {
+        let doc = self.pretty_doc();
+        crate::expr::pretty::render_to(&doc, width, out)
+    }
+
+    /// Print this expression to stdout with colors (TTY-aware), at the given width.
+    #[inline]
+    fn pretty_print_with_width(&self, width: usize) -> ::std::io::Result<()> {
+        crate::expr::pretty::print_colored(self, width)
+    }
+
+    /// Print this expression to stdout with colors (TTY-aware), at auto-detected width (or 80 if not a TTY).
+    #[inline]
+    fn pretty_print(&self) -> ::std::io::Result<()> {
+        let width = crate::expr::pretty::terminal_width();
+        crate::expr::pretty::print_colored(self, width)
+    }
+
+    /// Format this expression into a plain string (no colors), at the given width.
+    #[inline]
+    fn pretty_string_with_width(&self, width: usize) -> String {
+        crate::expr::pretty::to_plain_string(self, width)
+    }
+
+    /// Format this expression into a plain string (no colors), at auto-detected width (or 80 if not a TTY).
+    #[inline]
+    fn pretty_string(&self) -> String {
+        let width = crate::expr::pretty::terminal_width();
+        crate::expr::pretty::to_plain_string(self, width)
     }
 }
 

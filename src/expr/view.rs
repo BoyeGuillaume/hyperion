@@ -59,7 +59,7 @@ impl ExprDispatchVariant {
     /// Note: Tuple can be a type as well as an expression.
     pub fn can_be_type(&self) -> bool {
         use ExprDispatchVariant::*;
-        matches!(self, Bool | Omega | Never | Powerset | Func | Tuple)
+        matches!(self, Bool | Omega | Never | Powerset | Func | Tuple | Var)
     }
 
     /// Returns true if this variant represents a proposition.
@@ -68,7 +68,7 @@ impl ExprDispatchVariant {
         use ExprDispatchVariant::*;
         matches!(
             self,
-            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal
+            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal | Var
         )
     }
 
