@@ -8,10 +8,10 @@
 //! Types can be composed with ergonomic helpers on [`DType`], then encoded to a compact
 //! byte buffer and decoded later without allocation.
 pub mod defs;
-pub mod dispatch;
+pub mod view;
 pub use defs::*;
 
-use crate::dtype::dispatch::DTypeView;
+use crate::dtype::view::DTypeView;
 use crate::encoding::{DynBuf, RawEncodable};
 use crate::{encoding, variable::InlineVariable};
 

@@ -5,13 +5,13 @@
 use crate::{
     dtype::DynBorrowedDType,
     encoding::{DynBuf, RawEncodable},
-    expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, dispatch::ExprView, expr_sealed},
-    prop::dispatch::PropView,
+    expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, expr_sealed, view::ExprView},
+    prop::view::PropView,
     variable::InlineVariable,
 };
 
 mod defs;
-pub mod dispatch;
+pub mod view;
 pub use defs::*;
 
 pub(crate) mod prop_sealed {

@@ -3,9 +3,9 @@
 //! Build expressions with typed helpers, encode them to a compact buffer, and
 //! decode later as borrowed views without allocations.
 pub mod defs;
-pub mod dispatch;
+pub mod view;
 use crate::encoding::{DynBuf, RawEncodable};
-use crate::expr::dispatch::ExprView;
+use crate::expr::view::ExprView;
 use crate::prop::{DynBorrowedProp, Eq, Prop};
 use crate::{encoding, variable::InlineVariable};
 

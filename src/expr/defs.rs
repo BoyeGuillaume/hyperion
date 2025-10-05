@@ -7,7 +7,7 @@ use crate::{
         integer::{encode_u64, encoded_size_u64},
         magic,
     },
-    expr::{Expr, dispatch::ExprView, expr_sealed},
+    expr::{Expr, view::ExprView, expr_sealed},
     prop::{DynProp, Prop},
     variable::InlineVariable,
 };

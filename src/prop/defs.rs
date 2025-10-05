@@ -7,12 +7,12 @@ use crate::{
         integer::{encode_u64, encoded_size_u64},
         magic,
     },
-    expr::{DynExpr, Expr, dispatch::ExprView, expr_sealed},
+    expr::{DynExpr, Expr, view::ExprView, expr_sealed},
     prop::{DynProp, Prop, prop_sealed},
     variable::InlineVariable,
 };
 
-use super::dispatch::PropView;
+use super::view::PropView;
 
 /// Represents a true proposition.
 ///

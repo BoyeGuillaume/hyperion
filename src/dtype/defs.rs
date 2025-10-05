@@ -3,7 +3,7 @@
 //! These types implement [`crate::dtype::DType`] and can be composed using methods like
 //! [`crate::dtype::DType::app`], [`crate::dtype::DType::tuple`], and [`crate::dtype::DType::powerset`].
 use crate::{
-    dtype::{DType, dispatch::DTypeView, dtype_sealed},
+    dtype::{DType, view::DTypeView, dtype_sealed},
     encoding::{
         RawEncodable,
         integer::{encode_u64, encoded_size_u64},
