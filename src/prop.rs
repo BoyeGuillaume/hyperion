@@ -5,8 +5,8 @@
 use crate::{
     dtype::DynBorrowedDType,
     encoding::{DynBuf, RawEncodable},
-    expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, dispatch::ExprDispatch, expr_sealed},
-    prop::dispatch::PropDispatch,
+    expr::{DynBorrowedExpr, DynExpr, Expr, defs::If, dispatch::ExprView, expr_sealed},
+    prop::dispatch::PropView,
     variable::InlineVariable,
 };
 
@@ -23,15 +23,15 @@ pub(crate) mod prop_sealed {
 /// Trait implemented by all propositions.
 pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
     /// Describe the proposition's outer constructor and expose children.
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType>;
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType>;
 
     /// Encode this proposition into a dynamic, byte-backed representation.
     #[inline]
     fn encode(&self) -> DynProp {
         let mut buf = DynBuf::new();
-        self.encode_raw(&mut buf);
+        self.encode_dynbuf(&mut buf);
         DynProp { bytes: buf }
     }
 
@@ -101,10 +101,10 @@ pub trait Prop: Expr + prop_sealed::Sealed + Sized + RawEncodable {
 }
 
 impl<'a, T: Prop> Prop for &'a T {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        (*self).decode_prop()
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        (*self).view_prop()
     }
 }
 
@@ -117,23 +117,24 @@ impl prop_sealed::Sealed for DynProp {}
 impl expr_sealed::Sealed for DynProp {}
 
 impl Expr for DynProp {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl Prop for DynProp {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         self.as_borrowed().decode_prop_concrete()
     }
 }
 
 impl RawEncodable for DynProp {
     #[inline]
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.extend_from_slice(&self.bytes);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&self.bytes);
+        self.bytes.len() as u64
     }
 
     fn encoded_size(&self) -> u64 {
@@ -164,24 +165,25 @@ impl<'a> prop_sealed::Sealed for DynBorrowedProp<'a> {}
 impl<'a> expr_sealed::Sealed for DynBorrowedProp<'a> {}
 
 impl<'a> Expr for DynBorrowedProp<'a> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
         // Represent a Prop as an Expr without decoding; same as DynProp does.
-        ExprDispatch::<&Self, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>>::Prop(self)
+        ExprView::<&Self, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>>::Prop(self)
     }
 }
 
 impl<'a> Prop for DynBorrowedProp<'a> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
         self.decode_prop_concrete()
     }
 }
 
 impl<'a> RawEncodable for DynBorrowedProp<'a> {
     #[inline]
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.extend_from_slice(self.bytes);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&self.bytes);
+        self.bytes.len() as u64
     }
 
     fn encoded_size(&self) -> u64 {
@@ -194,7 +196,7 @@ impl DynProp {
     #[inline]
     pub fn decode_prop_borrowed(
         &self,
-    ) -> PropDispatch<
+    ) -> PropView<
         DynBorrowedProp<'_>,
         DynBorrowedProp<'_>,
         DynBorrowedExpr<'_>,
@@ -208,7 +210,7 @@ impl DynProp {
 impl<'a> DynBorrowedProp<'a> {
     fn raw_decode_prop(
         bytes: &'a [u8],
-    ) -> PropDispatch<
+    ) -> PropView<
         DynBorrowedProp<'a>,
         DynBorrowedProp<'a>,
         DynBorrowedExpr<'a>,
@@ -225,9 +227,9 @@ impl<'a> DynBorrowedProp<'a> {
         let mut s: &[u8] = rest;
 
         match *op {
-            P_TRUE => PropDispatch::True,
-            P_FALSE => PropDispatch::False,
-            P_NOT => PropDispatch::Not(DynBorrowedProp { bytes: s }),
+            P_TRUE => PropView::True,
+            P_FALSE => PropView::False,
+            P_NOT => PropView::Not(DynBorrowedProp { bytes: s }),
             P_AND | P_OR | P_IMPLIES | P_IFF => {
                 // left right len(right) OP
                 let right_len = encoding::integer::decode_u64(&mut s).expect(
@@ -243,10 +245,10 @@ impl<'a> DynBorrowedProp<'a> {
                 let l = DynBorrowedProp { bytes: left_bytes };
                 let r = DynBorrowedProp { bytes: right_bytes };
                 match *op {
-                    P_AND => PropDispatch::And(l, r),
-                    P_OR => PropDispatch::Or(l, r),
-                    P_IMPLIES => PropDispatch::Implies(l, r),
-                    P_IFF => PropDispatch::Iff(l, r),
+                    P_AND => PropView::And(l, r),
+                    P_OR => PropView::Or(l, r),
+                    P_IMPLIES => PropView::Implies(l, r),
+                    P_IFF => PropView::Iff(l, r),
                     _ => unreachable!(),
                 }
             }
@@ -268,12 +270,12 @@ impl<'a> DynBorrowedProp<'a> {
                 let inner = DynBorrowedProp { bytes: inner_bytes };
                 let var = InlineVariable::new_from_raw(var_id);
                 match *op {
-                    P_FORALL => PropDispatch::ForAll {
+                    P_FORALL => PropView::ForAll {
                         variable: var,
                         dtype: dt,
                         inner,
                     },
-                    P_EXISTS => PropDispatch::Exists {
+                    P_EXISTS => PropView::Exists {
                         variable: var,
                         dtype: dt,
                         inner,
@@ -294,7 +296,7 @@ impl<'a> DynBorrowedProp<'a> {
                 let (left_bytes, right_bytes) = s.split_at(split_at);
                 let l = DynBorrowedExpr { bytes: left_bytes };
                 let r = DynBorrowedExpr { bytes: right_bytes };
-                PropDispatch::Equal(l, r)
+                PropView::Equal(l, r)
             }
             _ => panic!("Invalid encoding: unknown prop opcode {}", *op),
         }
@@ -304,7 +306,7 @@ impl<'a> DynBorrowedProp<'a> {
     #[inline]
     pub fn decode_prop_concrete(
         &self,
-    ) -> PropDispatch<
+    ) -> PropView<
         DynBorrowedProp<'a>,
         DynBorrowedProp<'a>,
         DynBorrowedExpr<'a>,

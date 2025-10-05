@@ -11,7 +11,7 @@ pub mod defs;
 pub mod dispatch;
 pub use defs::*;
 
-use crate::dtype::dispatch::DTypeDispatch;
+use crate::dtype::dispatch::DTypeView;
 use crate::encoding::{DynBuf, RawEncodable};
 use crate::{encoding, variable::InlineVariable};
 
@@ -29,13 +29,13 @@ pub(crate) mod dtype_sealed {
 /// - helpers like [`app`](Self::app), [`tuple`](Self::tuple), and [`powerset`](Self::powerset)
 pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
     /// Describe the type's outer constructor and expose its children in a dispatch enum.
-    fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType>;
+    fn view_dtype(&self) -> DTypeView<impl DType, impl DType>;
 
     /// Encode this type into a dynamic, byte-backed representation.
     #[inline]
     fn encode(&self) -> DynDType {
         let mut buf = DynBuf::new();
-        self.encode_raw(&mut buf);
+        self.encode_dynbuf(&mut buf);
         DynDType { bytes: buf }
     }
 
@@ -79,8 +79,8 @@ pub trait DType: dtype_sealed::Sealed + Sized + RawEncodable {
 }
 
 impl<'a, T: DType> DType for &'a T {
-    fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
-        (*self).decode_dtype()
+    fn view_dtype(&self) -> DTypeView<impl DType, impl DType> {
+        (*self).view_dtype()
     }
 }
 
@@ -93,15 +93,16 @@ pub struct DynDType {
 impl dtype_sealed::Sealed for DynDType {}
 
 impl DType for DynDType {
-    fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
+    fn view_dtype(&self) -> DTypeView<impl DType, impl DType> {
         DynBorrowedDType::raw_decode_dtype(&self.bytes)
     }
 }
 
 impl RawEncodable for DynDType {
     #[inline]
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.extend_from_slice(&self.bytes);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&self.bytes);
+        self.bytes.len() as u64
     }
 
     fn encoded_size(&self) -> u64 {
@@ -121,9 +122,7 @@ impl DynDType {
     /// Zero-copy decode returning borrowed children.
     ///
     /// This avoids allocations and returns borrowed subtypes when traversing.
-    pub fn decode_dtype_concrete(
-        &self,
-    ) -> DTypeDispatch<DynBorrowedDType<'_>, DynBorrowedDType<'_>> {
+    pub fn decode_dtype_concrete(&self) -> DTypeView<DynBorrowedDType<'_>, DynBorrowedDType<'_>> {
         self.as_borrowed().decode_dtype_concrete()
     }
 }
@@ -136,9 +135,7 @@ pub struct DynBorrowedDType<'a> {
 impl<'a> dtype_sealed::Sealed for DynBorrowedDType<'a> {}
 
 impl<'a> DynBorrowedDType<'a> {
-    fn raw_decode_dtype(
-        bytes: &'a [u8],
-    ) -> DTypeDispatch<DynBorrowedDType<'a>, DynBorrowedDType<'a>> {
+    fn raw_decode_dtype(bytes: &'a [u8]) -> DTypeView<DynBorrowedDType<'a>, DynBorrowedDType<'a>> {
         assert!(!bytes.is_empty(), "Attempted to decode empty buffer");
 
         // Strip trailing NOPs, find opcode
@@ -150,12 +147,12 @@ impl<'a> DynBorrowedDType<'a> {
 
         use encoding::magic::*;
         match *op {
-            T_BOOL => DTypeDispatch::Bool,
-            T_OMEGA => DTypeDispatch::Omega,
-            T_NEVER => DTypeDispatch::Never,
+            T_BOOL => DTypeView::Bool,
+            T_OMEGA => DTypeView::Omega,
+            T_NEVER => DTypeView::Never,
             T_POWER => {
                 // child: everything before opcode
-                DTypeDispatch::Power(DynBorrowedDType { bytes: s })
+                DTypeView::Power(DynBorrowedDType { bytes: s })
             }
             T_ARROW | T_TUPLE => {
                 // Binary: A B len(B) OP
@@ -172,15 +169,15 @@ impl<'a> DynBorrowedDType<'a> {
                 let l = DynBorrowedDType { bytes: left_bytes };
                 let r = DynBorrowedDType { bytes: right_bytes };
                 match *op {
-                    T_ARROW => DTypeDispatch::Arrow(l, r),
-                    T_TUPLE => DTypeDispatch::Tuple(l, r),
+                    T_ARROW => DTypeView::Arrow(l, r),
+                    T_TUPLE => DTypeView::Tuple(l, r),
                     _ => unreachable!(),
                 }
             }
             MISC_VAR => {
                 let id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
-                DTypeDispatch::Var(InlineVariable::new_from_raw(id))
+                DTypeView::Var(InlineVariable::new_from_raw(id))
             }
             _ => panic!("Invalid encoding: unknown dtype opcode {}", *op),
         }
@@ -188,15 +185,16 @@ impl<'a> DynBorrowedDType<'a> {
 }
 
 impl<'a> DType for DynBorrowedDType<'a> {
-    fn decode_dtype(&self) -> DTypeDispatch<impl DType, impl DType> {
+    fn view_dtype(&self) -> DTypeView<impl DType, impl DType> {
         Self::raw_decode_dtype(self.bytes)
     }
 }
 
 impl<'a> RawEncodable for DynBorrowedDType<'a> {
     #[inline]
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.extend_from_slice(self.bytes);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&self.bytes);
+        self.bytes.len() as u64
     }
 
     fn encoded_size(&self) -> u64 {
@@ -206,9 +204,7 @@ impl<'a> RawEncodable for DynBorrowedDType<'a> {
 
 impl<'a> DynBorrowedDType<'a> {
     /// Decode with concrete borrowed types (no allocations).
-    pub fn decode_dtype_concrete(
-        &self,
-    ) -> DTypeDispatch<DynBorrowedDType<'a>, DynBorrowedDType<'a>> {
+    pub fn decode_dtype_concrete(&self) -> DTypeView<DynBorrowedDType<'a>, DynBorrowedDType<'a>> {
         Self::raw_decode_dtype(self.bytes)
     }
 }

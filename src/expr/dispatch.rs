@@ -11,7 +11,7 @@ use crate::{expr::Expr, prop::Prop, variable::InlineVariable};
 #[strum_discriminants(derive(PartialOrd, Ord, Hash))]
 #[strum_discriminants(name(ExprDispatchVariant))]
 #[strum_discriminants(vis(pub(crate)))]
-pub enum ExprDispatch<P: Prop, T1: Expr, T2: Expr> {
+pub enum ExprView<P: Prop, T1: Expr, T2: Expr> {
     /// Variable reference.
     Var(InlineVariable),
     /// Unreachable expression.

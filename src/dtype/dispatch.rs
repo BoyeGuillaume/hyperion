@@ -11,7 +11,7 @@ use crate::{dtype::DType, variable::InlineVariable};
 #[strum_discriminants(derive(PartialOrd, Ord, Hash))]
 #[strum_discriminants(name(DTypeDispatchVariant))]
 #[strum_discriminants(vis(pub(crate)))]
-pub enum DTypeDispatch<T1: DType, T2: DType> {
+pub enum DTypeView<T1: DType, T2: DType> {
     /// Boolean type
     Bool,
     /// The universe of all well-formed types (type of types)

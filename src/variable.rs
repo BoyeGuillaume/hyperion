@@ -118,9 +118,10 @@ impl std::fmt::Display for InlineVariable {
 }
 
 impl RawEncodable for InlineVariable {
-    fn encode_raw(&self, buf: &mut crate::encoding::DynBuf) {
-        encode_u64(self.raw(), buf);
-        buf.push(crate::encoding::magic::MISC_VAR);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let size = encode_u64(self.raw(), f);
+        f(&[crate::encoding::magic::MISC_VAR]);
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {

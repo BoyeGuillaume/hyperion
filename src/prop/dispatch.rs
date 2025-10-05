@@ -11,7 +11,7 @@ use crate::{dtype::DType, expr::Expr, prop::Prop, variable::InlineVariable};
 #[strum_discriminants(derive(PartialOrd, Ord, Hash))]
 #[strum_discriminants(name(PropDispatchVariant))]
 #[strum_discriminants(vis(pub(crate)))]
-pub enum PropDispatch<P1: Prop, P2: Prop, T1: Expr, T2: Expr, DT: DType> {
+pub enum PropView<P1: Prop, P2: Prop, T1: Expr, T2: Expr, DT: DType> {
     /// True.
     True,
     /// False.

@@ -3,13 +3,16 @@
 //! These types implement [`crate::prop::Prop`] and also [`crate::expr::Expr`].
 use crate::{
     dtype::{DType, DynDType},
-    encoding::{DynBuf, integer::encoded_size_u64, magic, push_len},
-    expr::{DynExpr, Expr, dispatch::ExprDispatch, expr_sealed},
+    encoding::{
+        integer::{encode_u64, encoded_size_u64},
+        magic,
+    },
+    expr::{DynExpr, Expr, dispatch::ExprView, expr_sealed},
     prop::{DynProp, Prop, prop_sealed},
     variable::InlineVariable,
 };
 
-use super::dispatch::PropDispatch;
+use super::dispatch::PropView;
 
 /// Represents a true proposition.
 ///
@@ -21,22 +24,23 @@ impl prop_sealed::Sealed for PropTrue {}
 impl expr_sealed::Sealed for PropTrue {}
 
 impl Expr for PropTrue {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl Prop for PropTrue {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::True
     }
 }
 
 impl crate::encoding::RawEncodable for PropTrue {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.push(magic::P_TRUE);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&[magic::P_TRUE]);
+        1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -58,22 +62,23 @@ impl prop_sealed::Sealed for PropFalse {}
 impl expr_sealed::Sealed for PropFalse {}
 
 impl Expr for PropFalse {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl Prop for PropFalse {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::False
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<DynProp, DynProp, DynExpr, DynExpr, DynDType>::False
     }
 }
 
 impl crate::encoding::RawEncodable for PropFalse {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        buf.push(magic::P_FALSE);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        f(&[magic::P_FALSE]);
+        1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -98,27 +103,35 @@ impl<P: Prop> prop_sealed::Sealed for Not<P> {}
 impl<P: Prop> expr_sealed::Sealed for Not<P> {}
 
 impl<P: Prop> Expr for Not<P> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop> Prop for Not<P> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynExpr, DynExpr, DynDType>::Not(&self.inner)
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, DynProp, DynExpr, DynExpr, DynDType>::Not(&self.inner)
     }
 }
 
 impl<P: Prop + crate::encoding::RawEncodable> crate::encoding::RawEncodable for Not<P> {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.inner.encode_raw(buf);
-        buf.push(magic::P_NOT);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let size = self.inner.encode_raw(f);
+        f(&[magic::P_NOT]);
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
         self.inner.encoded_size() + 1
+    }
+}
+
+impl<P: Prop> Not<P> {
+    /// Substitute the inner proposition while keeping the same negation.
+    pub fn subs_inner<R: Prop>(self, inner: R) -> Not<R> {
+        Not { inner }
     }
 }
 
@@ -142,29 +155,34 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for And<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for And<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for And<P, Q> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for And<P, Q> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::And(&self.left, &self.right)
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, &Q, DynExpr, DynExpr, DynDType>::And(&self.left, &self.right)
     }
 }
 
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for And<P, Q>
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.left.encode_raw(buf);
-        let right_start = buf.len();
-        self.right.encode_raw(buf);
-        let right_len = buf.len() - right_start;
-        push_len(right_len, buf);
-        buf.push(magic::P_AND);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.left.encode_raw(f);
+
+        let right_len = self.right.encode_raw(f);
+        size += right_len;
+
+        size += encode_u64(right_len, f);
+        f(&[magic::P_AND]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -172,6 +190,24 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
             + self.right.encoded_size()
             + encoded_size_u64(self.right.encoded_size())
             + 1
+    }
+}
+
+impl<P: Prop, Q: Prop> And<P, Q> {
+    /// Substitute the left-hand proposition while keeping the same right-hand proposition.
+    pub fn subs_left<R: Prop>(self, left: R) -> And<R, Q> {
+        And {
+            left,
+            right: self.right,
+        }
+    }
+
+    /// Substitute the right-hand proposition while keeping the same left-hand proposition.
+    pub fn subs_right<R: Prop>(self, right: R) -> And<P, R> {
+        And {
+            left: self.left,
+            right,
+        }
     }
 }
 
@@ -195,29 +231,34 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Or<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Or<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Or<P, Q> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Or<P, Q> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Or(&self.left, &self.right)
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, &Q, DynExpr, DynExpr, DynDType>::Or(&self.left, &self.right)
     }
 }
 
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Or<P, Q>
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.left.encode_raw(buf);
-        let right_start = buf.len();
-        self.right.encode_raw(buf);
-        let right_len = buf.len() - right_start;
-        push_len(right_len, buf);
-        buf.push(magic::P_OR);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.left.encode_raw(f);
+
+        let right_len = self.right.encode_raw(f);
+        size += right_len;
+
+        size += encode_u64(right_len, f);
+        f(&[magic::P_OR]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -225,6 +266,24 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
             + self.right.encoded_size()
             + encoded_size_u64(self.right.encoded_size())
             + 1
+    }
+}
+
+impl<P: Prop, Q: Prop> Or<P, Q> {
+    /// Substitute the left-hand proposition while keeping the same right-hand proposition.
+    pub fn subs_left<R: Prop>(self, left: R) -> Or<R, Q> {
+        Or {
+            left,
+            right: self.right,
+        }
+    }
+
+    /// Substitute the right-hand proposition while keeping the same left-hand proposition.
+    pub fn subs_right<R: Prop>(self, right: R) -> Or<P, R> {
+        Or {
+            left: self.left,
+            right,
+        }
     }
 }
 
@@ -248,32 +307,32 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Imp<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Imp<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Imp<P, Q> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Imp<P, Q> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Implies(
-            &self.antecedent,
-            &self.consequent,
-        )
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, &Q, DynExpr, DynExpr, DynDType>::Implies(&self.antecedent, &self.consequent)
     }
 }
 
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Imp<P, Q>
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.antecedent.encode_raw(buf);
-        let right_start = buf.len();
-        self.consequent.encode_raw(buf);
-        let right_len = buf.len() - right_start;
-        push_len(right_len, buf);
-        buf.push(magic::P_IMPLIES);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.antecedent.encode_raw(f);
+        let right_len = self.consequent.encode_raw(f);
+        size += right_len;
+        size += encode_u64(right_len, f);
+        f(&[magic::P_IMPLIES]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -281,6 +340,24 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
             + self.consequent.encoded_size()
             + encoded_size_u64(self.consequent.encoded_size())
             + 1
+    }
+}
+
+impl<P: Prop, Q: Prop> Imp<P, Q> {
+    /// Substitute the antecedent while keeping the same consequent.
+    pub fn subs_antecedent<R: Prop>(self, antecedent: R) -> Imp<R, Q> {
+        Imp {
+            antecedent,
+            consequent: self.consequent,
+        }
+    }
+
+    /// Substitute the consequent while keeping the same antecedent.
+    pub fn subs_consequent<R: Prop>(self, consequent: R) -> Imp<P, R> {
+        Imp {
+            antecedent: self.antecedent,
+            consequent,
+        }
     }
 }
 
@@ -304,29 +381,33 @@ impl<P: Prop, Q: Prop> prop_sealed::Sealed for Iff<P, Q> {}
 impl<P: Prop, Q: Prop> expr_sealed::Sealed for Iff<P, Q> {}
 
 impl<P: Prop, Q: Prop> Expr for Iff<P, Q> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<P: Prop, Q: Prop> Prop for Iff<P, Q> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, &Q, DynExpr, DynExpr, DynDType>::Iff(&self.left, &self.right)
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, &Q, DynExpr, DynExpr, DynDType>::Iff(&self.left, &self.right)
     }
 }
 
 impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Iff<P, Q>
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.left.encode_raw(buf);
-        let right_start = buf.len();
-        self.right.encode_raw(buf);
-        let right_len = buf.len() - right_start;
-        push_len(right_len, buf);
-        buf.push(magic::P_IFF);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.left.encode_raw(f);
+        let right_len = self.right.encode_raw(f);
+
+        size += right_len;
+        size += encode_u64(right_len, f);
+        f(&[magic::P_IFF]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -334,6 +415,24 @@ impl<P: Prop + crate::encoding::RawEncodable, Q: Prop + crate::encoding::RawEnco
             + self.right.encoded_size()
             + encoded_size_u64(self.right.encoded_size())
             + 1
+    }
+}
+
+impl<P: Prop, Q: Prop> Iff<P, Q> {
+    /// Substitute the left-hand proposition while keeping the same right-hand proposition.
+    pub fn subs_left<R: Prop>(self, left: R) -> Iff<R, Q> {
+        Iff {
+            left,
+            right: self.right,
+        }
+    }
+
+    /// Substitute the right-hand proposition while keeping the same left-hand proposition.
+    pub fn subs_right<R: Prop>(self, right: R) -> Iff<P, R> {
+        Iff {
+            left: self.left,
+            right,
+        }
     }
 }
 
@@ -358,16 +457,16 @@ impl<DT: DType, P: Prop> prop_sealed::Sealed for ForAll<DT, P> {}
 impl<DT: DType, P: Prop> expr_sealed::Sealed for ForAll<DT, P> {}
 
 impl<DT: DType, P: Prop> Expr for ForAll<DT, P> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<DT: DType, P: Prop> Prop for ForAll<DT, P> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::ForAll {
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, DynProp, DynExpr, DynExpr, &DT>::ForAll {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -380,15 +479,28 @@ where
     DT: DType + crate::encoding::RawEncodable,
     P: Prop + crate::encoding::RawEncodable,
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.dtype.encode_raw(buf);
-        let inner_start = buf.len();
-        self.inner.encode_raw(buf);
-        let inner_len = buf.len() - inner_start;
-        push_len(inner_len, buf);
-        crate::encoding::integer::encode_u64(self.variable.raw(), buf);
-        buf.push(magic::P_FORALL);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.dtype.encode_raw(f);
+        let inner_len = self.inner.encode_raw(f);
+        size += inner_len;
+        size += encode_u64(inner_len, f);
+        size += encode_u64(self.variable.raw(), f);
+        f(&[magic::P_FORALL]);
+
+        size + 1
     }
+
+    // fn encode_raw(&self, buf: &mut DynBuf) {
+    //     self.dtype.encode_raw(buf);
+    //     let inner_start = buf.len();
+    //     self.inner.encode_raw(buf);
+    //     let inner_len = buf.len() - inner_start;
+    //     push_len(inner_len, buf);
+    //     crate::encoding::integer::encode_u64(self.variable.raw(), buf);
+    //     buf.push(magic::P_FORALL);
+    // }
 
     fn encoded_size(&self) -> u64 {
         self.dtype.encoded_size()
@@ -396,6 +508,26 @@ where
             + encoded_size_u64(self.inner.encoded_size())
             + encoded_size_u64(self.variable.raw())
             + 1
+    }
+}
+
+impl<DT: DType, P: Prop> ForAll<DT, P> {
+    /// Substitute the inner proposition while keeping the same quantifier.
+    pub fn subs_inner<R: Prop>(self, inner: R) -> ForAll<DT, R> {
+        ForAll {
+            variable: self.variable,
+            dtype: self.dtype,
+            inner,
+        }
+    }
+
+    /// Substitute the domain type while keeping the same inner proposition.
+    pub fn subs_dtype<R: DType>(self, dtype: R) -> ForAll<R, P> {
+        ForAll {
+            variable: self.variable,
+            dtype,
+            inner: self.inner,
+        }
     }
 }
 
@@ -420,16 +552,16 @@ impl<DT: DType, P: Prop> prop_sealed::Sealed for Exists<DT, P> {}
 impl<DT: DType, P: Prop> expr_sealed::Sealed for Exists<DT, P> {}
 
 impl<DT: DType, P: Prop> Expr for Exists<DT, P> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<DT: DType, P: Prop> Prop for Exists<DT, P> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<&P, DynProp, DynExpr, DynExpr, &DT>::Exists {
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<&P, DynProp, DynExpr, DynExpr, &DT>::Exists {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -442,14 +574,17 @@ where
     DT: DType + crate::encoding::RawEncodable,
     P: Prop + crate::encoding::RawEncodable,
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.dtype.encode_raw(buf);
-        let inner_start = buf.len();
-        self.inner.encode_raw(buf);
-        let inner_len = buf.len() - inner_start;
-        push_len(inner_len, buf);
-        crate::encoding::integer::encode_u64(self.variable.raw(), buf);
-        buf.push(magic::P_EXISTS);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.dtype.encode_raw(f);
+        let inner_len = self.inner.encode_raw(f);
+        size += inner_len;
+        size += encode_u64(inner_len, f);
+        size += encode_u64(self.variable.raw(), f);
+        f(&[magic::P_EXISTS]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -458,6 +593,26 @@ where
             + encoded_size_u64(self.inner.encoded_size())
             + encoded_size_u64(self.variable.raw())
             + 1
+    }
+}
+
+impl<DT: DType, P: Prop> Exists<DT, P> {
+    /// Substitute the inner proposition while keeping the same quantifier.
+    pub fn subs_inner<R: Prop>(self, inner: R) -> Exists<DT, R> {
+        Exists {
+            variable: self.variable,
+            dtype: self.dtype,
+            inner,
+        }
+    }
+
+    /// Substitute the domain type while keeping the same inner proposition.
+    pub fn subs_dtype<R: DType>(self, dtype: R) -> Exists<R, P> {
+        Exists {
+            variable: self.variable,
+            dtype,
+            inner: self.inner,
+        }
     }
 }
 
@@ -480,29 +635,33 @@ impl<T1: Expr, T2: Expr> prop_sealed::Sealed for Eq<T1, T2> {}
 impl<T1: Expr, T2: Expr> expr_sealed::Sealed for Eq<T1, T2> {}
 
 impl<T1: Expr, T2: Expr> Expr for Eq<T1, T2> {
-    fn decode_expr(&self) -> ExprDispatch<impl Prop, impl Expr, impl Expr> {
-        ExprDispatch::<&Self, DynExpr, DynExpr>::Prop(self)
+    fn view_expr(&self) -> ExprView<impl Prop, impl Expr, impl Expr> {
+        ExprView::<&Self, DynExpr, DynExpr>::Prop(self)
     }
 }
 
 impl<T1: Expr, T2: Expr> Prop for Eq<T1, T2> {
-    fn decode_prop(
+    fn view_prop(
         &self,
-    ) -> PropDispatch<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
-        PropDispatch::<DynProp, DynProp, &T1, &T2, DynDType>::Equal(&self.left, &self.right)
+    ) -> PropView<impl Prop, impl Prop, impl Expr, impl Expr, impl crate::dtype::DType> {
+        PropView::<DynProp, DynProp, &T1, &T2, DynDType>::Equal(&self.left, &self.right)
     }
 }
 
 impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEncodable>
     crate::encoding::RawEncodable for Eq<T1, T2>
 {
-    fn encode_raw(&self, buf: &mut DynBuf) {
-        self.left.encode_raw(buf);
-        let right_start = buf.len();
-        self.right.encode_raw(buf);
-        let right_len = buf.len() - right_start;
-        push_len(right_len, buf);
-        buf.push(magic::P_EQUAL);
+    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
+        let mut size = 0;
+
+        size += self.left.encode_raw(f);
+        let right_len = self.right.encode_raw(f);
+
+        size += right_len;
+        size += encode_u64(right_len, f);
+        f(&[magic::P_EQUAL]);
+
+        size + 1
     }
 
     fn encoded_size(&self) -> u64 {
@@ -510,6 +669,24 @@ impl<T1: Expr + crate::encoding::RawEncodable, T2: Expr + crate::encoding::RawEn
             + self.right.encoded_size()
             + encoded_size_u64(self.right.encoded_size())
             + 1
+    }
+}
+
+impl<T1: Expr, T2: Expr> Eq<T1, T2> {
+    /// Substitute the left expression while keeping the same right expression.
+    pub fn subs_left<R: Expr>(self, left: R) -> Eq<R, T2> {
+        Eq {
+            left,
+            right: self.right,
+        }
+    }
+
+    /// Substitute the right expression while keeping the same left expression.
+    pub fn subs_right<R: Expr>(self, right: R) -> Eq<T1, R> {
+        Eq {
+            left: self.left,
+            right,
+        }
     }
 }
 

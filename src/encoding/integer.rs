@@ -2,7 +2,6 @@
 //!
 //! These are internal utilities, but are documented to clarify size and performance
 //! characteristics of the on-wire format used by this crate.
-use crate::encoding::DynBuf;
 
 /// Encode an unsigned 64-bit integer into `buf` using a compact base-128 scheme.
 ///
@@ -22,21 +21,25 @@ use crate::encoding::DynBuf;
 /// ```ignore
 /// use hyformal::encoding::{encode_u64, DynBuf};
 /// let mut buf = DynBuf::new();
-/// encode_u64(300, &mut buf);
+/// encode_u64(300, |b| buf.extend_from_slice(b));
 /// assert_eq!(&buf[..], &[0x2c, 0x82]);
 /// ```
-pub fn encode_u64(mut value: u64, buf: &mut DynBuf) {
+pub fn encode_u64<F: FnMut(&[u8])>(mut value: u64, encoder: &mut F) -> u64 {
     // Push least-significant 7 bits with MSB cleared.
     let mut byte = (value & 0x7F) as u8;
+    let mut size = 1;
     value >>= 7;
-    buf.push(byte);
+    encoder(&[byte]);
 
     // Push remaining chunks with MSB set to indicate continuation when decoding from the end.
     while value > 0 {
         byte = ((value & 0x7F) as u8) | 0x80;
-        buf.push(byte);
+        encoder(&[byte]);
         value >>= 7;
+        size += 1;
     }
+
+    size
 }
 
 /// Decode one unsigned 64-bit integer from the end of the given slice.
@@ -84,6 +87,8 @@ pub fn encoded_size_u64(value: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::encoding::DynBuf;
+
     use super::*;
 
     #[test]
@@ -93,7 +98,7 @@ mod tests {
         ];
         for &v in &values {
             let mut buf = DynBuf::new();
-            encode_u64(v, &mut buf);
+            encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let mut s: &[u8] = buf.as_slice();
             let decoded = decode_u64(&mut s);
             assert_eq!(decoded, Some(v), "value {v} roundtrip");
@@ -106,7 +111,7 @@ mod tests {
         let values = [0_u64, 127, 128, 16383, 16384, u64::MAX];
         for &v in &values {
             let mut buf = DynBuf::new();
-            encode_u64(v, &mut buf);
+            encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let mut s: &[u8] = &buf;
             let decoded = decode_u64(&mut s);
             assert_eq!(decoded, Some(v));
@@ -117,31 +122,31 @@ mod tests {
     #[test]
     fn encoding_shape_examples() {
         let mut buf = DynBuf::new();
-        encode_u64(0, &mut buf);
+        encode_u64(0, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x00]);
 
         buf.clear();
-        encode_u64(127, &mut buf);
+        encode_u64(127, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x7F]);
 
         buf.clear();
-        encode_u64(128, &mut buf);
+        encode_u64(128, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x00, 0x81]);
 
         buf.clear();
-        encode_u64(300, &mut buf);
+        encode_u64(300, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x2C, 0x82]);
 
         buf.clear();
-        encode_u64(16383, &mut buf);
+        encode_u64(16383, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x7F, 0xFF]);
 
         buf.clear();
-        encode_u64(16384, &mut buf);
+        encode_u64(16384, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x00, 0x80, 0x81]);
 
         buf.clear();
-        encode_u64(u64::MAX, &mut buf);
+        encode_u64(u64::MAX, &mut |b| buf.extend_from_slice(b));
         assert_eq!(
             &buf[..],
             &[0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x81]
@@ -175,7 +180,7 @@ mod tests {
         ];
         for &v in &test_values {
             let mut buf = DynBuf::new();
-            encode_u64(v, &mut buf);
+            encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let computed_size = encoded_size_u64(v);
             assert_eq!(buf.len() as u64, computed_size, "value {v} size mismatch");
         }
