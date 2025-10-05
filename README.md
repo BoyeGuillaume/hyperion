@@ -3,8 +3,8 @@ This is a formal, symbolic engine for hyperion. It aims to provide a framework f
 
 ## Formal-system syntax
 
-We define the syntax of the formal system as a group of 3 elements: expressions, propositions and types. We can intuitively
-think of types as a *constrained* set of values, expressions as *exprs* and propositions as *formulas*.
+We now use a single unified syntax where types, terms, and logical formulas are all expressions. Runtime checks are
+responsible for validating well-formed uses (e.g., using type-shaped expressions in quantifiers or equalities).
 
 ```math
 \begin{aligned}
@@ -14,7 +14,7 @@ think of types as a *constrained* set of values, expressions as *exprs* and prop
   &&\mid \exists x: T.\; P \mid E_1 = E_2 \\
   \\
 
-  E &:=\;& P \mid x \mid \dagger \mid x(E) \mid \lambda x: T.\; E \\
+  E &:=\;& P \mid x \mid \dagger \mid x(E) \\
   &&\mid  \text{if } P \text{ then } E_1 \text{ else } E_2 \mid E_1, E_2 \\
   \\
 
@@ -30,7 +30,7 @@ can be encoded as a type themselves.
 
 ## Axiom inference and automated proof
 
-This section outlines how axioms and inference rules can be represented and how an automated prover can search for proofs in this formalism. The API is evolving; examples below describe the intended workflow that maps to modules in `src/` (`prop`, `expr`, `dtype`).
+This section outlines how axioms and inference rules can be represented and how an automated prover can search for proofs in this formalism. The API is evolving; examples below describe the intended workflow that maps to the unified `expr` module.
 
 ### Core concepts
 
@@ -66,9 +66,8 @@ These rules constitute the kernel of the prover. Domain theories can add axioms 
 
 ### Representation in code (sketch)
 
-- Propositions: Types implementing `Prop` in `prop/defs.rs` (e.g., `PropTrue`, `PropFalse`). Extend with composite variants (`And`, `Or`, `Imp`, `Forall`, `Exists`, `Eq`, etc.). A private sealing trait (`prop_sealed::Sealed`) keeps construction controlled.
-- Exprs and types: `expr.rs` and `dtype.rs` hold exprs and types; add typed variables, lambdas, application, product, function, power-set, etc., matching the grammar above.
-- Dispatch: `prop/dispatch.rs` can house a rule dispatcher mapping a goal to applicable rules (intro/elim, axioms, theory lemmas).
+- Unified expressions live under `src/expr`: constructors for logic (True, False, And, Or, …), terms (Var, App, If, Tuple, …), and types (Bool, Arrow, Tuple, Power, …). A private sealing trait keeps construction controlled.
+- Dynamic encoding uses a single RPN bytecode with opcodes in `encoding::magic` and zero-copy borrowed decoding via `DynBorrowedExpr`.
 
 ### Proof search strategy
 
@@ -100,8 +99,8 @@ Goal: $\Gamma \vdash P \wedge Q$.
 
 ### Roadmap in this repo
 
-1) Extend `prop/defs.rs` with composite propositions and smart constructors.
-2) Add `expr.rs` and `dtype.rs` representations (typed variables, binders, application) with capture-avoiding substitution and α-equivalence.
-3) Implement a minimal kernel of rules and a backtracking searcher in `prop/dispatch.rs` (goal-driven, bounded search), returning a proof tree.
+1) Extend logical/type/term constructors in `expr/defs.rs` and add derived builders and rewrites.
+2) Implement capture-avoiding substitution and α-equivalence services for variables in unified expressions.
+3) Implement a minimal kernel of rules and a backtracking searcher over unified expressions, returning a proof tree.
 4) Add a proof checker and a compact, human-readable pretty-printer for derivations.
 5) Provide examples and tests (unit + property tests) to validate soundness of the kernel and completeness for propositional fragments.

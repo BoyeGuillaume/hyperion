@@ -10,8 +10,8 @@
 pub const T_BOOL: u8 = 0x01;
 pub const T_OMEGA: u8 = 0x02;
 pub const T_NEVER: u8 = 0x03;
-pub const T_ARROW: u8 = 0x05; // encode: A B len(B) OP
-pub const T_TUPLE: u8 = 0x06; // encode: A B len(B) OP
+pub const T_FUNC: u8 = 0x05; // encode: A B len(B) OP
+// pub const T_TUPLE: u8 = E_TUPLE; // same as Expr tuple, encode: A B len(B) OP
 pub const T_POWER: u8 = 0x07; // encode: A OP
 
 // Expr opcodes
@@ -35,21 +35,3 @@ pub const P_EQUAL: u8 = 0x29; // encode: T1 T2 len(T2) OP
 // Shared variable opcode (context decides whether it's a DType or Expr var)
 pub const MISC_VAR: u8 = 0xf0; // payload: InlineVariable id (u64 varint)
 pub const MISC_NOP: u8 = 0xff; // no payload, no-op (for padding)
-
-/// Expression type enum used to disambiguate variable opcodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExpressionType {
-    Expr,
-    Prop,
-    DType,
-}
-
-/// Determine expression type from variable opcode byte.
-pub fn expr_type_from_var_opcode(op: u8) -> Option<ExpressionType> {
-    match op & 0xF0 {
-        0x00 => Some(ExpressionType::DType),
-        0x10 => Some(ExpressionType::Expr),
-        0x20 => Some(ExpressionType::Prop),
-        _ => None,
-    }
-}

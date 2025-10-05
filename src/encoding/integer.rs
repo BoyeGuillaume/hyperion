@@ -78,11 +78,13 @@ pub fn decode_u64(buf: &mut &[u8]) -> Option<u64> {
 /// This is useful for preallocating buffers or estimating storage requirements
 ///
 pub fn encoded_size_u64(value: u64) -> u64 {
-    // Find the MSB position (0-based) of the highest set bit.
-    let msb_pos = 63 - value.leading_zeros() as u64;
-
-    // Each byte encodes 7 bits, so the number of bytes is (msb_pos / 7) + 1.
-    (msb_pos / 7) + 1
+    if value == 0 {
+        return 1;
+    }
+    // Number of significant bits is 64 - leading_zeros; convert to u64.
+    let sig_bits = (64 - value.leading_zeros()) as u64;
+    // Each byte encodes 7 bits; ceil_div(sig_bits, 7)
+    (sig_bits + 6) / 7
 }
 
 #[cfg(test)]
