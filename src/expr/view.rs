@@ -53,3 +53,53 @@ pub enum ExprView<E1, E2, E3> {
     Powerset(E1),
     Func(E1, E2),
 }
+
+impl ExprDispatchVariant {
+    /// Returns true if this variant can represent a type.
+    /// Note: Tuple can be a type as well as an expression.
+    pub fn can_be_type(&self) -> bool {
+        use ExprDispatchVariant::*;
+        matches!(self, Bool | Omega | Never | Powerset | Func | Tuple)
+    }
+
+    /// Returns true if this variant represents a proposition.
+    /// Propositions are a subset of expressions.
+    pub fn can_be_prop(&self) -> bool {
+        use ExprDispatchVariant::*;
+        matches!(
+            self,
+            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal
+        )
+    }
+
+    /// Returns true if this variant can represent a term-level expression.
+    /// Note: all propositions are expressions, and Tuple can also be an expression.
+    pub fn can_be_expr(&self) -> bool {
+        use ExprDispatchVariant::*;
+        matches!(
+            self,
+            // Term-level
+            Var | Unreachable | App | If | Tuple |
+            // Logic-level (propositions are expressions)
+            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal
+        )
+    }
+}
+
+impl<E1, E2, E3> ExprView<E1, E2, E3> {
+    /// Returns true if this expression can represent a type.
+    pub fn can_be_type(&self) -> bool {
+        ExprDispatchVariant::from(self).can_be_type()
+    }
+
+    /// Returns true if this expression represents a proposition.
+    pub fn can_be_prop(&self) -> bool {
+        ExprDispatchVariant::from(self).can_be_prop()
+    }
+
+    /// Returns true if this is a (term-level) expression.
+    /// Propositions are expressions; Tuple can be both an expression and a type.
+    pub fn can_be_expr(&self) -> bool {
+        ExprDispatchVariant::from(self).can_be_expr()
+    }
+}
