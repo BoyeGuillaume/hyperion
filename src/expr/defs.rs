@@ -454,19 +454,19 @@ impl<P: Expr, Q: Expr> Or<P, Q> {
 define_ops_expr! { Or<P: Expr, Q: Expr> }
 
 /// Implication.
-pub struct Imply<P: Expr, Q: Expr> {
+pub struct Implies<P: Expr, Q: Expr> {
     pub antecedent: P,
     pub consequent: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Imply<P, Q> {}
-impl<P: Expr, Q: Expr> Expr for Imply<P, Q> {
+impl<P: Expr, Q: Expr> expr_sealed::Sealed for Implies<P, Q> {}
+impl<P: Expr, Q: Expr> Expr for Implies<P, Q> {
     fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         ExprView::<&P, &Q, DynExpr>::Implies(&self.antecedent, &self.consequent)
     }
 }
 
-impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Imply<P, Q> {
+impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Implies<P, Q> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.antecedent.encode_raw(f);
@@ -484,22 +484,22 @@ impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Imply<P, Q
     }
 }
 
-impl<P: Expr, Q: Expr> Imply<P, Q> {
-    pub fn subs_antecedent<R: Expr>(self, antecedent: R) -> Imply<R, Q> {
-        Imply {
+impl<P: Expr, Q: Expr> Implies<P, Q> {
+    pub fn subs_antecedent<R: Expr>(self, antecedent: R) -> Implies<R, Q> {
+        Implies {
             antecedent,
             consequent: self.consequent,
         }
     }
-    pub fn subs_consequent<R: Expr>(self, consequent: R) -> Imply<P, R> {
-        Imply {
+    pub fn subs_consequent<R: Expr>(self, consequent: R) -> Implies<P, R> {
+        Implies {
             antecedent: self.antecedent,
             consequent,
         }
     }
 }
 
-define_ops_expr! { Imply<P: Expr, Q: Expr> }
+define_ops_expr! { Implies<P: Expr, Q: Expr> }
 
 /// Biconditional.
 pub struct Iff<P: Expr, Q: Expr> {

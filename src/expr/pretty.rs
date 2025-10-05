@@ -116,13 +116,13 @@ pub fn to_doc<E: Expr>(e: &E) -> RcDoc<'static, Style> {
             .group(),
         ExprView::Implies(a, b) => to_doc(&a)
             .append(RcDoc::space())
-            .append(op("⇒"))
+            .append(op("=>"))
             .append(RcDoc::space())
             .append(to_doc(&b))
             .group(),
         ExprView::Iff(a, b) => to_doc(&a)
             .append(RcDoc::space())
-            .append(op("⇔"))
+            .append(op("<=>"))
             .append(RcDoc::space())
             .append(to_doc(&b))
             .group(),
