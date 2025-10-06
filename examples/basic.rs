@@ -1,6 +1,4 @@
-use hyformal::expr::defs::*;
-use hyformal::expr::*;
-use hyformal::variable::InlineVariable;
+use hyformal::prelude::*;
 
 fn main() {
     let a = InlineVariable::new_from_raw(0);
@@ -12,7 +10,11 @@ fn main() {
         Bool,
         implies(
             a,
-            exists(b, Omega, and(and(a, equals(c, c)), equals(not(a) | c, b))),
+            exists(
+                b,
+                powerset(tuple(Omega, tuple(Bool, Bool)).func(Never)),
+                and(and(a, equals(c, c)), equals(not(a) | c, b)),
+            ),
         ),
     );
     expr.pretty_print().unwrap();

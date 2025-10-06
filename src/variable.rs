@@ -92,7 +92,7 @@ impl InlineVariable {
     /// For `variant = false`, the range 0..=25 maps to `A..Z`; for `true`, to `a..z`.
     /// Larger ids return `None`.
     pub fn symbol(&self, variant: bool) -> Option<char> {
-        let base = if variant { b'a' } else { b'A' };
+        let base = if variant { b'A' } else { b'a' };
         if self.0 < 26 {
             Some((base + (self.0 as u8)) as char)
         } else {

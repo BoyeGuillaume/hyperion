@@ -86,7 +86,7 @@ pub struct Unreachable;
 impl expr_sealed::Sealed for Unreachable {}
 impl Expr for Unreachable {
     fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Unreachable
+        ExprView::<DynExpr, DynExpr, DynExpr>::Never
     }
 }
 

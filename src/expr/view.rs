@@ -14,7 +14,6 @@ use crate::variable::InlineVariable;
 pub enum ExprView<E1, E2, E3> {
     // Term-level
     Var(InlineVariable),
-    Unreachable,
     App {
         func: InlineVariable,
         arg: E1,
@@ -79,7 +78,7 @@ impl ExprDispatchVariant {
         matches!(
             self,
             // Term-level
-            Var | Unreachable | App | If | Tuple |
+            Var | Never | App | If | Tuple |
             // Logic-level (propositions are expressions)
             True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal
         )

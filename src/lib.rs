@@ -43,3 +43,10 @@ pub(crate) mod encoding;
 pub mod expr;
 /// Inline variables used across types, expressions, and propositions.
 pub mod variable;
+
+pub mod prelude {
+    pub use crate::expr::defs::{Bool, False, Never, Omega, True};
+    pub use crate::expr::func::*;
+    pub use crate::expr::{DynBorrowedExpr, DynExpr, Expr};
+    pub use crate::variable::InlineVariable;
+}

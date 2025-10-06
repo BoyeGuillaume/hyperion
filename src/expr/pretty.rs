@@ -98,7 +98,7 @@ pub fn calculate_precedence(e: ExprDispatchVariant) -> u8 {
         Func | Tuple => 1,
         And | Or | Implies | Iff | Equal => 2,
         Not => 3,
-        Var | Unreachable | True | False | Bool | Omega | Never | Powerset => 4,
+        Var | Never | True | False | Bool | Omega | Powerset => 4,
         // _ => unreachable!(),
     }
 }
@@ -141,7 +141,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
     match e.view_expr() {
         // Term-level
         ExprView::Var(v) => ident(v),
-        ExprView::Unreachable => kw("unreachable"),
+        ExprView::Never => op("<>"), // or "unreachable"
         ExprView::App { func, arg } => ident(func)
             .append(lparen(depth))
             .append(to_doc_with_depth(&arg, depth + 1))
@@ -176,25 +176,21 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             ))
             .group()
             .nest(2),
-        ExprView::Tuple(a, b) => lparen(depth)
-            .append(to_doc_parenthesized_with_depth(
-                &a,
-                ExprDispatchVariant::Tuple,
-                depth + 1,
-            ))
-            .append(punct(", "))
-            .append(to_doc_parenthesized_with_depth(
-                &b,
-                ExprDispatchVariant::Tuple,
-                depth + 1,
-            ))
-            .append(rparen(depth))
-            .group(),
+        ExprView::Tuple(a, b) => {
+            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Tuple, depth + 1)
+                .append(punct(", "))
+                .append(to_doc_parenthesized_with_depth(
+                    &b,
+                    ExprDispatchVariant::Tuple,
+                    depth + 1,
+                ))
+                .group()
+        }
 
         // Logic-level
         ExprView::True => kw("true"),
         ExprView::False => kw("false"),
-        ExprView::Not(p) => op("\u{00AC}")
+        ExprView::Not(p) => op("!")
             .append(to_doc_parenthesized_with_depth(
                 &p,
                 ExprDispatchVariant::Not,
@@ -306,9 +302,8 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
 
         // Type-level
         ExprView::Bool => styled(Style::Type, "Bool"),
-        ExprView::Omega => styled(Style::Type, "\u{03A9}"),
-        ExprView::Never => styled(Style::Type, "Never"),
-        ExprView::Powerset(a) => styled(Style::Type, "P")
+        ExprView::Omega => styled(Style::Type, "Omega"),
+        ExprView::Powerset(a) => styled(Style::Type, "Powerset")
             .append(lparen(depth))
             .append(to_doc_with_depth(&a, depth + 1))
             .append(rparen(depth))
