@@ -9,13 +9,13 @@
 // DType opcodes
 pub const T_BOOL: u8 = 0x01;
 pub const T_OMEGA: u8 = 0x02;
-pub const T_NEVER: u8 = 0x03;
 pub const T_FUNC: u8 = 0x05; // encode: A B len(B) OP
+// pub const T_NEVER: u8 = E_NEVER; // shared with expr-level Never, encode: OP
 // pub const T_TUPLE: u8 = E_TUPLE; // same as Expr tuple, encode: A B len(B) OP
 pub const T_POWER: u8 = 0x07; // encode: A OP
 
 // Expr opcodes
-pub const E_UNREACHABLE: u8 = 0x10;
+pub const E_NEVER: u8 = 0x10; // shared with type-level Never
 pub const E_APP: u8 = 0x11; // encode: arg payload(func_id) OP
 pub const E_IF: u8 = 0x12; // encode: cond then else len(else) len(then) OP
 pub const E_TUPLE: u8 = 0x13; // encode: A B len(B) OP

@@ -80,27 +80,6 @@ impl Expr for InlineVariable {
     }
 }
 
-/// An expression that denotes unreachable code (no value can be produced).
-pub struct Unreachable;
-
-impl expr_sealed::Sealed for Unreachable {}
-impl Expr for Unreachable {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Never
-    }
-}
-
-impl RawEncodable for Unreachable {
-    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::E_UNREACHABLE]);
-        1
-    }
-
-    fn encoded_size(&self) -> u64 {
-        1
-    }
-}
-
 /// Application of a function variable to an argument: `f(arg)`.
 pub struct App<A: Expr> {
     /// Function variable identifier.
@@ -765,7 +744,7 @@ impl Expr for Never {
 
 impl RawEncodable for Never {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::T_NEVER]);
+        f(&[magic::E_NEVER]);
         1
     }
     fn encoded_size(&self) -> u64 {

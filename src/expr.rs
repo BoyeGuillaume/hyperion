@@ -194,7 +194,6 @@ impl<'a> DynBorrowedExpr<'a> {
         use encoding::magic::*;
         match *op {
             // Term-level
-            E_UNREACHABLE => ExprView::Never,
             E_APP => {
                 let func_id = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected function id after E_APP opcode");
@@ -314,7 +313,7 @@ impl<'a> DynBorrowedExpr<'a> {
             // Type-level
             T_BOOL => ExprView::Bool,
             T_OMEGA => ExprView::Omega,
-            T_NEVER => ExprView::Never,
+            E_NEVER => ExprView::Never,
             T_FUNC => {
                 let right_len = encoding::integer::decode_u64(&mut s)
                     .expect("Invalid encoding: expected length of right child before func opcode");
