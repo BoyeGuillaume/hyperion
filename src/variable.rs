@@ -112,7 +112,7 @@ impl std::fmt::Display for InlineVariable {
         if let Some(c) = self.symbol(f.alternate()) {
             write!(f, "{}", c)
         } else {
-            write!(f, "v{}", self.0)
+            write!(f, "v{}", self.raw() - 26)
         }
     }
 }

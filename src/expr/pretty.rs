@@ -94,12 +94,14 @@ pub fn calculate_precedence(e: ExprDispatchVariant) -> u8 {
     use ExprDispatchVariant::*;
 
     match e {
-        App | If | ForAll | Exists => 2,
-        Func | Tuple => 1,
-        And | Or | Implies | Iff | Equal => 2,
-        Not => 3,
-        Var | Never | True | False | Bool | Omega | Powerset => 4,
-        // _ => unreachable!(),
+        If => 1,
+        ForAll | Exists => 2,
+        And | Or | Implies | Iff => 3,
+        Equal => 4,
+        Not => 5,
+        Tuple | App => 6,
+        Func | Powerset => 7,
+        Var | Never | True | False | Bool | Omega => 255,
     }
 }
 
@@ -111,9 +113,16 @@ fn requires_parens(
     match parent_type {
         None => false,
         Some(pt) => {
+            let allow_self_parens = !matches!(
+                current_type,
+                ExprDispatchVariant::If | ExprDispatchVariant::App | ExprDispatchVariant::Func
+            );
+
             let current_prec = calculate_precedence(current_type);
             let parent_prec = calculate_precedence(pt);
-            (parent_prec > current_prec) || (parent_prec == current_prec && current_type != pt)
+            (parent_prec > current_prec)
+                || (parent_prec == current_prec && current_type != pt)
+                || (parent_prec == current_prec && !allow_self_parens)
         }
     }
 }
