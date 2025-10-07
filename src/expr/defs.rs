@@ -276,6 +276,7 @@ impl RawEncodable for True {
         f(&[magic::P_TRUE]);
         1
     }
+
     fn encoded_size(&self) -> u64 {
         1
     }
@@ -298,6 +299,7 @@ impl RawEncodable for False {
         f(&[magic::P_FALSE]);
         1
     }
+
     fn encoded_size(&self) -> u64 {
         1
     }
@@ -323,6 +325,7 @@ impl<P: Expr + RawEncodable> RawEncodable for Not<P> {
         f(&[magic::P_NOT]);
         s + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.inner.encoded_size() + 1
     }
@@ -359,6 +362,7 @@ impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for And<P, Q> 
         f(&[magic::P_AND]);
         size + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.left.encoded_size()
             + self.right.encoded_size()
@@ -374,6 +378,7 @@ impl<P: Expr, Q: Expr> And<P, Q> {
             right: self.right,
         }
     }
+
     pub fn subs_right<R: Expr>(self, right: R) -> And<P, R> {
         And {
             left: self.left,
@@ -407,6 +412,7 @@ impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Or<P, Q> {
         f(&[magic::P_OR]);
         s + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.left.encoded_size()
             + self.right.encoded_size()
@@ -422,6 +428,7 @@ impl<P: Expr, Q: Expr> Or<P, Q> {
             right: self.right,
         }
     }
+
     pub fn subs_right<R: Expr>(self, right: R) -> Or<P, R> {
         Or {
             left: self.left,
@@ -455,6 +462,7 @@ impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Implies<P,
         f(&[magic::P_IMPLIES]);
         s + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.antecedent.encoded_size()
             + self.consequent.encoded_size()
@@ -503,6 +511,7 @@ impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Iff<P, Q> 
         f(&[magic::P_IFF]);
         s + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.left.encoded_size()
             + self.right.encoded_size()
@@ -518,6 +527,7 @@ impl<P: Expr, Q: Expr> Iff<P, Q> {
             right: self.right,
         }
     }
+
     pub fn subs_right<R: Expr>(self, right: R) -> Iff<P, R> {
         Iff {
             left: self.left,
@@ -557,6 +567,7 @@ impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for ForAll<DT
         f(&[magic::P_FORALL]);
         size + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.dtype.encoded_size()
             + self.inner.encoded_size()
@@ -574,6 +585,7 @@ impl<DT: Expr, P: Expr> ForAll<DT, P> {
             inner,
         }
     }
+
     pub fn subs_dtype<R: Expr>(self, dtype: R) -> ForAll<R, P> {
         ForAll {
             variable: self.variable,
@@ -614,6 +626,7 @@ impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for Exists<DT
         f(&[magic::P_EXISTS]);
         size + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.dtype.encoded_size()
             + self.inner.encoded_size()
@@ -631,6 +644,7 @@ impl<DT: Expr, P: Expr> Exists<DT, P> {
             inner,
         }
     }
+
     pub fn subs_dtype<R: Expr>(self, dtype: R) -> Exists<R, P> {
         Exists {
             variable: self.variable,
@@ -665,6 +679,7 @@ impl<T1: Expr + RawEncodable, T2: Expr + RawEncodable> RawEncodable for Eq<T1, T
         f(&[magic::P_EQUAL]);
         size + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.left.encoded_size()
             + self.right.encoded_size()
@@ -680,6 +695,7 @@ impl<T1: Expr, T2: Expr> Eq<T1, T2> {
             right: self.right,
         }
     }
+
     pub fn subs_right<R: Expr>(self, right: R) -> Eq<T1, R> {
         Eq {
             left: self.left,
@@ -707,6 +723,7 @@ impl RawEncodable for Bool {
         f(&[magic::T_BOOL]);
         1
     }
+
     fn encoded_size(&self) -> u64 {
         1
     }
@@ -727,6 +744,7 @@ impl RawEncodable for Omega {
         f(&[magic::T_OMEGA]);
         1
     }
+
     fn encoded_size(&self) -> u64 {
         1
     }
@@ -771,6 +789,7 @@ impl<A: Expr + RawEncodable> RawEncodable for PowerSet<A> {
         f(&[magic::T_POWER]);
         s + 1
     }
+
     fn encoded_size(&self) -> u64 {
         self.inner.encoded_size() + 1
     }
