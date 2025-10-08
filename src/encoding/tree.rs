@@ -371,6 +371,10 @@ impl TreeBuf {
     pub fn total_bytes(&self) -> usize {
         self.bytes.len()
     }
+
+    pub fn root(&self) -> Option<TreeBufNodeRef> {
+        self.get_root_offset()
+    }
 }
 
 impl Default for TreeBuf {

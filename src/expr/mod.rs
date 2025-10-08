@@ -7,9 +7,13 @@ pub mod func;
 // mod pretty;
 pub mod variant;
 pub mod view;
-use crate::encoding::{LegacyDynBuf, LegacyRawEncodable};
+
+use crate::encoding::EncodableExpr;
+use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
+use crate::expr::variant::ExprType;
 use crate::expr::view::ExprView;
-use crate::{encoding, variable::InlineVariable};
+use crate::utils::staticvec::StaticVec;
+use crate::variable::InlineVariable;
 
 pub(crate) mod expr_sealed {
     pub trait Sealed {}
@@ -18,65 +22,65 @@ pub(crate) mod expr_sealed {
 }
 
 /// Trait implemented by all unified expression nodes provided by this crate.
-pub trait Expr: expr_sealed::Sealed + Sized + LegacyRawEncodable {
+pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
     /// Describe the expression's outer constructor and expose children.
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
 
-    /// Encode this expr into a dynamic, byte-backed representation.
-    #[inline]
-    fn encode(&self) -> AnyExpr {
-        let mut buf = LegacyDynBuf::new();
-        self.encode_dynbuf(&mut buf);
-        AnyExpr { bytes: buf }
-    }
+    // Encode this expr into a dynamic, byte-backed representation.
+    // #[inline]
+    // fn encode(&self) -> AnyExprLegacy {
+    //     let mut buf = LegacyDynBuf::new();
+    //     self.encode_dynbuf(&mut buf);
+    //     AnyExprLegacy { bytes: buf }
+    // }
 
-    /// Construct a function type from `self` to `arg` as a type-level expression.
-    #[inline]
-    fn func<Q: Expr>(self, codomain: Q) -> defs::Func<Self, Q> {
-        defs::Func {
-            domain: self,
-            codomain,
-        }
-    }
+    // Construct a function type from `self` to `arg` as a type-level expression.
+    // #[inline]
+    // fn func<Q: Expr>(self, codomain: Q) -> defs::Func<Self, Q> {
+    //     defs::Func {
+    //         domain: self,
+    //         codomain,
+    //     }
+    // }
 
-    /// Construct a tuple, can be either a type or a term based on context
-    #[inline]
-    fn tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q> {
-        defs::Tuple {
-            first: self,
-            second: other,
-        }
-    }
+    // /// Construct a tuple, can be either a type or a term based on context
+    // #[inline]
+    // fn tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q> {
+    //     defs::Tuple {
+    //         first: self,
+    //         second: other,
+    //     }
+    // }
 
-    /// Construct the powerset type `P(self)` as a type-level expression.
-    #[inline]
-    fn powerset(self) -> defs::PowerSet<Self> {
-        defs::PowerSet { inner: self }
-    }
+    // /// Construct the powerset type `P(self)` as a type-level expression.
+    // #[inline]
+    // fn powerset(self) -> defs::PowerSet<Self> {
+    //     defs::PowerSet { inner: self }
+    // }
 
-    #[inline]
-    /// Build an equality expression `self == other`.
-    fn equals<Q: Expr>(self, other: Q) -> defs::Eq<Self, Q>
-    where
-        Self: Sized,
-    {
-        defs::Eq {
-            left: self,
-            right: other,
-        }
-    }
+    // #[inline]
+    // /// Build an equality expression `self == other`.
+    // fn equals<Q: Expr>(self, other: Q) -> defs::Eq<Self, Q>
+    // where
+    //     Self: Sized,
+    // {
+    //     defs::Eq {
+    //         left: self,
+    //         right: other,
+    //     }
+    // }
 
-    #[inline]
-    /// Build a tuple expression `(self, other)`.
-    fn make_tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q>
-    where
-        Self: Sized,
-    {
-        defs::Tuple {
-            first: self,
-            second: other,
-        }
-    }
+    // #[inline]
+    // /// Build a tuple expression `(self, other)`.
+    // fn make_tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q>
+    // where
+    //     Self: Sized,
+    // {
+    //     defs::Tuple {
+    //         first: self,
+    //         second: other,
+    //     }
+    // }
 
     // ===================== Pretty printing helpers =====================
 
@@ -131,232 +135,143 @@ impl<'a, T: Expr> Expr for &'a T {
     }
 }
 
-/// Dynamically-encoded Expr backed by a compact byte buffer.
+#[derive(Clone)]
 pub struct AnyExpr {
-    pub(crate) bytes: LegacyDynBuf,
-}
-impl expr_sealed::Sealed for AnyExpr {}
-impl Expr for AnyExpr {
-    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        self.as_borrowed().decode_expr_concrete()
-    }
-}
-
-impl LegacyRawEncodable for AnyExpr {
-    #[inline]
-    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&self.bytes);
-        self.bytes.len() as u64
-    }
-
-    fn encoded_size(&self) -> u64 {
-        self.bytes.len() as u64
-    }
+    pub(crate) tree: TreeBuf,
 }
 
 impl AnyExpr {
-    /// Borrow these bytes as a zero-copy dynamic expr.
-    #[inline]
-    pub fn as_borrowed(&self) -> DynBorrowedExpr<'_> {
-        DynBorrowedExpr {
-            bytes: self.bytes.as_slice(),
+    fn _view(
+        tree: &TreeBuf,
+        node: TreeBufNodeRef,
+    ) -> ExprView<AnyExprRef<'_>, AnyExprRef<'_>, AnyExprRef<'_>> {
+        let (opcode, data, children) = tree.get_node(node);
+        let children: StaticVec<_, 3> = children
+            .into_iter()
+            .map(|c| AnyExprRef { tree, node: c })
+            .collect();
+        let expr_type = ExprType::from_repr(opcode).unwrap();
+        use ExprView::*;
+        debug_assert!(
+            data.is_some()
+                == matches!(
+                    expr_type,
+                    ExprType::Variable | ExprType::Forall | ExprType::Exists
+                ),
+            "Expected data for Variable, Forall, and Exists nodes only (got {:?} with data {:?})",
+            expr_type,
+            data
+        );
+        debug_assert!(
+            children.len()
+                == match expr_type {
+                    ExprType::Bool
+                    | ExprType::Omega
+                    | ExprType::True
+                    | ExprType::False
+                    | ExprType::Never => 0,
+                    ExprType::Not | ExprType::Powerset => 1,
+                    ExprType::And
+                    | ExprType::Or
+                    | ExprType::Implies
+                    | ExprType::Iff
+                    | ExprType::Equal
+                    | ExprType::Lambda
+                    | ExprType::Call
+                    | ExprType::Tuple => 2,
+                    ExprType::Forall | ExprType::Exists => 2,
+                    ExprType::If => 3,
+                    ExprType::Variable => 0,
+                },
+            "Expected correct number of children for {:?} node, got {}",
+            expr_type,
+            children.len()
+        );
+
+        match expr_type {
+            ExprType::Bool => Bool,
+            ExprType::Omega => Omega,
+            ExprType::True => True,
+            ExprType::False => False,
+            ExprType::Never => Never,
+            ExprType::Not => Not(children[0]),
+            ExprType::Powerset => Powerset(children[0]),
+            ExprType::And => And(children[0], children[1]),
+            ExprType::Or => Or(children[0], children[1]),
+            ExprType::Implies => Implies(children[0], children[1]),
+            ExprType::Iff => Iff(children[0], children[1]),
+            ExprType::Equal => Equal(children[0], children[1]),
+            ExprType::Lambda => Lambda {
+                arg: children[0],
+                body: children[1],
+            },
+            ExprType::Call => Call {
+                func: children[0],
+                arg: children[1],
+            },
+            ExprType::Tuple => Tuple(children[0], children[1]),
+            ExprType::Forall => Forall {
+                variable: InlineVariable::new_from_raw(data.unwrap()),
+                dtype: children[0],
+                inner: children[1],
+            },
+            ExprType::Exists => Exists {
+                variable: InlineVariable::new_from_raw(data.unwrap()),
+                dtype: children[0],
+                inner: children[1],
+            },
+            ExprType::If => If {
+                condition: children[0],
+                then_branch: children[1],
+                else_branch: children[2],
+            },
+            ExprType::Variable => Variable(InlineVariable::new_from_raw(data.unwrap())),
         }
     }
 
-    /// Zero-copy decode returning borrowed children.
-    #[inline]
-    pub fn decode_expr_borrowed(
-        &self,
-    ) -> ExprView<DynBorrowedExpr<'_>, DynBorrowedExpr<'_>, DynBorrowedExpr<'_>> {
-        self.as_borrowed().decode_expr_concrete()
-    }
-}
-
-/// Zero-copy dynamically-encoded Expr backed by a borrowed byte slice.
-pub struct DynBorrowedExpr<'a> {
-    pub(crate) bytes: &'a [u8],
-}
-
-impl<'a> expr_sealed::Sealed for DynBorrowedExpr<'a> {}
-
-impl<'a> DynBorrowedExpr<'a> {
-    fn raw_decode_expr(
-        bytes: &'a [u8],
-    ) -> ExprView<DynBorrowedExpr<'a>, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>> {
-        assert!(!bytes.is_empty(), "Attempted to decode empty buffer");
-
-        // Strip trailing NOPs, find opcode
-        let (mut op, mut rest) = bytes.split_last().unwrap();
-        while *op == MISC_NOP {
-            (op, rest) = rest.split_last().unwrap();
-        }
-        let mut s: &[u8] = rest;
-
-        use encoding::legacy_magic::*;
-        match *op {
-            // Term-level
-            E_APP => {
-                let func_id = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected function id after E_APP opcode");
-                ExprView::App {
-                    func: InlineVariable::new_from_raw(func_id),
-                    arg: DynBorrowedExpr { bytes: s },
-                }
-            }
-            E_IF => {
-                let then_len = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected then-branch length after E_IF opcode");
-                let else_len = encoding::integer::decode_u64(&mut s).expect(
-                    "Invalid encoding: expected else-branch length after then-branch length",
-                );
-                assert!(
-                    (then_len as usize) + (else_len as usize) <= s.len(),
-                    "Invalid encoding: then-branch or else-branch length exceeds available bytes"
-                );
-                let slen = s.len();
-                let (prefix, else_bytes) = s.split_at(slen - else_len as usize);
-                let (cond_bytes, then_bytes) = prefix.split_at(prefix.len() - then_len as usize);
-                ExprView::If {
-                    condition: DynBorrowedExpr { bytes: cond_bytes },
-                    then_branch: DynBorrowedExpr { bytes: then_bytes },
-                    else_branch: DynBorrowedExpr { bytes: else_bytes },
-                }
-            }
-            E_TUPLE => {
-                let right_len = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected length of right child before tuple opcode");
-                assert!(
-                    right_len as usize <= s.len(),
-                    "Invalid encoding: right length exceeds available bytes"
-                );
-                let split_at = s.len() - right_len as usize;
-                let (left_bytes, right_bytes) = s.split_at(split_at);
-                ExprView::Tuple(
-                    DynBorrowedExpr { bytes: left_bytes },
-                    DynBorrowedExpr { bytes: right_bytes },
-                )
-            }
-
-            // Shared var (context-free in unified language)
-            MISC_VAR => {
-                let id = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected variable id after VAR_INLINE opcode");
-                ExprView::Var(InlineVariable::new_from_raw(id))
-            }
-
-            // Logic-level
-            P_TRUE => ExprView::True,
-            P_FALSE => ExprView::False,
-            P_NOT => ExprView::Not(DynBorrowedExpr { bytes: s }),
-            P_AND | P_OR | P_IMPLIES | P_IFF => {
-                let right_len = encoding::integer::decode_u64(&mut s).expect(
-                    "Invalid encoding: expected right-hand side length after binary operator",
-                );
-                assert!(
-                    right_len as usize <= s.len(),
-                    "Invalid encoding: right-hand side length exceeds available bytes"
-                );
-                let split_at = s.len() - right_len as usize;
-                let (left_bytes, right_bytes) = s.split_at(split_at);
-                let l = DynBorrowedExpr { bytes: left_bytes };
-                let r = DynBorrowedExpr { bytes: right_bytes };
-                match *op {
-                    P_AND => ExprView::And(l, r),
-                    P_OR => ExprView::Or(l, r),
-                    P_IMPLIES => ExprView::Implies(l, r),
-                    P_IFF => ExprView::Iff(l, r),
-                    _ => unreachable!(),
-                }
-            }
-            P_FORALL | P_EXISTS => {
-                let var_id = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected variable id after forall/exists opcode");
-                let inner_len = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected inner length after variable id");
-                assert!(
-                    (inner_len as usize) <= s.len(),
-                    "Invalid encoding: inner length exceeds available bytes"
-                );
-                let split_at = s.len() - inner_len as usize;
-                let (dtype_bytes, inner_bytes) = s.split_at(split_at);
-                let dt = DynBorrowedExpr { bytes: dtype_bytes };
-                let inner = DynBorrowedExpr { bytes: inner_bytes };
-                let var = InlineVariable::new_from_raw(var_id);
-                match *op {
-                    P_FORALL => ExprView::ForAll {
-                        variable: var,
-                        dtype: dt,
-                        inner,
-                    },
-                    P_EXISTS => ExprView::Exists {
-                        variable: var,
-                        dtype: dt,
-                        inner,
-                    },
-                    _ => unreachable!(),
-                }
-            }
-            P_EQUAL => {
-                let right_len = encoding::integer::decode_u64(&mut s).expect(
-                    "Invalid encoding: expected right-hand side length after equality operator",
-                );
-                assert!(
-                    right_len as usize <= s.len(),
-                    "Invalid encoding: right-hand side length exceeds available bytes"
-                );
-                let split_at = s.len() - right_len as usize;
-                let (left_bytes, right_bytes) = s.split_at(split_at);
-                let l = DynBorrowedExpr { bytes: left_bytes };
-                let r = DynBorrowedExpr { bytes: right_bytes };
-                ExprView::Equal(l, r)
-            }
-
-            // Type-level
-            T_BOOL => ExprView::Bool,
-            T_OMEGA => ExprView::Omega,
-            E_NEVER => ExprView::Never,
-            T_FUNC => {
-                let right_len = encoding::integer::decode_u64(&mut s)
-                    .expect("Invalid encoding: expected length of right child before func opcode");
-                assert!(
-                    right_len as usize <= s.len(),
-                    "Invalid encoding: right length exceeds available bytes"
-                );
-                let split_at = s.len() - right_len as usize;
-                let (left_bytes, right_bytes) = s.split_at(split_at);
-                let l = DynBorrowedExpr { bytes: left_bytes };
-                let r = DynBorrowedExpr { bytes: right_bytes };
-                ExprView::Func(l, r)
-            }
-            // T_TUPLE => merged with E_TUPLE
-            T_POWER => ExprView::Powerset(DynBorrowedExpr { bytes: s }),
-            _ => panic!("Invalid encoding: unknown opcode {}", *op),
+    pub fn as_ref(&self) -> AnyExprRef<'_> {
+        AnyExprRef {
+            tree: &self.tree,
+            node: self.tree.root().unwrap(),
         }
     }
+}
 
-    /// Decode with concrete borrowed types (no allocations).
-    #[inline]
-    pub fn decode_expr_concrete(
-        &self,
-    ) -> ExprView<DynBorrowedExpr<'a>, DynBorrowedExpr<'a>, DynBorrowedExpr<'a>> {
-        Self::raw_decode_expr(self.bytes)
+impl expr_sealed::Sealed for AnyExpr {}
+impl EncodableExpr for AnyExpr {
+    fn encode_tree_step(
+        self,
+        tree: &mut crate::encoding::tree::TreeBuf,
+    ) -> crate::encoding::tree::TreeBufNodeRef {
+        todo!()
     }
 }
 
-impl<'a> Expr for DynBorrowedExpr<'a> {
+impl Expr for AnyExpr {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        Self::raw_decode_expr(self.bytes)
+        Self::_view(&self.tree, self.tree.root().unwrap())
     }
 }
 
-impl<'a> LegacyRawEncodable for DynBorrowedExpr<'a> {
-    #[inline]
-    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&self.bytes);
-        self.bytes.len() as u64
-    }
+#[derive(Clone, Copy)]
+pub struct AnyExprRef<'a> {
+    pub(crate) tree: &'a TreeBuf,
+    pub(crate) node: TreeBufNodeRef,
+}
 
-    fn encoded_size(&self) -> u64 {
-        self.bytes.len() as u64
+impl<'a> expr_sealed::Sealed for AnyExprRef<'a> {}
+
+impl<'a> EncodableExpr for AnyExprRef<'a> {
+    fn encode_tree_step(
+        self,
+        tree: &mut crate::encoding::tree::TreeBuf,
+    ) -> crate::encoding::tree::TreeBufNodeRef {
+        todo!()
+    }
+}
+
+impl<'a> Expr for AnyExprRef<'a> {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        AnyExpr::_view(self.tree, self.node)
     }
 }

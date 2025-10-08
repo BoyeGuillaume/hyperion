@@ -5,28 +5,28 @@ use strum::{EnumIs, EnumTryAs};
 
 use crate::{
     encoding::{
-        LegacyRawEncodable,
-        integer::{encode_u64, encoded_size_u64},
+        EncodableExpr,
+        tree::{TreeBuf, TreeBufNodeRef},
     },
-    expr::{Expr, defs::App},
+    expr::variant::ExprType,
 };
 
 /// Identifier for a variable, either internal or external.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIs, EnumTryAs)]
 pub enum Variable {
     /// An internal variable, e.g., bound in a lambda abstraction or a quantifier.
-    Internal(u64),
+    Internal(u32),
 
     /// An external variable, e.g., a constant in a context or environment.
-    External(u64),
+    External(u32),
 }
 
 impl Variable {
     /// Maximum valid id for either internal or external variables (63 bits).
-    pub const MAX_VARIABLE_ID: u64 = (1 << 63) - 1;
+    pub const MAX_VARIABLE_ID: u32 = (1 << 31) - 1;
 
     /// Create a new internal variable with the given numeric id.
-    pub fn raw(&self) -> u64 {
+    pub fn raw(&self) -> u32 {
         match self {
             Variable::Internal(id) => {
                 debug_assert!(*id <= Self::MAX_VARIABLE_ID);
@@ -41,7 +41,7 @@ impl Variable {
 
     /// Create a new variable from a raw numeric id.
     #[inline]
-    pub fn new_from_raw(id: u64) -> Self {
+    pub fn new_from_raw(id: u32) -> Self {
         if id & 1 == 0 {
             Variable::Internal(id >> 1)
         } else {
@@ -59,11 +59,11 @@ impl Into<InlineVariable> for Variable {
 /// Identifier for an inline variable.
 ///
 /// Variables can either represent internal bounds (e.g., in lambda abstractions) or can represent
-/// external constants (e.g., in a context or environment). The LSB of the `u64` is reserved to
+/// external constants (e.g., in a context or environment). The LSB of the `u32` is reserved to
 /// distinguish these two cases;
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct InlineVariable(u64);
+pub struct InlineVariable(u32);
 
 impl InlineVariable {
     /// Create from a variable
@@ -72,12 +72,12 @@ impl InlineVariable {
     }
 
     /// Create a new identifier with the given numeric id.
-    pub fn new_from_raw(id: u64) -> Self {
+    pub fn new_from_raw(id: u32) -> Self {
         Self(id)
     }
 
     /// Get the raw numeric id.
-    pub fn raw(&self) -> u64 {
+    pub fn raw(&self) -> u32 {
         self.0
     }
 
@@ -99,12 +99,6 @@ impl InlineVariable {
             None
         }
     }
-
-    #[inline]
-    /// Apply this variable as a function to an argument, producing an application expression.
-    pub fn apply<A: Expr>(self, arg: A) -> App<A> {
-        App { func: self, arg }
-    }
 }
 
 impl std::fmt::Display for InlineVariable {
@@ -117,20 +111,15 @@ impl std::fmt::Display for InlineVariable {
     }
 }
 
-impl LegacyRawEncodable for InlineVariable {
-    fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        let size = encode_u64(self.raw(), f);
-        f(&[crate::encoding::legacy_magic::MISC_VAR]);
-        size + 1
-    }
-
-    fn encoded_size(&self) -> u64 {
-        encoded_size_u64(self.raw()) + 1
+/// ======================== Encoding =========================
+impl EncodableExpr for InlineVariable {
+    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+        tree.push_node(ExprType::Variable as u8, Some(self.raw()), &[])
     }
 }
 
-impl Into<Variable> for InlineVariable {
-    fn into(self) -> Variable {
-        self.to_variable()
+impl EncodableExpr for Variable {
+    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+        tree.push_node(ExprType::Variable as u8, Some(self.raw()), &[])
     }
 }

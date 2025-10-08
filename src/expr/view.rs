@@ -2,38 +2,43 @@
 //!
 //! Every node in the language decodes to a single enum with children of the same
 //! expression type parameter `E`.
-use strum::{EnumDiscriminants, EnumIs};
+use strum::EnumIs;
 
-use crate::variable::InlineVariable;
+use crate::{
+    expr::{Expr, variant::ExprType},
+    variable::InlineVariable,
+};
 
 /// Describes the outer constructor of an expression and borrows its children.
-#[derive(Debug, Clone, Copy, EnumIs, EnumDiscriminants)]
-#[strum_discriminants(derive(PartialOrd, Ord, Hash))]
-#[strum_discriminants(name(ExprDispatchVariant))]
-#[strum_discriminants(vis(pub))]
-pub enum ExprView<E1, E2, E3> {
-    // Term-level
-    Var(InlineVariable),
-    App {
-        func: InlineVariable,
-        arg: E1,
-    },
-    If {
-        condition: E1,
-        then_branch: E2,
-        else_branch: E3,
-    },
-    Tuple(E1, E2), // Also used as a type
-
-    // Logic-level
+#[derive(Debug, Clone, Copy, EnumIs)]
+pub enum ExprView<E1: Expr, E2: Expr, E3: Expr> {
+    // Constant expr
+    Bool,
+    Omega,
     True,
     False,
+    Never,
+
+    // Unary expr
     Not(E1),
+    Powerset(E1),
+
+    // Binary expr
     And(E1, E2),
     Or(E1, E2),
     Implies(E1, E2),
     Iff(E1, E2),
-    ForAll {
+    Equal(E1, E2),
+    Lambda {
+        arg: E1,
+        body: E2,
+    },
+    Call {
+        func: E1,
+        arg: E2,
+    },
+    Tuple(E1, E2), // Also used as a type
+    Forall {
         variable: InlineVariable,
         dtype: E1,
         inner: E2,
@@ -43,62 +48,47 @@ pub enum ExprView<E1, E2, E3> {
         dtype: E1,
         inner: E2,
     },
-    Equal(E1, E2),
 
-    // Type-level
-    Bool,
-    Omega,
-    Never,
-    Powerset(E1),
-    Func(E1, E2),
+    // Ternary expr
+    If {
+        condition: E1,
+        then_branch: E2,
+        else_branch: E3,
+    },
+
+    // Misc
+    Variable(InlineVariable),
 }
 
-impl ExprDispatchVariant {
-    /// Returns true if this variant can represent a type.
-    /// Note: Tuple can be a type as well as an expression.
-    pub fn can_be_type(&self) -> bool {
-        use ExprDispatchVariant::*;
-        matches!(self, Bool | Omega | Never | Powerset | Func | Tuple | Var)
+impl<E1: Expr, E2: Expr, E3: Expr> ExprView<E1, E2, E3> {
+    pub fn type_(&self) -> ExprType {
+        pub use ExprView::*;
+
+        match self {
+            Bool => ExprType::Bool,
+            Omega => ExprType::Omega,
+            True => ExprType::True,
+            False => ExprType::False,
+            Never => ExprType::Never,
+            Not(_) => ExprType::Not,
+            Powerset(_) => ExprType::Powerset,
+            And(_, _) => ExprType::And,
+            Or(_, _) => ExprType::Or,
+            Implies(_, _) => ExprType::Implies,
+            Iff(_, _) => ExprType::Iff,
+            Equal(_, _) => ExprType::Equal,
+            Lambda { .. } => ExprType::Lambda,
+            Call { .. } => ExprType::Call,
+            Tuple(_, _) => ExprType::Tuple,
+            Forall { .. } => ExprType::Forall,
+            Exists { .. } => ExprType::Exists,
+            If { .. } => ExprType::If,
+            Variable(_) => ExprType::Variable,
+        }
     }
 
-    /// Returns true if this variant represents a proposition.
-    /// Propositions are a subset of expressions.
-    pub fn can_be_prop(&self) -> bool {
-        use ExprDispatchVariant::*;
-        matches!(
-            self,
-            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal | Var
-        )
-    }
-
-    /// Returns true if this variant can represent a term-level expression.
-    /// Note: all propositions are expressions, and Tuple can also be an expression.
-    pub fn can_be_expr(&self) -> bool {
-        use ExprDispatchVariant::*;
-        matches!(
-            self,
-            // Term-level
-            Var | Never | App | If | Tuple |
-            // Logic-level (propositions are expressions)
-            True | False | Not | And | Or | Implies | Iff | ForAll | Exists | Equal
-        )
-    }
-}
-
-impl<E1, E2, E3> ExprView<E1, E2, E3> {
-    /// Returns true if this expression can represent a type.
-    pub fn can_be_type(&self) -> bool {
-        ExprDispatchVariant::from(self).can_be_type()
-    }
-
-    /// Returns true if this expression represents a proposition.
-    pub fn can_be_prop(&self) -> bool {
-        ExprDispatchVariant::from(self).can_be_prop()
-    }
-
-    /// Returns true if this is a (term-level) expression.
-    /// Propositions are expressions; Tuple can be both an expression and a type.
-    pub fn can_be_expr(&self) -> bool {
-        ExprDispatchVariant::from(self).can_be_expr()
+    #[inline]
+    pub fn r#type(&self) -> ExprType {
+        self.type_()
     }
 }

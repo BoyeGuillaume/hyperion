@@ -1,6 +1,6 @@
-use strum::EnumIter;
+use strum::{EnumIter, FromRepr};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr)]
 #[repr(u8)]
 pub enum ExprType {
     // Constant expr
@@ -21,6 +21,7 @@ pub enum ExprType {
     Iff,
     Equal,
     Lambda,
+    Call,
     Tuple,
     Forall,
     Exists,
@@ -29,5 +30,5 @@ pub enum ExprType {
     If,
 
     // Misc
-    Var,
+    Variable,
 }
