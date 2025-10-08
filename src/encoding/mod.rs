@@ -5,6 +5,7 @@
 use smallvec::SmallVec;
 pub mod integer;
 pub mod magic;
+pub mod tree;
 
 /// A small, stack-allocated-first buffer used by the encoder.
 ///

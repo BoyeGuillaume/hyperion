@@ -38,11 +38,12 @@
 //! assert!(view.is_for_all());
 //! ```
 
-pub(crate) mod encoding;
+pub mod encoding;
 /// Expressions API: builders, dispatch, and dynamic encodings.
 pub mod expr;
 /// Parser for the pretty-printed language.
 pub mod parser;
+pub mod utils;
 /// Inline variables used across types, expressions, and propositions.
 pub mod variable;
 
