@@ -42,7 +42,7 @@ pub mod encoding;
 /// Expressions API: builders, dispatch, and dynamic encodings.
 pub mod expr;
 /// Parser for the pretty-printed language.
-pub mod parser;
+// pub mod parser;
 pub mod utils;
 /// Inline variables used across types, expressions, and propositions.
 pub mod variable;
@@ -50,7 +50,7 @@ pub mod variable;
 pub mod prelude {
     pub use crate::expr::defs::{Bool, False, Never, Omega, True};
     pub use crate::expr::func::*;
-    pub use crate::expr::{DynBorrowedExpr, DynExpr, Expr};
-    pub use crate::parser::parse;
+    pub use crate::expr::{AnyExpr, DynBorrowedExpr, Expr};
+    // pub use crate::parser::parse;
     pub use crate::variable::InlineVariable;
 }

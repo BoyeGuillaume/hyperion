@@ -3,11 +3,11 @@
 //! All these types implement [`crate::expr::Expr`] and support encoding/decoding.
 use crate::{
     encoding::{
-        RawEncodable,
+        LegacyRawEncodable,
         integer::{encode_u64, encoded_size_u64},
-        magic,
+        legacy_magic,
     },
-    expr::{DynExpr, Expr, expr_sealed, view::ExprView},
+    expr::{AnyExpr, Expr, expr_sealed, view::ExprView},
     variable::InlineVariable,
 };
 
@@ -75,8 +75,8 @@ macro_rules! define_ops_expr {
 /// Variable expression referencing an inline variable identifier.
 impl expr_sealed::Sealed for InlineVariable {}
 impl Expr for InlineVariable {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Var(*self)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Var(*self)
     }
 }
 
@@ -90,22 +90,22 @@ pub struct App<A: Expr> {
 
 impl<A: Expr> expr_sealed::Sealed for App<A> {}
 impl<A: Expr> Expr for App<A> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&A, DynExpr, DynExpr>::App {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&A, AnyExpr, AnyExpr>::App {
             func: self.func,
             arg: &self.arg,
         }
     }
 }
 
-impl<A: Expr> RawEncodable for App<A> {
+impl<A: Expr> LegacyRawEncodable for App<A> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
 
         size += self.arg.encode_raw(f);
         // func id payload
         size += encode_u64(self.func.raw(), f);
-        f(&[magic::E_APP]);
+        f(&[legacy_magic::E_APP]);
 
         size + 1
     }
@@ -137,7 +137,7 @@ pub struct If<P: Expr, T: Expr, E: Expr> {
 
 impl<P: Expr, T: Expr, E: Expr> expr_sealed::Sealed for If<P, T, E> {}
 impl<P: Expr, T: Expr, E: Expr> Expr for If<P, T, E> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         ExprView::<&P, &T, &E>::If {
             condition: &self.condition,
             then_branch: &self.then_branch,
@@ -146,7 +146,7 @@ impl<P: Expr, T: Expr, E: Expr> Expr for If<P, T, E> {
     }
 }
 
-impl<P: Expr, T: Expr, E: Expr> RawEncodable for If<P, T, E> {
+impl<P: Expr, T: Expr, E: Expr> LegacyRawEncodable for If<P, T, E> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
 
@@ -159,7 +159,7 @@ impl<P: Expr, T: Expr, E: Expr> RawEncodable for If<P, T, E> {
 
         size += encode_u64(else_len as u64, f);
         size += encode_u64(then_len as u64, f);
-        f(&[magic::E_IF]);
+        f(&[legacy_magic::E_IF]);
 
         size + 1
     }
@@ -213,12 +213,12 @@ pub struct Tuple<A: Expr, B: Expr> {
 
 impl<A: Expr, B: Expr> expr_sealed::Sealed for Tuple<A, B> {}
 impl<A: Expr, B: Expr> Expr for Tuple<A, B> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&A, &B, DynExpr>::Tuple(&self.first, &self.second)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&A, &B, AnyExpr>::Tuple(&self.first, &self.second)
     }
 }
 
-impl<A: Expr, B: Expr> RawEncodable for Tuple<A, B> {
+impl<A: Expr, B: Expr> LegacyRawEncodable for Tuple<A, B> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
 
@@ -228,7 +228,7 @@ impl<A: Expr, B: Expr> RawEncodable for Tuple<A, B> {
         size += right_len;
 
         size += encode_u64(right_len as u64, f);
-        f(&[magic::E_TUPLE]);
+        f(&[legacy_magic::E_TUPLE]);
 
         size + 1
     }
@@ -266,14 +266,14 @@ pub struct True;
 
 impl expr_sealed::Sealed for True {}
 impl Expr for True {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::True
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::True
     }
 }
 
-impl RawEncodable for True {
+impl LegacyRawEncodable for True {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::P_TRUE]);
+        f(&[legacy_magic::P_TRUE]);
         1
     }
 
@@ -289,14 +289,14 @@ pub struct False;
 
 impl expr_sealed::Sealed for False {}
 impl Expr for False {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::False
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::False
     }
 }
 
-impl RawEncodable for False {
+impl LegacyRawEncodable for False {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::P_FALSE]);
+        f(&[legacy_magic::P_FALSE]);
         1
     }
 
@@ -314,15 +314,15 @@ pub struct Not<P: Expr> {
 
 impl<P: Expr> expr_sealed::Sealed for Not<P> {}
 impl<P: Expr> Expr for Not<P> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&P, DynExpr, DynExpr>::Not(&self.inner)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&P, AnyExpr, AnyExpr>::Not(&self.inner)
     }
 }
 
-impl<P: Expr + RawEncodable> RawEncodable for Not<P> {
+impl<P: Expr + LegacyRawEncodable> LegacyRawEncodable for Not<P> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let s = self.inner.encode_raw(f);
-        f(&[magic::P_NOT]);
+        f(&[legacy_magic::P_NOT]);
         s + 1
     }
 
@@ -347,19 +347,19 @@ pub struct And<P: Expr, Q: Expr> {
 
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for And<P, Q> {}
 impl<P: Expr, Q: Expr> Expr for And<P, Q> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&P, &Q, DynExpr>::And(&self.left, &self.right)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&P, &Q, AnyExpr>::And(&self.left, &self.right)
     }
 }
 
-impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for And<P, Q> {
+impl<P: Expr + LegacyRawEncodable, Q: Expr + LegacyRawEncodable> LegacyRawEncodable for And<P, Q> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
         size += self.left.encode_raw(f);
         let rlen = self.right.encode_raw(f);
         size += rlen;
         size += encode_u64(rlen, f);
-        f(&[magic::P_AND]);
+        f(&[legacy_magic::P_AND]);
         size + 1
     }
 
@@ -397,19 +397,19 @@ pub struct Or<P: Expr, Q: Expr> {
 
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Or<P, Q> {}
 impl<P: Expr, Q: Expr> Expr for Or<P, Q> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&P, &Q, DynExpr>::Or(&self.left, &self.right)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&P, &Q, AnyExpr>::Or(&self.left, &self.right)
     }
 }
 
-impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Or<P, Q> {
+impl<P: Expr + LegacyRawEncodable, Q: Expr + LegacyRawEncodable> LegacyRawEncodable for Or<P, Q> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.left.encode_raw(f);
         let r = self.right.encode_raw(f);
         s += r;
         s += encode_u64(r, f);
-        f(&[magic::P_OR]);
+        f(&[legacy_magic::P_OR]);
         s + 1
     }
 
@@ -447,19 +447,21 @@ pub struct Implies<P: Expr, Q: Expr> {
 
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Implies<P, Q> {}
 impl<P: Expr, Q: Expr> Expr for Implies<P, Q> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&P, &Q, DynExpr>::Implies(&self.antecedent, &self.consequent)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&P, &Q, AnyExpr>::Implies(&self.antecedent, &self.consequent)
     }
 }
 
-impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Implies<P, Q> {
+impl<P: Expr + LegacyRawEncodable, Q: Expr + LegacyRawEncodable> LegacyRawEncodable
+    for Implies<P, Q>
+{
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.antecedent.encode_raw(f);
         let r = self.consequent.encode_raw(f);
         s += r;
         s += encode_u64(r, f);
-        f(&[magic::P_IMPLIES]);
+        f(&[legacy_magic::P_IMPLIES]);
         s + 1
     }
 
@@ -496,19 +498,19 @@ pub struct Iff<P: Expr, Q: Expr> {
 
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Iff<P, Q> {}
 impl<P: Expr, Q: Expr> Expr for Iff<P, Q> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&P, &Q, DynExpr>::Iff(&self.left, &self.right)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&P, &Q, AnyExpr>::Iff(&self.left, &self.right)
     }
 }
 
-impl<P: Expr + RawEncodable, Q: Expr + RawEncodable> RawEncodable for Iff<P, Q> {
+impl<P: Expr + LegacyRawEncodable, Q: Expr + LegacyRawEncodable> LegacyRawEncodable for Iff<P, Q> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.left.encode_raw(f);
         let r = self.right.encode_raw(f);
         s += r;
         s += encode_u64(r, f);
-        f(&[magic::P_IFF]);
+        f(&[legacy_magic::P_IFF]);
         s + 1
     }
 
@@ -547,8 +549,8 @@ pub struct ForAll<DT: Expr, P: Expr> {
 
 impl<DT: Expr, P: Expr> expr_sealed::Sealed for ForAll<DT, P> {}
 impl<DT: Expr, P: Expr> Expr for ForAll<DT, P> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&DT, &P, DynExpr>::ForAll {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&DT, &P, AnyExpr>::ForAll {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -556,7 +558,9 @@ impl<DT: Expr, P: Expr> Expr for ForAll<DT, P> {
     }
 }
 
-impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for ForAll<DT, P> {
+impl<DT: Expr + LegacyRawEncodable, P: Expr + LegacyRawEncodable> LegacyRawEncodable
+    for ForAll<DT, P>
+{
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
         size += self.dtype.encode_raw(f);
@@ -564,7 +568,7 @@ impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for ForAll<DT
         size += inner_len;
         size += encode_u64(inner_len, f);
         size += encode_u64(self.variable.raw(), f);
-        f(&[magic::P_FORALL]);
+        f(&[legacy_magic::P_FORALL]);
         size + 1
     }
 
@@ -606,8 +610,8 @@ pub struct Exists<DT: Expr, P: Expr> {
 
 impl<DT: Expr, P: Expr> expr_sealed::Sealed for Exists<DT, P> {}
 impl<DT: Expr, P: Expr> Expr for Exists<DT, P> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&DT, &P, DynExpr>::Exists {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&DT, &P, AnyExpr>::Exists {
             variable: self.variable,
             dtype: &self.dtype,
             inner: &self.inner,
@@ -615,7 +619,9 @@ impl<DT: Expr, P: Expr> Expr for Exists<DT, P> {
     }
 }
 
-impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for Exists<DT, P> {
+impl<DT: Expr + LegacyRawEncodable, P: Expr + LegacyRawEncodable> LegacyRawEncodable
+    for Exists<DT, P>
+{
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
         size += self.dtype.encode_raw(f);
@@ -623,7 +629,7 @@ impl<DT: Expr + RawEncodable, P: Expr + RawEncodable> RawEncodable for Exists<DT
         size += inner_len;
         size += encode_u64(inner_len, f);
         size += encode_u64(self.variable.raw(), f);
-        f(&[magic::P_EXISTS]);
+        f(&[legacy_magic::P_EXISTS]);
         size + 1
     }
 
@@ -664,19 +670,21 @@ pub struct Eq<T1: Expr, T2: Expr> {
 
 impl<T1: Expr, T2: Expr> expr_sealed::Sealed for Eq<T1, T2> {}
 impl<T1: Expr, T2: Expr> Expr for Eq<T1, T2> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&T1, &T2, DynExpr>::Equal(&self.left, &self.right)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&T1, &T2, AnyExpr>::Equal(&self.left, &self.right)
     }
 }
 
-impl<T1: Expr + RawEncodable, T2: Expr + RawEncodable> RawEncodable for Eq<T1, T2> {
+impl<T1: Expr + LegacyRawEncodable, T2: Expr + LegacyRawEncodable> LegacyRawEncodable
+    for Eq<T1, T2>
+{
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut size = 0;
         size += self.left.encode_raw(f);
         let rlen = self.right.encode_raw(f);
         size += rlen;
         size += encode_u64(rlen, f);
-        f(&[magic::P_EQUAL]);
+        f(&[legacy_magic::P_EQUAL]);
         size + 1
     }
 
@@ -713,14 +721,14 @@ pub struct Bool;
 
 impl expr_sealed::Sealed for Bool {}
 impl Expr for Bool {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Bool
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Bool
     }
 }
 
-impl RawEncodable for Bool {
+impl LegacyRawEncodable for Bool {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::T_BOOL]);
+        f(&[legacy_magic::T_BOOL]);
         1
     }
 
@@ -734,14 +742,14 @@ pub struct Omega;
 
 impl expr_sealed::Sealed for Omega {}
 impl Expr for Omega {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Omega
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Omega
     }
 }
 
-impl RawEncodable for Omega {
+impl LegacyRawEncodable for Omega {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::T_OMEGA]);
+        f(&[legacy_magic::T_OMEGA]);
         1
     }
 
@@ -755,14 +763,14 @@ pub struct Never;
 
 impl expr_sealed::Sealed for Never {}
 impl Expr for Never {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<DynExpr, DynExpr, DynExpr>::Never
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Never
     }
 }
 
-impl RawEncodable for Never {
+impl LegacyRawEncodable for Never {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        f(&[magic::E_NEVER]);
+        f(&[legacy_magic::E_NEVER]);
         1
     }
     fn encoded_size(&self) -> u64 {
@@ -777,16 +785,16 @@ pub struct PowerSet<A: Expr> {
 
 impl<A: Expr> expr_sealed::Sealed for PowerSet<A> {}
 impl<A: Expr> Expr for PowerSet<A> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&A, DynExpr, DynExpr>::Powerset(&self.inner)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&A, AnyExpr, AnyExpr>::Powerset(&self.inner)
     }
 }
 
-impl<A: Expr + RawEncodable> RawEncodable for PowerSet<A> {
+impl<A: Expr + LegacyRawEncodable> LegacyRawEncodable for PowerSet<A> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.inner.encode_raw(f);
-        f(&[magic::T_POWER]);
+        f(&[legacy_magic::T_POWER]);
         s + 1
     }
 
@@ -810,19 +818,19 @@ pub struct Func<A: Expr, B: Expr> {
 }
 impl<A: Expr, B: Expr> expr_sealed::Sealed for Func<A, B> {}
 impl<A: Expr, B: Expr> Expr for Func<A, B> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        ExprView::<&A, &B, DynExpr>::Func(&self.domain, &self.codomain)
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<&A, &B, AnyExpr>::Func(&self.domain, &self.codomain)
     }
 }
 
-impl<A: Expr + RawEncodable, B: Expr + RawEncodable> RawEncodable for Func<A, B> {
+impl<A: Expr + LegacyRawEncodable, B: Expr + LegacyRawEncodable> LegacyRawEncodable for Func<A, B> {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let mut s = 0;
         s += self.domain.encode_raw(f);
         let r = self.codomain.encode_raw(f);
         s += r;
         s += encode_u64(r, f);
-        f(&[magic::T_FUNC]);
+        f(&[legacy_magic::T_FUNC]);
         s + 1
     }
 

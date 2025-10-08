@@ -89,7 +89,7 @@ pub fn encoded_size_u64(value: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::encoding::DynBuf;
+    use crate::encoding::LegacyDynBuf;
 
     use super::*;
 
@@ -99,7 +99,7 @@ mod tests {
             0_u64, 1, 2, 3, 10, 42, 63, 64, 65, 100, 127, 128, 129, 255, 256, 300,
         ];
         for &v in &values {
-            let mut buf = DynBuf::new();
+            let mut buf = LegacyDynBuf::new();
             encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let mut s: &[u8] = buf.as_slice();
             let decoded = decode_u64(&mut s);
@@ -112,7 +112,7 @@ mod tests {
     fn roundtrip_edge_values() {
         let values = [0_u64, 127, 128, 16383, 16384, u64::MAX];
         for &v in &values {
-            let mut buf = DynBuf::new();
+            let mut buf = LegacyDynBuf::new();
             encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let mut s: &[u8] = &buf;
             let decoded = decode_u64(&mut s);
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn encoding_shape_examples() {
-        let mut buf = DynBuf::new();
+        let mut buf = LegacyDynBuf::new();
         encode_u64(0, &mut |b| buf.extend_from_slice(b));
         assert_eq!(&buf[..], &[0x00]);
 
@@ -181,7 +181,7 @@ mod tests {
             u64::MAX,
         ];
         for &v in &test_values {
-            let mut buf = DynBuf::new();
+            let mut buf = LegacyDynBuf::new();
             encode_u64(v, &mut |b| buf.extend_from_slice(b));
             let computed_size = encoded_size_u64(v);
             assert_eq!(buf.len() as u64, computed_size, "value {v} size mismatch");

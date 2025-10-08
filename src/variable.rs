@@ -5,7 +5,7 @@ use strum::{EnumIs, EnumTryAs};
 
 use crate::{
     encoding::{
-        RawEncodable,
+        LegacyRawEncodable,
         integer::{encode_u64, encoded_size_u64},
     },
     expr::{Expr, defs::App},
@@ -117,10 +117,10 @@ impl std::fmt::Display for InlineVariable {
     }
 }
 
-impl RawEncodable for InlineVariable {
+impl LegacyRawEncodable for InlineVariable {
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         let size = encode_u64(self.raw(), f);
-        f(&[crate::encoding::magic::MISC_VAR]);
+        f(&[crate::encoding::legacy_magic::MISC_VAR]);
         size + 1
     }
 

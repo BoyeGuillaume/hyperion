@@ -20,8 +20,8 @@
 //! differ; this parser accepts those forms and also a reasonable precedence hierarchy.
 use chumsky::prelude::*;
 
-use crate::encoding::{DynBuf, integer, magic};
-use crate::expr::DynExpr;
+use crate::encoding::{DynBuf, integer, legacy_magic};
+use crate::expr::AnyExpr;
 use crate::variable::InlineVariable;
 use typed_arena::Arena;
 
@@ -205,7 +205,7 @@ enum Ast<'a> {
 
 impl<'a> Ast<'a> {
     fn encode_into<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        use magic::*;
+        use legacy_magic::*;
         match self {
             // Term-level
             Ast::Var(v) => {
@@ -605,7 +605,7 @@ fn parse_if<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a
 
 /// Parse a pretty-printed unified expression into a dynamically-encoded `DynExpr`.
 /// Returns a `Result` with either the expression or a list of error strings.
-pub fn parse(src: &str) -> Result<DynExpr, Vec<String>> {
+pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
     // 1) Lexing
     let (tokens, lex_errs) = lexer().parse(src).into_output_errors();
     let mut errors: Vec<String> = Vec::new();
@@ -634,5 +634,5 @@ pub fn parse(src: &str) -> Result<DynExpr, Vec<String>> {
     // 3) Encode to DynExpr
     let mut buf = DynBuf::new();
     ast.encode_into(&mut |bytes| buf.extend_from_slice(bytes));
-    Ok(DynExpr { bytes: buf })
+    Ok(AnyExpr { bytes: buf })
 }

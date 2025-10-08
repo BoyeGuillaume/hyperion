@@ -4,9 +4,10 @@
 //! and decode later as borrowed views without allocations.
 pub mod defs;
 pub mod func;
-mod pretty;
+// mod pretty;
+pub mod variant;
 pub mod view;
-use crate::encoding::{DynBuf, RawEncodable};
+use crate::encoding::{LegacyDynBuf, LegacyRawEncodable};
 use crate::expr::view::ExprView;
 use crate::{encoding, variable::InlineVariable};
 
@@ -17,16 +18,16 @@ pub(crate) mod expr_sealed {
 }
 
 /// Trait implemented by all unified expression nodes provided by this crate.
-pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
+pub trait Expr: expr_sealed::Sealed + Sized + LegacyRawEncodable {
     /// Describe the expression's outer constructor and expose children.
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
 
     /// Encode this expr into a dynamic, byte-backed representation.
     #[inline]
-    fn encode(&self) -> DynExpr {
-        let mut buf = DynBuf::new();
+    fn encode(&self) -> AnyExpr {
+        let mut buf = LegacyDynBuf::new();
         self.encode_dynbuf(&mut buf);
-        DynExpr { bytes: buf }
+        AnyExpr { bytes: buf }
     }
 
     /// Construct a function type from `self` to `arg` as a type-level expression.
@@ -79,69 +80,69 @@ pub trait Expr: expr_sealed::Sealed + Sized + RawEncodable {
 
     // ===================== Pretty printing helpers =====================
 
-    /// Build an RcDoc representation of this expression with style annotations.
-    /// Useful for composing or rendering manually.
-    #[inline]
-    fn pretty_doc(&self) -> ::pretty::RcDoc<'static, crate::expr::pretty::Style> {
-        crate::expr::pretty::to_doc_with_depth(self, 0)
-    }
+    // /// Build an RcDoc representation of this expression with style annotations.
+    // /// Useful for composing or rendering manually.
+    // #[inline]
+    // fn pretty_doc(&self) -> ::pretty::RcDoc<'static, crate::expr::pretty::Style> {
+    //     crate::expr::pretty::to_doc_with_depth(self, 0)
+    // }
 
-    /// Render this expression with colors to any termcolor writer at the given width.
-    #[inline]
-    fn pretty_render_to<W: ::termcolor::WriteColor + ::std::io::Write>(
-        &self,
-        width: usize,
-        out: &mut W,
-    ) -> ::std::io::Result<()> {
-        let doc = self.pretty_doc();
-        crate::expr::pretty::render_to(&doc, width, out)
-    }
+    // /// Render this expression with colors to any termcolor writer at the given width.
+    // #[inline]
+    // fn pretty_render_to<W: ::termcolor::WriteColor + ::std::io::Write>(
+    //     &self,
+    //     width: usize,
+    //     out: &mut W,
+    // ) -> ::std::io::Result<()> {
+    //     let doc = self.pretty_doc();
+    //     crate::expr::pretty::render_to(&doc, width, out)
+    // }
 
-    /// Print this expression to stdout with colors (TTY-aware), at the given width.
-    #[inline]
-    fn pretty_print_with_width(&self, width: usize) -> ::std::io::Result<()> {
-        crate::expr::pretty::print_colored(self, width)
-    }
+    // /// Print this expression to stdout with colors (TTY-aware), at the given width.
+    // #[inline]
+    // fn pretty_print_with_width(&self, width: usize) -> ::std::io::Result<()> {
+    //     crate::expr::pretty::print_colored(self, width)
+    // }
 
-    /// Print this expression to stdout with colors (TTY-aware), at auto-detected width (or 80 if not a TTY).
-    #[inline]
-    fn pretty_print(&self) -> ::std::io::Result<()> {
-        let width = crate::expr::pretty::terminal_width();
-        crate::expr::pretty::print_colored(self, width)
-    }
+    // /// Print this expression to stdout with colors (TTY-aware), at auto-detected width (or 80 if not a TTY).
+    // #[inline]
+    // fn pretty_print(&self) -> ::std::io::Result<()> {
+    //     let width = crate::expr::pretty::terminal_width();
+    //     crate::expr::pretty::print_colored(self, width)
+    // }
 
-    /// Format this expression into a plain string (no colors), at the given width.
-    #[inline]
-    fn pretty_string_with_width(&self, width: usize) -> String {
-        crate::expr::pretty::to_plain_string(self, width)
-    }
+    // /// Format this expression into a plain string (no colors), at the given width.
+    // #[inline]
+    // fn pretty_string_with_width(&self, width: usize) -> String {
+    //     crate::expr::pretty::to_plain_string(self, width)
+    // }
 
-    /// Format this expression into a plain string (no colors), at auto-detected width (or 80 if not a TTY).
-    #[inline]
-    fn pretty_string(&self) -> String {
-        let width = crate::expr::pretty::terminal_width();
-        crate::expr::pretty::to_plain_string(self, width)
-    }
+    // /// Format this expression into a plain string (no colors), at auto-detected width (or 80 if not a TTY).
+    // #[inline]
+    // fn pretty_string(&self) -> String {
+    //     let width = crate::expr::pretty::terminal_width();
+    //     crate::expr::pretty::to_plain_string(self, width)
+    // }
 }
 
 impl<'a, T: Expr> Expr for &'a T {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        (*self).view_expr()
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        (*self).view()
     }
 }
 
 /// Dynamically-encoded Expr backed by a compact byte buffer.
-pub struct DynExpr {
-    pub(crate) bytes: DynBuf,
+pub struct AnyExpr {
+    pub(crate) bytes: LegacyDynBuf,
 }
-impl expr_sealed::Sealed for DynExpr {}
-impl Expr for DynExpr {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+impl expr_sealed::Sealed for AnyExpr {}
+impl Expr for AnyExpr {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         self.as_borrowed().decode_expr_concrete()
     }
 }
 
-impl RawEncodable for DynExpr {
+impl LegacyRawEncodable for AnyExpr {
     #[inline]
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         f(&self.bytes);
@@ -153,7 +154,7 @@ impl RawEncodable for DynExpr {
     }
 }
 
-impl DynExpr {
+impl AnyExpr {
     /// Borrow these bytes as a zero-copy dynamic expr.
     #[inline]
     pub fn as_borrowed(&self) -> DynBorrowedExpr<'_> {
@@ -191,7 +192,7 @@ impl<'a> DynBorrowedExpr<'a> {
         }
         let mut s: &[u8] = rest;
 
-        use encoding::magic::*;
+        use encoding::legacy_magic::*;
         match *op {
             // Term-level
             E_APP => {
@@ -343,12 +344,12 @@ impl<'a> DynBorrowedExpr<'a> {
 }
 
 impl<'a> Expr for DynBorrowedExpr<'a> {
-    fn view_expr(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         Self::raw_decode_expr(self.bytes)
     }
 }
 
-impl<'a> RawEncodable for DynBorrowedExpr<'a> {
+impl<'a> LegacyRawEncodable for DynBorrowedExpr<'a> {
     #[inline]
     fn encode_raw<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
         f(&self.bytes);

@@ -133,7 +133,7 @@ pub fn to_doc_parenthesized_with_depth<E: Expr>(
     parent_type: ExprDispatchVariant,
     depth: u8,
 ) -> RcDoc<'static, Style> {
-    let current_type = e.view_expr().discriminant();
+    let current_type = e.view().discriminant();
     let need = requires_parens(current_type, Some(parent_type));
     if need {
         lparen(depth)
@@ -147,7 +147,7 @@ pub fn to_doc_parenthesized_with_depth<E: Expr>(
 
 /// Depth-aware variant that colors parentheses by nesting level.
 pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
-    match e.view_expr() {
+    match e.view() {
         // Term-level
         ExprView::Var(v) => ident(v),
         ExprView::Never => op("<>"), // or "unreachable"
