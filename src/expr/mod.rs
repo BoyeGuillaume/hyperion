@@ -4,7 +4,7 @@
 //! and decode later as borrowed views without allocations.
 pub mod defs;
 pub mod func;
-// mod pretty;
+pub mod pretty;
 pub mod variant;
 pub mod view;
 
@@ -12,6 +12,7 @@ use crate::encoding::EncodableExpr;
 use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
 use crate::expr::variant::ExprType;
 use crate::expr::view::ExprView;
+use crate::prelude::{Call, Equal, Lambda};
 use crate::utils::staticvec::StaticVec;
 use crate::variable::InlineVariable;
 
@@ -36,107 +37,41 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
         AnyExpr { tree }
     }
 
-    // Encode this expr into a dynamic, byte-backed representation.
-    // #[inline]
-    // fn encode(&self) -> AnyExprLegacy {
-    //     let mut buf = LegacyDynBuf::new();
-    //     self.encode_dynbuf(&mut buf);
-    //     AnyExprLegacy { bytes: buf }
-    // }
+    /// Construct a tuple, can be either a type or a term based on context
+    #[inline]
+    fn tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q> {
+        defs::Tuple {
+            first: self,
+            second: other,
+        }
+    }
 
-    // Construct a function type from `self` to `arg` as a type-level expression.
-    // #[inline]
-    // fn func<Q: Expr>(self, codomain: Q) -> defs::Func<Self, Q> {
-    //     defs::Func {
-    //         domain: self,
-    //         codomain,
-    //     }
-    // }
+    /// Construct the powerset type `P(self)` as a type-level expression.
+    #[inline]
+    fn powerset(self) -> defs::Powerset<Self> {
+        defs::Powerset { inner: self }
+    }
 
-    // /// Construct a tuple, can be either a type or a term based on context
-    // #[inline]
-    // fn tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q> {
-    //     defs::Tuple {
-    //         first: self,
-    //         second: other,
-    //     }
-    // }
+    /// Build an equality expression `self == other`.
+    #[inline]
+    fn equals<Q: Expr>(self, other: Q) -> Equal<Self, Q> {
+        Equal {
+            lhs: self,
+            rhs: other,
+        }
+    }
 
-    // /// Construct the powerset type `P(self)` as a type-level expression.
-    // #[inline]
-    // fn powerset(self) -> defs::PowerSet<Self> {
-    //     defs::PowerSet { inner: self }
-    // }
+    /// Call this body with the given argument: `self(other)`.
+    #[inline]
+    fn apply<Q: Expr>(self, arg: Q) -> Call<Self, Q> {
+        Call { func: self, arg }
+    }
 
-    // #[inline]
-    // /// Build an equality expression `self == other`.
-    // fn equals<Q: Expr>(self, other: Q) -> defs::Eq<Self, Q>
-    // where
-    //     Self: Sized,
-    // {
-    //     defs::Eq {
-    //         left: self,
-    //         right: other,
-    //     }
-    // }
-
-    // #[inline]
-    // /// Build a tuple expression `(self, other)`.
-    // fn make_tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q>
-    // where
-    //     Self: Sized,
-    // {
-    //     defs::Tuple {
-    //         first: self,
-    //         second: other,
-    //     }
-    // }
-
-    // ===================== Pretty printing helpers =====================
-
-    // /// Build an RcDoc representation of this expression with style annotations.
-    // /// Useful for composing or rendering manually.
-    // #[inline]
-    // fn pretty_doc(&self) -> ::pretty::RcDoc<'static, crate::expr::pretty::Style> {
-    //     crate::expr::pretty::to_doc_with_depth(self, 0)
-    // }
-
-    // /// Render this expression with colors to any termcolor writer at the given width.
-    // #[inline]
-    // fn pretty_render_to<W: ::termcolor::WriteColor + ::std::io::Write>(
-    //     &self,
-    //     width: usize,
-    //     out: &mut W,
-    // ) -> ::std::io::Result<()> {
-    //     let doc = self.pretty_doc();
-    //     crate::expr::pretty::render_to(&doc, width, out)
-    // }
-
-    // /// Print this expression to stdout with colors (TTY-aware), at the given width.
-    // #[inline]
-    // fn pretty_print_with_width(&self, width: usize) -> ::std::io::Result<()> {
-    //     crate::expr::pretty::print_colored(self, width)
-    // }
-
-    // /// Print this expression to stdout with colors (TTY-aware), at auto-detected width (or 80 if not a TTY).
-    // #[inline]
-    // fn pretty_print(&self) -> ::std::io::Result<()> {
-    //     let width = crate::expr::pretty::terminal_width();
-    //     crate::expr::pretty::print_colored(self, width)
-    // }
-
-    // /// Format this expression into a plain string (no colors), at the given width.
-    // #[inline]
-    // fn pretty_string_with_width(&self, width: usize) -> String {
-    //     crate::expr::pretty::to_plain_string(self, width)
-    // }
-
-    // /// Format this expression into a plain string (no colors), at auto-detected width (or 80 if not a TTY).
-    // #[inline]
-    // fn pretty_string(&self) -> String {
-    //     let width = crate::expr::pretty::terminal_width();
-    //     crate::expr::pretty::to_plain_string(self, width)
-    // }
+    /// Lambda abstraction: `λ self. body`
+    #[inline]
+    fn lambda<Q: Expr>(self, body: Q) -> Lambda<Self, Q> {
+        Lambda { arg: self, body }
+    }
 }
 
 impl<'a, T: Expr> Expr for &'a T {

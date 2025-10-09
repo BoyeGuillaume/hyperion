@@ -8,7 +8,7 @@ use crate::{
         EncodableExpr,
         tree::{TreeBuf, TreeBufNodeRef},
     },
-    expr::variant::ExprType,
+    expr::{AnyExpr, Expr, expr_sealed, variant::ExprType, view::ExprView},
 };
 
 /// Identifier for a variable, either internal or external.
@@ -111,15 +111,32 @@ impl std::fmt::Display for InlineVariable {
     }
 }
 
-/// ======================== Encoding =========================
+/// ======================== Encoding & Traits ========================
+
+impl expr_sealed::Sealed for InlineVariable {}
+
 impl EncodableExpr for InlineVariable {
     fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Variable as u8, Some(self.raw()), &[])
     }
 }
 
+impl Expr for InlineVariable {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Variable(*self)
+    }
+}
+
+impl expr_sealed::Sealed for Variable {}
+
 impl EncodableExpr for Variable {
     fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Variable as u8, Some(self.raw()), &[])
+    }
+}
+
+impl Expr for Variable {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        ExprView::<AnyExpr, AnyExpr, AnyExpr>::Variable(InlineVariable::new(*self))
     }
 }

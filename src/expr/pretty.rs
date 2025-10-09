@@ -3,12 +3,12 @@
 //! This module builds annotated `RcDoc<Style>` trees from `Expr` and renders
 //! them to a `termcolor::WriteColor` sink with width-aware layout.
 
-use crate::expr::view::ExprDispatchVariant;
-use crate::expr::{Expr, view::ExprView};
+use crate::expr::defs::*;
+use crate::expr::{AnyExpr, AnyExprRef};
+use crate::expr::{Expr, variant::ExprType, view::ExprView};
 use crate::variable::InlineVariable;
-use pretty::{RcDoc, RenderAnnotated};
+use pretty::{FmtWrite, RcDoc, RenderAnnotated};
 use std::io::{self, Write};
-use strum::IntoDiscriminant;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 /// Styles that we annotate parts of the document with.
@@ -90,32 +90,29 @@ fn ident(v: InlineVariable) -> RcDoc<'static, Style> {
     RcDoc::as_string(v).annotate(Style::Ident)
 }
 
-pub fn calculate_precedence(e: ExprDispatchVariant) -> u8 {
-    use ExprDispatchVariant::*;
+fn calculate_precedence(e: ExprType) -> u8 {
+    use ExprType::*;
 
     match e {
         If => 1,
-        ForAll | Exists => 2,
+        Forall | Exists | Lambda => 2,
         And | Or | Implies | Iff => 3,
         Equal => 4,
         Not => 5,
-        Tuple | App => 6,
-        Func | Powerset => 7,
-        Var | Never | True | False | Bool | Omega => 255,
+        Tuple | Call => 6,
+        Powerset => 7,
+        Variable | Never | True | False | Bool | Omega => 255,
     }
 }
 
 #[inline]
-fn requires_parens(
-    current_type: ExprDispatchVariant,
-    parent_type: Option<ExprDispatchVariant>,
-) -> bool {
+fn requires_parens(current_type: ExprType, parent_type: Option<ExprType>) -> bool {
     match parent_type {
         None => false,
         Some(pt) => {
             let allow_self_parens = !matches!(
                 current_type,
-                ExprDispatchVariant::If | ExprDispatchVariant::App | ExprDispatchVariant::Func
+                ExprType::If | ExprType::Call | ExprType::Lambda
             );
 
             let current_prec = calculate_precedence(current_type);
@@ -128,12 +125,12 @@ fn requires_parens(
 }
 
 #[inline]
-pub fn to_doc_parenthesized_with_depth<E: Expr>(
+fn to_doc_parenthesized_with_depth<E: Expr>(
     e: &E,
-    parent_type: ExprDispatchVariant,
+    parent_type: ExprType,
     depth: u8,
 ) -> RcDoc<'static, Style> {
-    let current_type = e.view().discriminant();
+    let current_type = e.view().r#type();
     let need = requires_parens(current_type, Some(parent_type));
     if need {
         lparen(depth)
@@ -146,16 +143,18 @@ pub fn to_doc_parenthesized_with_depth<E: Expr>(
 }
 
 /// Depth-aware variant that colors parentheses by nesting level.
-pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
+fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
     match e.view() {
         // Term-level
-        ExprView::Var(v) => ident(v),
+        ExprView::Variable(v) => ident(v),
         ExprView::Never => op("<>"), // or "unreachable"
-        ExprView::App { func, arg } => ident(func)
-            .append(lparen(depth))
-            .append(to_doc_with_depth(&arg, depth + 1))
-            .append(rparen(depth))
-            .group(),
+        ExprView::Call { func, arg } => {
+            to_doc_parenthesized_with_depth(&func, ExprType::Call, depth)
+                .append(lparen(depth))
+                .append(to_doc_with_depth(&arg, depth + 1))
+                .append(rparen(depth))
+                .group()
+        }
         ExprView::If {
             condition,
             then_branch,
@@ -164,7 +163,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &condition,
-                ExprDispatchVariant::If,
+                ExprType::If,
                 depth,
             ))
             .append(RcDoc::line())
@@ -172,7 +171,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &then_branch,
-                ExprDispatchVariant::If,
+                ExprType::If,
                 depth,
             ))
             .append(RcDoc::line())
@@ -180,75 +179,67 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &else_branch,
-                ExprDispatchVariant::If,
+                ExprType::If,
                 depth,
             ))
             .group()
             .nest(2),
-        ExprView::Tuple(a, b) => {
-            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Tuple, depth + 1)
-                .append(punct(", "))
-                .append(to_doc_parenthesized_with_depth(
-                    &b,
-                    ExprDispatchVariant::Tuple,
-                    depth + 1,
-                ))
-                .group()
-        }
+        ExprView::Tuple(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::Tuple, depth + 1)
+            .append(punct(", "))
+            .append(to_doc_parenthesized_with_depth(
+                &b,
+                ExprType::Tuple,
+                depth + 1,
+            ))
+            .group(),
+
+        // Lambda (binder-like)
+        ExprView::Lambda { arg, body } => to_doc_with_depth(&arg, depth + 1)
+            .append(RcDoc::space())
+            .append(punct("->"))
+            .append(RcDoc::space())
+            .append(to_doc_parenthesized_with_depth(
+                &body,
+                ExprType::Lambda,
+                depth,
+            ))
+            .group(),
 
         // Logic-level
         ExprView::True => kw("true"),
         ExprView::False => kw("false"),
         ExprView::Not(p) => op("!")
-            .append(to_doc_parenthesized_with_depth(
-                &p,
-                ExprDispatchVariant::Not,
-                depth,
-            ))
+            .append(to_doc_parenthesized_with_depth(&p, ExprType::Not, depth))
             .group(),
-        ExprView::And(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::And, depth)
+        ExprView::And(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::And, depth)
             .append(RcDoc::space())
             .append(op("/\\"))
             .append(RcDoc::space())
-            .append(to_doc_parenthesized_with_depth(
-                &b,
-                ExprDispatchVariant::And,
-                depth,
-            ))
+            .append(to_doc_parenthesized_with_depth(&b, ExprType::And, depth))
             .group(),
-        ExprView::Or(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Or, depth)
+        ExprView::Or(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::Or, depth)
             .append(RcDoc::space())
             .append(op("\\/"))
             .append(RcDoc::space())
+            .append(to_doc_parenthesized_with_depth(&b, ExprType::Or, depth))
+            .group(),
+        ExprView::Implies(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::Implies, depth)
+            .append(RcDoc::space())
+            .append(op("=>"))
+            .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &b,
-                ExprDispatchVariant::Or,
+                ExprType::Implies,
                 depth,
             ))
             .group(),
-        ExprView::Implies(a, b) => {
-            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Implies, depth)
-                .append(RcDoc::space())
-                .append(op("=>"))
-                .append(RcDoc::space())
-                .append(to_doc_parenthesized_with_depth(
-                    &b,
-                    ExprDispatchVariant::Implies,
-                    depth,
-                ))
-                .group()
-        }
-        ExprView::Iff(a, b) => to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Iff, depth)
+        ExprView::Iff(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::Iff, depth)
             .append(RcDoc::space())
             .append(op("<=>"))
             .append(RcDoc::space())
-            .append(to_doc_parenthesized_with_depth(
-                &b,
-                ExprDispatchVariant::Iff,
-                depth,
-            ))
+            .append(to_doc_parenthesized_with_depth(&b, ExprType::Iff, depth))
             .group(),
-        ExprView::ForAll {
+        ExprView::Forall {
             variable,
             dtype,
             inner,
@@ -260,7 +251,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &dtype,
-                ExprDispatchVariant::ForAll,
+                ExprType::Forall,
                 depth,
             ))
             .append(RcDoc::space())
@@ -268,7 +259,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &inner,
-                ExprDispatchVariant::ForAll,
+                ExprType::Forall,
                 depth,
             ))
             .group(),
@@ -284,7 +275,7 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &dtype,
-                ExprDispatchVariant::ForAll,
+                ExprType::Exists,
                 depth,
             ))
             .append(RcDoc::space())
@@ -292,22 +283,16 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(RcDoc::space())
             .append(to_doc_parenthesized_with_depth(
                 &inner,
-                ExprDispatchVariant::ForAll,
+                ExprType::Exists,
                 depth,
             ))
             .group(),
-        ExprView::Equal(a, b) => {
-            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Equal, depth)
-                .append(RcDoc::space())
-                .append(op("="))
-                .append(RcDoc::space())
-                .append(to_doc_parenthesized_with_depth(
-                    &b,
-                    ExprDispatchVariant::Equal,
-                    depth,
-                ))
-                .group()
-        }
+        ExprView::Equal(a, b) => to_doc_parenthesized_with_depth(&a, ExprType::Equal, depth)
+            .append(RcDoc::space())
+            .append(op("="))
+            .append(RcDoc::space())
+            .append(to_doc_parenthesized_with_depth(&b, ExprType::Equal, depth))
+            .group(),
 
         // Type-level
         ExprView::Bool => styled(Style::Type, "Bool"),
@@ -317,18 +302,8 @@ pub fn to_doc_with_depth<E: Expr>(e: &E, depth: u8) -> RcDoc<'static, Style> {
             .append(to_doc_with_depth(&a, depth + 1))
             .append(rparen(depth))
             .group(),
-        ExprView::Func(a, b) => {
-            to_doc_parenthesized_with_depth(&a, ExprDispatchVariant::Func, depth)
-                .append(RcDoc::space())
-                .append(punct("->"))
-                .append(RcDoc::space())
-                .append(to_doc_parenthesized_with_depth(
-                    &b,
-                    ExprDispatchVariant::Func,
-                    depth,
-                ))
-                .group()
-        }
+        // No separate Func node in the new AST; function-like constructs can be printed
+        // via Lambda above.
     }
 }
 
@@ -361,7 +336,7 @@ impl<'w, W: WriteColor + Write> pretty::Render for ColorWriter<'w, W> {
 }
 
 /// Render a document to a `termcolor::WriteColor` with width-aware layout.
-pub fn render_to<W: WriteColor + Write>(
+fn render_to<W: WriteColor + Write>(
     doc: &RcDoc<'_, Style>,
     width: usize,
     out: &mut W,
@@ -371,7 +346,7 @@ pub fn render_to<W: WriteColor + Write>(
 }
 
 /// Convenience: print to stdout with colors if supported.
-pub fn print_colored<E: Expr>(e: &E, width: usize) -> std::io::Result<()> {
+fn print_colored<E: Expr>(e: &E, width: usize) -> std::io::Result<()> {
     let stdout = StandardStream::stdout(ColorChoice::Auto);
     let mut stdout = stdout.lock();
     let doc = to_doc_with_depth(e, 0);
@@ -379,13 +354,102 @@ pub fn print_colored<E: Expr>(e: &E, width: usize) -> std::io::Result<()> {
 }
 
 /// Convenience: format to a plain string without colors.
-pub fn to_plain_string<E: Expr>(e: &E, width: usize) -> String {
+fn to_plain_string<E: Expr>(e: &E, width: usize) -> String {
     let mut buf = String::new();
     let _ = to_doc_with_depth(e, 0).render_fmt(width, &mut buf);
     buf
 }
 
 /// Convenience: retrieve the width of the terminal, or 80 if it cannot be determined.
-pub fn terminal_width() -> usize {
+fn terminal_width() -> usize {
     term_size::dimensions().map(|(w, _)| w).unwrap_or(80)
+}
+
+/// ======================== Trait impls =========================
+pub trait PrettyExpr {
+    /// Build an RcDoc representation of this expression with style annotations.
+    /// Useful for composing or rendering manually.
+    fn pretty_doc(&self) -> RcDoc<'static, Style>;
+
+    /// Render this expression with colors to any termcolor writer at the given width.
+    fn pretty_render_to<W: WriteColor + Write>(&self, width: usize, out: &mut W) -> io::Result<()>;
+
+    /// Print this expression to stdout with colors (TTY-aware), at auto-detected width (or 80 if not a TTY).
+    fn pretty_print(&self) -> io::Result<()>;
+
+    /// Format this expression into a plain string (no colors)
+    fn pretty_string(&self) -> String;
+}
+
+impl<T: Expr> PrettyExpr for T {
+    #[inline]
+    fn pretty_doc(&self) -> RcDoc<'static, Style> {
+        to_doc_with_depth(self, 0)
+    }
+
+    #[inline]
+    fn pretty_render_to<W: WriteColor + Write>(&self, width: usize, out: &mut W) -> io::Result<()> {
+        let doc = self.pretty_doc();
+        render_to(&doc, width, out)
+    }
+
+    #[inline]
+    fn pretty_print(&self) -> io::Result<()> {
+        let width = terminal_width();
+        print_colored(self, width)
+    }
+
+    #[inline]
+    fn pretty_string(&self) -> String {
+        to_plain_string(self, 80)
+    }
+}
+
+macro_rules! impl_display_for_type {
+    (
+        $t:ident $(
+            < $($gen:tt),* >
+        )?
+    ) => {
+        impl $(
+            < $($gen: Expr),* >
+        )? std::fmt::Display for $t $(< $($gen),* >)? {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let mut w = FmtWrite::new(f);
+                let doc = self.pretty_doc();
+                doc.render_raw(80, &mut w)
+            }
+        }
+    };
+}
+
+impl_display_for_type!(Bool);
+impl_display_for_type!(Omega);
+impl_display_for_type!(True);
+impl_display_for_type!(False);
+impl_display_for_type!(Never);
+
+impl_display_for_type!(Not<A>);
+impl_display_for_type!(Powerset<A>);
+
+impl_display_for_type!(And<A, B>);
+impl_display_for_type!(Or<A, B>);
+impl_display_for_type!(Implies<A, B>);
+impl_display_for_type!(Iff<A, B>);
+impl_display_for_type!(Equal<A, B>);
+impl_display_for_type!(Lambda<A, B>);
+impl_display_for_type!(Call<A, B>);
+impl_display_for_type!(Tuple<A, B>);
+impl_display_for_type!(ForAll<A, B>);
+impl_display_for_type!(Exists<A, B>);
+
+impl_display_for_type!(If<A, B, C>);
+
+impl_display_for_type!(AnyExpr);
+impl<'a> std::fmt::Display for AnyExprRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut w = FmtWrite::new(f);
+        let doc = self.pretty_doc();
+        doc.render_raw(80, &mut w)
+    }
 }

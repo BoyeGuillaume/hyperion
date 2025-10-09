@@ -48,9 +48,6 @@ pub mod utils;
 pub mod variable;
 
 pub mod prelude {
-    // pub use crate::expr::defs::{Bool, False, Never, Omega, True};
-    // pub use crate::expr::func::*;
-    // pub use crate::expr::{AnyExprLegacy, DynBorrowedExpr, Expr};
-    // pub use crate::parser::parse;
-    // pub use crate::variable::InlineVariable;
+    pub use crate::expr::{Expr, defs::*, func::*, pretty::PrettyExpr};
+    pub use crate::variable::{InlineVariable, Variable};
 }

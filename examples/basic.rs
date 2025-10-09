@@ -12,7 +12,7 @@ fn main() {
             a,
             exists(
                 b,
-                powerset(tuple(Omega, tuple(Bool, Bool)).func(Never)),
+                powerset(tuple(Omega, tuple(Bool, Bool)).lambda(Never)),
                 and(and(a, equals(c, c)), equals(not(a) | c, b)),
             ),
         ),

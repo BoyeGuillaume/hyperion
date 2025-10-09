@@ -236,14 +236,14 @@ impl<P: Expr, Q: Expr> Expr for Iff<P, Q> {
 define_ops_expr! { Iff<P: Expr, Q: Expr> }
 
 #[derive(Clone, Copy)]
-pub struct Eq<P: Expr, Q: Expr> {
+pub struct Equal<P: Expr, Q: Expr> {
     pub lhs: P,
     pub rhs: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Eq<P, Q> {}
+impl<P: Expr, Q: Expr> expr_sealed::Sealed for Equal<P, Q> {}
 
-impl<P: Expr, Q: Expr> EncodableExpr for Eq<P, Q> {
+impl<P: Expr, Q: Expr> EncodableExpr for Equal<P, Q> {
     fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
@@ -251,13 +251,13 @@ impl<P: Expr, Q: Expr> EncodableExpr for Eq<P, Q> {
     }
 }
 
-impl<P: Expr, Q: Expr> Expr for Eq<P, Q> {
+impl<P: Expr, Q: Expr> Expr for Equal<P, Q> {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         ExprView::<&P, &Q, AnyExpr>::Equal(&self.lhs, &self.rhs)
     }
 }
 
-define_ops_expr! { Eq<P: Expr, Q: Expr> }
+define_ops_expr! { Equal<P: Expr, Q: Expr> }
 
 // ======================== Quantified variables =========================
 // Forall.
@@ -387,20 +387,20 @@ impl Expr for Never {
 
 // ========================= Power set =========================
 #[derive(Clone, Copy)]
-pub struct PowerSet<P: Expr> {
+pub struct Powerset<P: Expr> {
     pub inner: P,
 }
 
-impl<P: Expr> expr_sealed::Sealed for PowerSet<P> {}
+impl<P: Expr> expr_sealed::Sealed for Powerset<P> {}
 
-impl<P: Expr> EncodableExpr for PowerSet<P> {
+impl<P: Expr> EncodableExpr for Powerset<P> {
     fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(ExprType::Powerset as u8, None, &[inner_ref])
     }
 }
 
-impl<P: Expr> Expr for PowerSet<P> {
+impl<P: Expr> Expr for Powerset<P> {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         ExprView::<&P, AnyExpr, AnyExpr>::Powerset(&self.inner)
     }
