@@ -19,14 +19,15 @@
 //! ```
 //! use hyformal::expr::*;
 //! use hyformal::expr::defs::{Bool, ForAll};
-//! use hyformal::expr::view::ExprDispatchVariant;
+//! use hyformal::expr::view::ExprView;
+//! use hyformal::expr::variant::ExprType;
+//! use hyformal::expr::Expr; // bring trait into scope for view()
 //! use hyformal::variable::InlineVariable;
-//! use strum::IntoDiscriminant;
 //!
 //! // Types as expressions: (Bool -> Bool) x Bool
-//! let ty = Bool.func(Bool).tuple(Bool);
+//! let ty = Bool.lambda(Bool).tuple(Bool);
 //! let dyn_ty = ty.encode();
-//! assert!(matches!(dyn_ty.decode_expr_borrowed().discriminant(), ExprDispatchVariant::Tuple));
+//! assert_eq!(dyn_ty.as_ref().view().type_(), ExprType::Tuple);
 //!
 //! // Terms and logic as expressions
 //! let f = InlineVariable::new_from_raw(0);
@@ -35,8 +36,9 @@
 //! let eq = app.equals(x);
 //! let quantified = ForAll { variable: x, dtype: Bool, inner: eq };
 //! let dyn_e = quantified.encode();
-//! let view = dyn_e.decode_expr_borrowed();
-//! assert!(view.is_for_all());
+//! let r = dyn_e.as_ref();
+//! let view = r.view();
+//! assert!(matches!(view, ExprView::Forall { .. }));
 //! ```
 
 /// Encoding internals: compact append-only tree buffer and encoding trait.

@@ -561,6 +561,7 @@ where
 /// Example
 /// ```
 /// use hyformal::parser::parse;
+/// use hyformal::expr::Expr;
 /// let e = parse("forall x : Bool . x = x").unwrap();
 /// assert_eq!(e.as_ref().view().type_(), hyformal::expr::variant::ExprType::Forall);
 /// ```

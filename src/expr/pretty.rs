@@ -117,7 +117,7 @@ fn requires_parens(current_type: ExprType, parent_type: Option<ExprType>) -> boo
         Some(pt) => {
             let allow_self_parens = !matches!(
                 current_type,
-                ExprType::If | ExprType::Call | ExprType::Lambda
+                ExprType::If | ExprType::Call | ExprType::Lambda | ExprType::Implies
             );
 
             let current_prec = calculate_precedence(current_type);
