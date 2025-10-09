@@ -1,3 +1,8 @@
+//! Discriminant for encoded expression nodes.
+//!
+//! Role
+//! - Stable mapping from a single-byte opcode to a high-level constructor.
+//! - Used during decoding to route to the appropriate `ExprView` variant.
 use strum::{EnumIter, FromRepr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr)]

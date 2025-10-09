@@ -1,6 +1,8 @@
 //! Concrete unified expression constructors: terms, logic, and types.
 //!
-//! All these types implement [`crate::expr::Expr`] and support encoding/decoding.
+//! All these types implement [`crate::expr::Expr`] and support encoding/decoding. They are
+//! lightweight wrappers that provide structure; you normally compose them via the builder
+//! methods on [`Expr`](crate::expr::Expr) or helpers in [`crate::expr::func`].
 use crate::{
     encoding::{
         EncodableExpr,
@@ -72,7 +74,9 @@ macro_rules! define_ops_expr {
 }
 
 // ========================= Propositional variables =========================
-// True.
+/// Logical constant `true`.
+///
+/// Role: unit proposition that is always valid. Zero children, encodes to a single node.
 #[derive(Clone, Copy)]
 pub struct True;
 
@@ -92,7 +96,9 @@ impl Expr for True {
 
 define_ops_expr! { True }
 
-// False.
+/// Logical constant `false`.
+///
+/// Role: contradiction proposition. Zero children, encodes to a single node.
 #[derive(Clone, Copy)]
 pub struct False;
 
@@ -112,7 +118,9 @@ impl Expr for False {
 
 define_ops_expr! { False }
 
-// Not.
+/// Boolean negation `!P`.
+///
+/// Role: unary logical connective.
 #[derive(Clone, Copy)]
 pub struct Not<P: Expr> {
     pub inner: P,
@@ -135,7 +143,9 @@ impl<P: Expr> Expr for Not<P> {
 
 define_ops_expr! { Not<P: Expr> }
 
-// And.
+/// Boolean conjunction `P /\ Q`.
+///
+/// Role: binary logical connective. Left and right children are expressions.
 #[derive(Clone, Copy)]
 pub struct And<P: Expr, Q: Expr> {
     pub lhs: P,
@@ -160,7 +170,9 @@ impl<P: Expr, Q: Expr> Expr for And<P, Q> {
 
 define_ops_expr! { And<P: Expr, Q: Expr> }
 
-// Or.
+/// Boolean disjunction `P \/ Q`.
+///
+/// Role: binary logical connective.
 #[derive(Clone, Copy)]
 pub struct Or<P: Expr, Q: Expr> {
     pub lhs: P,
@@ -185,7 +197,9 @@ impl<P: Expr, Q: Expr> Expr for Or<P, Q> {
 
 define_ops_expr! { Or<P: Expr, Q: Expr> }
 
-// Implies.
+/// Logical implication `P => Q` (right-associative at the parser level).
+///
+/// Role: binary logical connective.
 #[derive(Clone, Copy)]
 pub struct Implies<P: Expr, Q: Expr> {
     pub antecedent: P,
@@ -210,7 +224,9 @@ impl<P: Expr, Q: Expr> Expr for Implies<P, Q> {
 
 define_ops_expr! { Implies<P: Expr, Q: Expr> }
 
-// Iff.
+/// Logical equivalence `P <=> Q`.
+///
+/// Role: binary logical connective.
 #[derive(Clone, Copy)]
 pub struct Iff<P: Expr, Q: Expr> {
     pub lhs: P,
@@ -236,6 +252,9 @@ impl<P: Expr, Q: Expr> Expr for Iff<P, Q> {
 define_ops_expr! { Iff<P: Expr, Q: Expr> }
 
 #[derive(Clone, Copy)]
+/// Equality `A = B` between two expressions.
+///
+/// Role: binary relation across the unified language.
 pub struct Equal<P: Expr, Q: Expr> {
     pub lhs: P,
     pub rhs: Q,
@@ -260,7 +279,9 @@ impl<P: Expr, Q: Expr> Expr for Equal<P, Q> {
 define_ops_expr! { Equal<P: Expr, Q: Expr> }
 
 // ======================== Quantified variables =========================
-// Forall.
+/// Universal quantification: `forall x : T . P`.
+///
+/// Role: binds a variable over a domain `T` and asserts `P` holds for all values.
 #[derive(Clone, Copy)]
 pub struct ForAll<DT: Expr, P: Expr> {
     pub variable: InlineVariable,
@@ -294,7 +315,9 @@ impl<DT: Expr, P: Expr> Expr for ForAll<DT, P> {
 
 define_ops_expr! { ForAll<DT: Expr, P: Expr> }
 
-// Exists.
+/// Existential quantification: `exists x : T . P`.
+///
+/// Role: binds a variable and asserts existence of a witness.
 #[derive(Clone, Copy)]
 pub struct Exists<DT: Expr, P: Expr> {
     pub variable: InlineVariable,
@@ -331,7 +354,9 @@ define_ops_expr! { Exists<DT: Expr, P: Expr> }
 // ========================= Other expressions (not logic) =========================
 // ========================= Constants =========================
 
-// Bool.
+/// Type constructor `Bool`.
+///
+/// Role: simple type for boolean values.
 #[derive(Clone, Copy)]
 pub struct Bool;
 
@@ -349,7 +374,9 @@ impl Expr for Bool {
     }
 }
 
-// Omega.
+/// Top type `Omega`.
+///
+/// Role: supertype of all terms in some encodings.
 #[derive(Clone, Copy)]
 pub struct Omega;
 
@@ -367,7 +394,9 @@ impl Expr for Omega {
     }
 }
 
-// Never.
+/// Bottom term `<>` (never / unreachable).
+///
+/// Role: uninhabited term-level constant used in conditionals or as a sentinel.
 #[derive(Clone, Copy)]
 pub struct Never;
 
@@ -386,6 +415,9 @@ impl Expr for Never {
 }
 
 // ========================= Power set =========================
+/// Powerset type `P(A)`.
+///
+/// Role: type-level unary constructor.
 #[derive(Clone, Copy)]
 pub struct Powerset<P: Expr> {
     pub inner: P,
@@ -407,7 +439,10 @@ impl<P: Expr> Expr for Powerset<P> {
 }
 
 // ======================== Other binary expressions =========================
-// Lambda.
+/// Lambda abstraction `arg -> body`.
+///
+/// Role: function-like constructor. At the term level it represents λ-calculus abstraction; at
+/// the type level it can model function types when combined in conventions.
 #[derive(Clone, Copy)]
 pub struct Lambda<A: Expr, B: Expr> {
     pub arg: A,
@@ -433,7 +468,9 @@ impl<A: Expr, B: Expr> Expr for Lambda<A, B> {
     }
 }
 
-// Call.
+/// Function application `func(arg)`.
+///
+/// Role: term-level application. Also used to apply type-level constructors when meaningful.
 #[derive(Clone, Copy)]
 pub struct Call<A: Expr, B: Expr> {
     pub func: A,
@@ -459,7 +496,9 @@ impl<A: Expr, B: Expr> Expr for Call<A, B> {
     }
 }
 
-// Tuple.
+/// Tuple `(A, B)` (also used as a type constructor).
+///
+/// Role: binary product type/term.
 #[derive(Clone, Copy)]
 pub struct Tuple<A: Expr, B: Expr> {
     pub first: A,
@@ -483,6 +522,9 @@ impl<A: Expr, B: Expr> Expr for Tuple<A, B> {
 }
 
 // ======================== If-then-else =========================
+/// If-then-else conditional.
+///
+/// Role: ternary term-level construct: `if condition then then_branch else else_branch`.
 #[derive(Clone, Copy)]
 pub struct If<P: Expr, T: Expr, E: Expr> {
     pub condition: P,

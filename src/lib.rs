@@ -6,9 +6,10 @@
 //! expected to be checked at runtime by consumers.
 //!
 //! Encoding shape
-//!  - All encodings use Reverse Polish Notation (postfix): children first, then an opcode
-//!    byte, with lengths for some right operands. See [`encoding::magic`].
-//!  - Lengths are compact u64 varints; see [`encoding::integer`].
+//!  - All encodings use a compact node representation with children first (postfix), then a
+//!    single-byte opcode and flags; certain nodes carry a small 32-bit payload.
+//!  - Child references are 16-bit offsets into a contiguous buffer, allowing up to 7 children
+//!    per node and a maximum buffer size of 64 KiB.
 //!
 //! Performance
 //!  - Dynamic buffers use `smallvec` and keep up to 32 bytes inline before spilling to the heap.
@@ -38,6 +39,7 @@
 //! assert!(view.is_for_all());
 //! ```
 
+/// Encoding internals: compact append-only tree buffer and encoding trait.
 pub mod encoding;
 /// Expressions API: builders, dispatch, and dynamic encodings.
 pub mod expr;
@@ -48,6 +50,13 @@ pub mod utils;
 pub mod variable;
 
 pub mod prelude {
+    //! Convenient re-exports for end users.
+    //!
+    //! - `Expr` trait with builder helpers
+    //! - Concrete constructors from `defs::*`
+    //! - Free-function builders from `func::*`
+    //! - Pretty-printing via `PrettyExpr`
+    //! - Variable types
     pub use crate::expr::{Expr, defs::*, func::*, pretty::PrettyExpr};
     pub use crate::variable::{InlineVariable, Variable};
 }

@@ -1,7 +1,26 @@
 //! Unified expressions: constructors and zero-copy dynamic decoding.
 //!
-//! Build unified expressions (types, terms, and logic), encode to a compact buffer,
-//! and decode later as borrowed views without allocations.
+//! Role
+//! - Provide a single expression language covering types, terms, and logic.
+//! - Builders in [`defs`] and helpers in [`func`] let you create expressions ergonomically.
+//! - [`Expr::encode`] produces a compact owned buffer, and [`AnyExprRef`] lets you borrow
+//!   and traverse without allocating.
+//!
+//! Performance
+//! - Building is O(n) across nodes, with small buffers inlined before spilling to the heap.
+//! - `view()` decodes the outer constructor in O(1); traversal is allocation-free.
+//!
+//! Example
+//! ```
+//! use hyformal::expr::*;
+//! use hyformal::expr::defs::{Bool, True};
+//! use hyformal::variable::InlineVariable;
+//!
+//! let x = InlineVariable::new_from_raw(0);
+//! let lam = x.lambda(True);
+//! let encoded = lam.encode();
+//! assert!(matches!(encoded.as_ref().view().type_(), variant::ExprType::Lambda));
+//! ```
 pub mod defs;
 pub mod func;
 pub mod pretty;
@@ -23,11 +42,22 @@ pub(crate) mod expr_sealed {
 }
 
 /// Trait implemented by all unified expression nodes provided by this crate.
+///
+/// Role
+/// - Unifies building and structural inspection across concrete node types (see [`defs`]).
+/// - Provides sugar helpers like [`tuple`], [`powerset`], [`equals`], [`apply`], [`lambda`]
+///   available on any `Expr`.
+///
+/// Performance
+/// - [`view`] returns a cheap, decoded wrapper exposing children; no allocations.
+/// - [`encode`] is linear in the size of the expression and may trigger consolidation.
 pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
     /// Describe the expression's outer constructor and expose children.
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
 
-    /// Encode this expr into an AnyExpr.
+    /// Encode this expr into an owned, compact [`AnyExpr`].
+    ///
+    /// Complexity: O(n) in the number of nodes; may consolidate the buffer.
     #[inline]
     fn encode(&self) -> AnyExpr {
         let mut tree = TreeBuf::new();
@@ -37,7 +67,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
         AnyExpr { tree }
     }
 
-    /// Construct a tuple, can be either a type or a term based on context
+    /// Construct a tuple, can be either a type or a term based on context.
     #[inline]
     fn tuple<Q: Expr>(self, other: Q) -> defs::Tuple<Self, Q> {
         defs::Tuple {
@@ -67,7 +97,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
         Call { func: self, arg }
     }
 
-    /// Lambda abstraction: `λ self. body`
+    /// Lambda abstraction: `λ self. body`.
     #[inline]
     fn lambda<Q: Expr>(self, body: Q) -> Lambda<Self, Q> {
         Lambda { arg: self, body }
@@ -80,12 +110,19 @@ impl<'a, T: Expr> Expr for &'a T {
     }
 }
 
+/// Owned, compactly-encoded expression.
+///
+/// Role
+/// - Stores the encoded tree in a [`TreeBuf`]. Use [`AnyExpr::as_ref`] to borrow a zero-copy view.
 #[derive(Clone)]
 pub struct AnyExpr {
     pub(crate) tree: TreeBuf,
 }
 
 impl AnyExpr {
+    /// Borrow this expression as an [`AnyExprRef`].
+    ///
+    /// Useful for zero-copy traversal and pretty-printing without cloning the buffer.
     fn _view(
         tree: &TreeBuf,
         node: TreeBufNodeRef,
@@ -174,11 +211,18 @@ impl AnyExpr {
         }
     }
 
+    /// Create a borrowed reference to the root node of this encoded expression.
     pub fn as_ref(&self) -> AnyExprRef<'_> {
         AnyExprRef {
             tree: &self.tree,
             node: self.tree.root().unwrap(),
         }
+    }
+
+    /// Consolidate the internal buffer if it is fragmented. This invalidates any existing handles however this
+    /// is already enforced by borrowing rules.
+    pub fn consolidate(&mut self) {
+        self.tree.consolite_if_needed();
     }
 }
 
@@ -198,6 +242,10 @@ impl Expr for AnyExpr {
     }
 }
 
+/// Borrowed reference to an encoded expression node.
+///
+/// Role
+/// - Small handle pointing into an [`AnyExpr`] buffer; cheap to copy and pass around.
 #[derive(Clone, Copy)]
 pub struct AnyExprRef<'a> {
     pub(crate) tree: &'a TreeBuf,

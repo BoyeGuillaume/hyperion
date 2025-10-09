@@ -1,7 +1,12 @@
 //! RcDoc-based pretty-printer with termcolor annotations for `Expr`.
 //!
-//! This module builds annotated `RcDoc<Style>` trees from `Expr` and renders
-//! them to a `termcolor::WriteColor` sink with width-aware layout.
+//! Role
+//! - Convert an `Expr` into an annotated document suitable for width-aware rendering.
+//! - Provide colored output for terminals (TTY-aware) and plain strings for logs/tests.
+//!
+//! Performance
+//! - Building the doc is O(n) in expression size; rendering respects line widths with
+//!   linear-time layout in the size of the resulting document.
 
 use crate::expr::defs::*;
 use crate::expr::{AnyExpr, AnyExprRef};
@@ -11,7 +16,7 @@ use pretty::{FmtWrite, RcDoc, RenderAnnotated};
 use std::io::{self, Write};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-/// Styles that we annotate parts of the document with.
+/// Styles used to annotate parts of the pretty-printed document.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Style {
     Punct, // commas, arrows, colons, periods
@@ -366,6 +371,7 @@ fn terminal_width() -> usize {
 }
 
 /// ======================== Trait impls =========================
+/// Pretty-printing conveniences for any `Expr`.
 pub trait PrettyExpr {
     /// Build an RcDoc representation of this expression with style annotations.
     /// Useful for composing or rendering manually.

@@ -1,11 +1,38 @@
+//! Compact append-only tree buffer used to encode expressions.
+//!
+//! Role
+//! - Stores a forest of nodes in a contiguous byte buffer using a fixed layout
+//!   (opcode, flags, optional 32-bit data, up to 7 child references).
+//! - Enables O(1) amortized appends and cheap cloning of small buffers
+//!   (via `smallvec` inlined storage up to 32 bytes).
+//! - Supports consolidation to reclaim wasted space after in-place updates.
+//!
+//! Performance
+//! - Pushing a node is amortized O(1). Consolidation (when triggered) is O(n) where n is the
+//!   current buffer size.
+//! - Node references are 16-bit offsets (`u16`), capping a single buffer at 64 KiB; this keeps
+//!   encoded expressions compact and pointer-sized across platforms.
+//!
+//! Safety & invariants
+//! - Methods contain debug assertions to detect cycles and out-of-bounds writes in debug builds.
+//! - Consolidation invalidates all previous `TreeBufNodeRef` values; only the new ones remain
+//!   valid afterwards.
 use smallvec::SmallVec;
 use stackalloc::stackalloc_uninit;
 use std::mem::MaybeUninit;
 
 use crate::utils::staticvec::StaticVec;
 
+/// Opaque handle to a node stored inside a [`TreeBuf`].
+///
+/// This is a byte offset into the buffer encoded as `u16`. It is only valid with the specific
+/// `TreeBuf` that produced it and becomes invalid when the buffer is consolidated.
 pub type TreeBufNodeRef = u16;
 
+/// Growable compact buffer of encoded tree nodes.
+///
+/// Use [`push_node`], [`push_tree`], and [`set_root`] to build trees. Call [`consolidate`] (or
+/// let the encoder call `consolite_if_needed`) to reclaim wasted bytes after structural updates.
 #[derive(Clone)]
 pub struct TreeBuf {
     bytes: SmallVec<[u8; 32]>,
@@ -27,6 +54,7 @@ thread_local! {
 
 impl TreeBuf {
     const MAX_NODE_SIZE: usize = 2 + 4 + 7 * 2; // 1 byte opcode + 1 byte flags + 4 bytes data + 7 * 2 bytes references
+    /// Maximum number of child references allowed per node.
     pub const MAX_NUM_REFERENCES: usize = 7;
 
     fn encode_node<'a>(
@@ -221,6 +249,10 @@ impl TreeBuf {
         self.wasted_bytes = 0;
     }
 
+    /// Heuristic check to decide if consolidation is worthwhile.
+    ///
+    /// - Returns `true` if we spilled to the heap and at least 25% of the buffer is wasted,
+    ///   or if there is any waste while still inlined.
     pub fn should_consolidate(&self) -> bool {
         // We consolidate only if we have wasted space, in the case where have not yet
         // spilled over the heap, we consolidate aggressively otherwise we wait until we have
@@ -236,6 +268,7 @@ impl TreeBuf {
         }
     }
 
+    /// Consolidate if [`should_consolidate`] says it would be beneficial.
     pub fn consolite_if_needed(&mut self) {
         if self.should_consolidate() {
             self.consolidate();
@@ -275,6 +308,9 @@ impl TreeBuf {
         );
     }
 
+    /// Detect cycles reachable from `start` (debug utility).
+    ///
+    /// Complexity: O(n) in the number of reachable nodes.
     pub fn detect_cycle(&self, start: TreeBufNodeRef) -> bool {
         let mut visited: SmallVec<[bool; 256]> = SmallVec::from_elem(false, self.bytes.len());
         let mut stack: SmallVec<[TreeBufNodeRef; 32]> = SmallVec::new();
@@ -296,6 +332,14 @@ impl TreeBuf {
         false
     }
 
+    /// Append a single node to the buffer and return its reference.
+    ///
+    /// Contract
+    /// - `opcode`: user-defined tag for the node kind (fits in one byte).
+    /// - `data`: optional 32-bit payload.
+    /// - `references`: up to [`Self::MAX_NUM_REFERENCES`] child node refs.
+    ///
+    /// Panics in debug if the buffer would exceed 64 KiB.
     pub fn push_node(
         &mut self,
         opcode: u8,
@@ -316,6 +360,11 @@ impl TreeBuf {
         offset as TreeBufNodeRef
     }
 
+    /// Copy a node (and its reachable subgraph) from another buffer into this one.
+    ///
+    /// Returns the new reference in this buffer. Runs in O(k) where k is the number of copied
+    /// nodes. Child sharing is not preserved across buffers (each referenced node is copied
+    /// exactly once for the reached subgraph).
     pub fn push_tree(&mut self, other: &TreeBuf, other_node_ref: TreeBufNodeRef) -> TreeBufNodeRef {
         // Call to consolidate_callback to copy the other tree into this one in an efficient manner
         Self::consolidate_internal(
@@ -339,6 +388,9 @@ impl TreeBuf {
         )
     }
 
+    /// Decode a node into its components: `(opcode, data, references)`.
+    ///
+    /// Returns a small fixed-capacity vector for references to avoid heap allocations.
     pub fn get_node(
         &self,
         node_ref: TreeBufNodeRef,
@@ -350,6 +402,9 @@ impl TreeBuf {
         Self::decode_node(&self.bytes, node_ref)
     }
 
+    /// Mark a node as the root of the logical tree contained in the buffer.
+    ///
+    /// Useful after finishing a sequence of pushes.
     pub fn set_root(&mut self, new_ref: TreeBufNodeRef) {
         self.set_root_offset(Some(new_ref));
 
@@ -359,6 +414,10 @@ impl TreeBuf {
         );
     }
 
+    /// Update the `reference_index`-th child pointer of `node_ref` to `new_ref`.
+    ///
+    /// Performance
+    /// - O(1). Counts previous child as "wasted" bytes to be reclaimed by a future consolidation.
     pub fn update_node_reference(
         &mut self,
         node_ref: TreeBufNodeRef,
@@ -413,6 +472,7 @@ impl TreeBuf {
         );
     }
 
+    /// Overwrite the 32-bit payload of a node that has one.
     pub fn update_node_data(&mut self, node_ref: TreeBufNodeRef, new_data: u32) {
         let offset = node_ref as usize;
         let flag_byte = self.bytes[offset + 1];
@@ -425,6 +485,7 @@ impl TreeBuf {
         self.bytes[data_offset..data_offset + 4].copy_from_slice(&new_data.to_le_bytes());
     }
 
+    /// Create an empty buffer with inlined capacity.
     pub fn new() -> Self {
         Self {
             bytes: SmallVec::new(),
@@ -433,14 +494,17 @@ impl TreeBuf {
         }
     }
 
+    /// Whether the buffer has a root (and thus contains a logical tree).
     pub fn empty(&self) -> bool {
         self.get_root_offset().is_none()
     }
 
+    /// Total number of bytes currently used by the buffer (including waste).
     pub fn total_bytes(&self) -> usize {
         self.bytes.len()
     }
 
+    /// Return the current root node, if any.
     pub fn root(&self) -> Option<TreeBufNodeRef> {
         self.get_root_offset()
     }

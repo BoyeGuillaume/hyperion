@@ -1,5 +1,9 @@
 //! Parser for the pretty-printed unified expression language using chumsky.
 //!
+//! Role
+//! - Turn human-readable expressions into compact encoded [`AnyExpr`](crate::expr::AnyExpr).
+//! - Mirrors the precedence and associativity used by the pretty-printer for round-tripping.
+//!
 //! Two stages:
 //! 1) Tokenisation from input string to a `Token` stream.
 //! 2) Parsing tokens into a lightweight arena-allocated AST, then encoding to `AnyExpr`.
@@ -546,8 +550,20 @@ where
 
 // ---------------- Public API ----------------
 
-/// Parse a pretty-printed unified expression into a dynamically-encoded `DynExpr`.
-/// Returns a `Result` with either the expression or a list of error strings.
+/// Parse a pretty-printed unified expression into an [`AnyExpr`](crate::expr::AnyExpr).
+///
+/// Returns `Ok(AnyExpr)` on success, or `Err(Vec<String>)` with human-readable diagnostics.
+///
+/// Complexity
+/// - Lexing and parsing are linear in input size on typical code; error recovery may explore
+///   limited alternatives.
+///
+/// Example
+/// ```
+/// use hyformal::parser::parse;
+/// let e = parse("forall x : Bool . x = x").unwrap();
+/// assert_eq!(e.as_ref().view().type_(), hyformal::expr::variant::ExprType::Forall);
+/// ```
 pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
     // 1) Lexing (unchanged)
     let (tokens, lex_errs) = lexer().parse(src).into_output_errors();

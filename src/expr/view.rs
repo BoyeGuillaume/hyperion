@@ -1,7 +1,8 @@
 //! Dispatch enum for the unified expression language.
 //!
 //! Every node in the language decodes to a single enum with children of the same
-//! expression type parameter `E`.
+//! expression type parameters `E1, E2, E3` (for unary/binary/ternary shapes). This keeps
+//! traversals allocation-free and monomorphized for performance.
 use strum::EnumIs;
 
 use crate::{
@@ -61,6 +62,7 @@ pub enum ExprView<E1: Expr, E2: Expr, E3: Expr> {
 }
 
 impl<E1: Expr, E2: Expr, E3: Expr> ExprView<E1, E2, E3> {
+    /// Return the discriminant identifying the kind of this node.
     pub fn type_(&self) -> ExprType {
         pub use ExprView::*;
 
@@ -88,6 +90,7 @@ impl<E1: Expr, E2: Expr, E3: Expr> ExprView<E1, E2, E3> {
     }
 
     #[inline]
+    /// Alias for [`type_`], useful when `type` is a reserved word.
     pub fn r#type(&self) -> ExprType {
         self.type_()
     }
