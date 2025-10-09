@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use clap::Parser;
-use hyformal::prelude::*;
+use hyformal::{parser::parse, prelude::*};
 use termcolor::{ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 /// Simple program to parse an HyFormal expression

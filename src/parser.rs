@@ -2,30 +2,34 @@
 //!
 //! Two stages:
 //! 1) Tokenisation from input string to a `Token` stream.
-//! 2) Parsing tokens into a lightweight arena-allocated AST, then encoding to `DynExpr`.
+//! 2) Parsing tokens into a lightweight arena-allocated AST, then encoding to `AnyExpr`.
 //!
-//! The accepted syntax is designed to round-trip with the pretty-printer in
-//! `expr::pretty`:
+//! The accepted syntax round-trips with the pretty-printer in `expr::pretty`:
 //! - Variables: single letter a..z or A..Z map to ids 0..25. Larger ids: `v<number>`
-//!   (primary) or `_number` (also accepted) map to that raw id.
+//!   (primary) or `_number` (also accepted) map to raw id `26 + number`.
 //! - Literals/types: true, false, Bool, Omega, `<>` (Never), `Powerset(expr)`.
-//! - Application: `f(expr)` where `f` is a variable.
-//! - Tuples: `A, B` (comma is the lowest-precedence operator; left-associative).
-//! - Function types: `A -> B` (right-associative).
+//! - Application: `f(expr)` where `f` is any expression (not only variables).
+//! - Tuples: `A, B` (comma is the lowest-precedence binary operator; left-associative).
+//! - Lambda: `A -> B` (right-associative, lower precedence than logic operators).
 //! - Conditionals: `if P then X else Y`.
 //! - Logic: `!P`, `P /\ Q`, `P \/ Q`, `P => Q`, `P <=> Q`, `A = B`.
 //! - Quantifiers: `forall x : T . P` and `exists x : T . P`.
 //!
-//! Note: The pretty-printer inserts parentheses when operators of the same precedence
-//! differ; this parser accepts those forms and also a reasonable precedence hierarchy.
-use chumsky::prelude::*;
-
-use crate::encoding::{DynBuf, integer, legacy_magic};
-use crate::expr::AnyExpr;
-use crate::variable::InlineVariable;
+//! Note: Parentheses can wrap any full expression; we follow a precedence hierarchy
+//! compatible with the pretty-printer (If < Forall/Exists/Lambda < And/Or/Iff/Implies <
+//! Equal < Not < Tuple/Call < Powerset < atoms).
+use chumsky::{input::ValueInput, prelude::*};
 use typed_arena::Arena;
 
+use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
+use crate::expr::AnyExpr;
+use crate::expr::variant::ExprType;
+use crate::variable::InlineVariable;
+// Note: We keep the lexer unchanged. The parsing portion below now uses chumsky combinators
+// directly over the token stream, replacing the previous TS/AST hand-rolled parser.
+
 pub type Spanned<T> = (T, SimpleSpan);
+type Span = SimpleSpan;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum Token {
@@ -43,7 +47,7 @@ enum Token {
     Implies,  // =>
     Iff,      // <=>
     Equal,    // =
-    Arrow,    // -> (types)
+    Arrow,    // -> (lambda)
     NeverSym, // <>
 
     // Keywords
@@ -60,24 +64,51 @@ enum Token {
 
     // Identifiers
     Var(InlineVariable), // directly parsed variable
+}
 
-    // Error (misc)
-    Error,
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::Comma => write!(f, ","),
+            Token::Colon => write!(f, ":"),
+            Token::Dot => write!(f, "."),
+            Token::Not => write!(f, "!"),
+            Token::And => write!(f, "/\\"),
+            Token::Or => write!(f, "\\/"),
+            Token::Implies => write!(f, "=>"),
+            Token::Iff => write!(f, "<=>"),
+            Token::Equal => write!(f, "="),
+            Token::Arrow => write!(f, "->"),
+            Token::NeverSym => write!(f, "<>"),
+            Token::If => write!(f, "if"),
+            Token::Then => write!(f, "then"),
+            Token::Else => write!(f, "else"),
+            Token::ForAll => write!(f, "forall"),
+            Token::Exists => write!(f, "exists"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
+            Token::Bool => write!(f, "Bool"),
+            Token::Omega => write!(f, "Omega"),
+            Token::Powerset => write!(f, "Powerset"),
+            Token::Var(v) => write!(f, "{}", v),
+        }
+    }
 }
 
 // ---------------- Lexer ----------------
 
-fn char_to_id(c: char) -> u64 {
-    if c.is_ascii_lowercase() {
-        (c as u8 - b'a') as u64
-    } else if c.is_ascii_uppercase() {
-        (c as u8 - b'A' + 26) as u64
+fn char_to_id(c: char) -> u32 {
+    let lc = c.to_ascii_lowercase();
+    if lc.is_ascii_lowercase() {
+        (lc as u8 - b'a') as u32
     } else {
         panic!("Invalid variable character: {}", c);
     }
 }
 
-fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Simple<'a, char>>> {
+fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<'a, char>>> {
     // Multi-char operators/keywords first to avoid prefix capture
     let iff = just("<=>").to(Token::Iff);
     let implies = just("=>").to(Token::Implies);
@@ -89,42 +120,59 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Simpl
     // Keywords
     // Use word boundary: ensure next char isn't an ASCII alphanumeric or underscore
     let word = any()
-        .filter(|c: &char| c.is_ascii() || *c == '_')
+        .filter(|c: &char| c.is_ascii_alphabetic() || *c == '_')
         .then(
             any()
                 .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
                 .repeated(),
         )
         .to_slice()
-        .map(|s: &str| match s {
-            "if" => Token::If,
-            "then" => Token::Then,
-            "else" => Token::Else,
-            "forall" => Token::ForAll,
-            "exists" => Token::Exists,
-            "true" => Token::True,
-            "false" => Token::False,
-            "Bool" => Token::Bool,
-            "Omega" => Token::Omega,
-            "Powerset" => Token::Powerset,
-            s => {
-                // Attempt to match either a short var or long var
-                if s.len() == 1 && s.chars().next().unwrap().is_ascii_alphabetic() {
-                    Token::Var(InlineVariable::new_from_raw(char_to_id(
-                        s.chars().next().unwrap(),
-                    )))
-                } else if s.starts_with('v') || s.starts_with('_') {
-                    let num_part = &s[1..];
-                    match num_part.parse::<u64>() {
-                        Ok(id) => Token::Var(InlineVariable::new_from_raw(id + 26)),
-                        _ => Token::Error,
+        .try_map(|s: &str, span| -> Result<Token, Rich<char>> {
+            // Keywords
+            let tok = match s {
+                "if" => Token::If,
+                "then" => Token::Then,
+                "else" => Token::Else,
+                "forall" => Token::ForAll,
+                "exists" => Token::Exists,
+                "true" => Token::True,
+                "false" => Token::False,
+                "Bool" => Token::Bool,
+                "Omega" => Token::Omega,
+                "Powerset" => Token::Powerset,
+                _ => {
+                    // Variables
+                    if s.len() == 1 && s.chars().next().unwrap().is_ascii_alphabetic() {
+                        Token::Var(InlineVariable::new_from_raw(char_to_id(
+                            s.chars().next().unwrap(),
+                        )))
+                    } else if s.starts_with('v') || s.starts_with('_') {
+                        let num_part = &s[1..];
+                        if !num_part.is_empty() && num_part.chars().all(|c| c.is_ascii_digit()) {
+                            let id: u32 = num_part.parse().unwrap();
+                            Token::Var(InlineVariable::new_from_raw(id + 26))
+                        } else {
+                            return Err(Rich::custom(
+                                span,
+                                format!(
+                                    "invalid variable '{}': expected 'v<number>' or '_<number>' (e.g., v0, _42)",
+                                    s
+                                ),
+                            ));
+                        }
+                    } else {
+                        return Err(Rich::custom(
+                            span,
+                            format!(
+                                "unrecognized identifier '{}': expected a variable name like a, X, v<number>, or _<number>",
+                                s
+                            ),
+                        ));
                     }
-                } else {
-                    Token::Error
                 }
-            }
-        })
-        .filter(|t| *t != Token::Error);
+            };
+            Ok(tok)
+        });
 
     let punct = choice((
         just('(').to(Token::LParen),
@@ -158,14 +206,14 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Simpl
         .then_ignore(end())
 }
 
-// ---------------- Arena AST ----------------
+// ---------------- Owned AST (for building via chumsky) ----------------
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Ast<'a> {
     // Term-level
     Var(InlineVariable),
-    App {
-        func: InlineVariable,
+    Call {
+        func: &'a Ast<'a>,
         arg: &'a Ast<'a>,
     },
     If {
@@ -174,6 +222,10 @@ enum Ast<'a> {
         else_branch: &'a Ast<'a>,
     },
     Tuple(&'a Ast<'a>, &'a Ast<'a>),
+    Lambda {
+        arg: &'a Ast<'a>,
+        body: &'a Ast<'a>,
+    },
 
     // Logic-level
     True,
@@ -200,439 +252,339 @@ enum Ast<'a> {
     Omega,
     Never,
     Powerset(&'a Ast<'a>),
-    Func(&'a Ast<'a>, &'a Ast<'a>),
+    // Error placeholder (used by recovery) – encodes as Never
+    Error,
 }
 
 impl<'a> Ast<'a> {
-    fn encode_into<F: FnMut(&[u8])>(&self, f: &mut F) -> u64 {
-        use legacy_magic::*;
+    fn encode_into_tree(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+        use ExprType::*;
         match self {
-            // Term-level
-            Ast::Var(v) => {
-                let mut sz = 0;
-                sz += integer::encode_u64(v.raw(), f);
-                f(&[MISC_VAR]);
-                sz + 1
-            }
-            Ast::App { func, arg } => {
-                let mut sz = 0;
-                sz += (*arg).encode_into(f);
-                sz += integer::encode_u64(func.raw(), f);
-                f(&[E_APP]);
-                sz + 1
+            // Term-level and misc
+            Ast::Var(v) => tree.push_node(Variable as u8, Some(v.raw()), &[]),
+            Ast::Call { func, arg } => {
+                let f = func.encode_into_tree(tree);
+                let a = arg.encode_into_tree(tree);
+                tree.push_node(Call as u8, None, &[f, a])
             }
             Ast::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                let mut sz = 0;
-                sz += (*condition).encode_into(f);
-                let then_len = (*then_branch).encode_into(f);
-                sz += then_len;
-                let else_len = (*else_branch).encode_into(f);
-                sz += else_len;
-                sz += integer::encode_u64(else_len, f);
-                sz += integer::encode_u64(then_len, f);
-                f(&[E_IF]);
-                sz + 1
+                let c = condition.encode_into_tree(tree);
+                let t = then_branch.encode_into_tree(tree);
+                let e = else_branch.encode_into_tree(tree);
+                tree.push_node(If as u8, None, &[c, t, e])
             }
             Ast::Tuple(a, b) => {
-                let mut sz = 0;
-                sz += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                sz += r;
-                sz += integer::encode_u64(r, f);
-                f(&[E_TUPLE]);
-                sz + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(Tuple as u8, None, &[x, y])
+            }
+            Ast::Lambda { arg, body } => {
+                let a = arg.encode_into_tree(tree);
+                let b = body.encode_into_tree(tree);
+                tree.push_node(Lambda as u8, None, &[a, b])
             }
 
             // Logic-level
-            Ast::True => {
-                f(&[P_TRUE]);
-                1
-            }
-            Ast::False => {
-                f(&[P_FALSE]);
-                1
-            }
+            Ast::True => tree.push_node(True as u8, None, &[]),
+            Ast::False => tree.push_node(False as u8, None, &[]),
             Ast::Not(p) => {
-                let s = (*p).encode_into(f);
-                f(&[P_NOT]);
-                s + 1
+                let i = p.encode_into_tree(tree);
+                tree.push_node(Not as u8, None, &[i])
             }
             Ast::And(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[P_AND]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(And as u8, None, &[x, y])
             }
             Ast::Or(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[P_OR]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(Or as u8, None, &[x, y])
             }
             Ast::Implies(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[P_IMPLIES]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(Implies as u8, None, &[x, y])
             }
             Ast::Iff(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[P_IFF]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(Iff as u8, None, &[x, y])
             }
             Ast::ForAll {
                 variable,
                 dtype,
                 inner,
             } => {
-                let mut s = 0;
-                s += (*dtype).encode_into(f);
-                let r = (*inner).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                s += integer::encode_u64(variable.raw(), f);
-                f(&[P_FORALL]);
-                s + 1
+                let dt = dtype.encode_into_tree(tree);
+                let inn = inner.encode_into_tree(tree);
+                tree.push_node(Forall as u8, Some(variable.raw()), &[dt, inn])
             }
             Ast::Exists {
                 variable,
                 dtype,
                 inner,
             } => {
-                let mut s = 0;
-                s += (*dtype).encode_into(f);
-                let r = (*inner).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                s += integer::encode_u64(variable.raw(), f);
-                f(&[P_EXISTS]);
-                s + 1
+                let dt = dtype.encode_into_tree(tree);
+                let inn = inner.encode_into_tree(tree);
+                tree.push_node(Exists as u8, Some(variable.raw()), &[dt, inn])
             }
             Ast::Equal(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[P_EQUAL]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                let y = b.encode_into_tree(tree);
+                tree.push_node(Equal as u8, None, &[x, y])
             }
 
             // Type-level
-            Ast::Bool => {
-                f(&[T_BOOL]);
-                1
-            }
-            Ast::Omega => {
-                f(&[T_OMEGA]);
-                1
-            }
-            Ast::Never => {
-                f(&[E_NEVER]);
-                1
-            }
+            Ast::Bool => tree.push_node(Bool as u8, None, &[]),
+            Ast::Omega => tree.push_node(Omega as u8, None, &[]),
+            Ast::Never => tree.push_node(Never as u8, None, &[]),
             Ast::Powerset(a) => {
-                let s = (*a).encode_into(f);
-                f(&[T_POWER]);
-                s + 1
+                let x = a.encode_into_tree(tree);
+                tree.push_node(Powerset as u8, None, &[x])
             }
-            Ast::Func(a, b) => {
-                let mut s = 0;
-                s += (*a).encode_into(f);
-                let r = (*b).encode_into(f);
-                s += r;
-                s += integer::encode_u64(r, f);
-                f(&[T_FUNC]);
-                s + 1
-            }
+            Ast::Error => panic!("Should not encode Error AST node"),
         }
     }
 }
 
-// ---------------- Hand-rolled recursive-descent parser over tokens ----------------
+// ---------------- chumsky parser over tokens ----------------
 
-struct TS<'a> {
-    toks: &'a [Spanned<Token>],
-    pos: usize,
-}
+fn ast_parser<'tokens, I>(
+    arena: &'tokens mut Arena<Ast<'tokens>>,
+) -> impl Parser<'tokens, I, Ast<'tokens>, extra::Err<Rich<'tokens, Token, Span>>> + Clone
+where
+    I: ValueInput<'tokens, Token = Token, Span = Span>,
+{
+    recursive(|expr| {
+        // Identifiers/values
+        let ident = select! { Token::Var(v) => v };
 
-impl<'a> TS<'a> {
-    fn new(toks: &'a [Spanned<Token>]) -> Self {
-        TS { toks, pos: 0 }
-    }
-    fn peek(&self) -> Option<&Spanned<Token>> {
-        self.toks.get(self.pos)
-    }
-    fn next(&mut self) -> Option<&Spanned<Token>> {
-        let r = self.toks.get(self.pos);
-        if r.is_some() {
-            self.pos += 1;
-        }
-        r
-    }
-    fn eat(&mut self, t: &Token) -> bool {
-        if let Some((tok, _)) = self.peek() {
-            if tok == t {
-                self.pos += 1;
-                return true;
-            }
-        }
-        false
-    }
-}
-
-// Primary atoms: variables, literals, parenthesised full expressions, and
-// Powerset(...) constructor. Parentheses are treated as grouping for the full
-// expression (parse_if) so inner precedence is handled correctly.
-fn parse_primary<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    match ts.next() {
-        Some((Token::LParen, _)) => {
-            let e = parse_if(ts, arena)?;
-            if !ts.eat(&Token::RParen) {
-                return Err("expected ')'".into());
-            }
-            Ok(e)
-        }
-        Some((Token::True, _)) => Ok(arena.alloc(Ast::True)),
-        Some((Token::False, _)) => Ok(arena.alloc(Ast::False)),
-        Some((Token::Bool, _)) => Ok(arena.alloc(Ast::Bool)),
-        Some((Token::Omega, _)) => Ok(arena.alloc(Ast::Omega)),
-        Some((Token::NeverSym, _)) => Ok(arena.alloc(Ast::Never)),
-        Some((Token::Powerset, _)) => {
-            if !ts.eat(&Token::LParen) {
-                return Err("expected '(' after Powerset".into());
-            }
-            let inner = parse_if(ts, arena)?;
-            if !ts.eat(&Token::RParen) {
-                return Err("expected ')' after Powerset(arg)".into());
-            }
-            Ok(arena.alloc(Ast::Powerset(inner)))
-        }
-        Some((Token::Var(f), _)) => Ok(arena.alloc(Ast::Var(*f))),
-        Some((tok, _)) => Err(format!("unexpected token in primary: {:?}", tok)),
-        None => Err("unexpected end of input".into()),
-    }
-}
-
-// Function arrow (->) is a tight infix operator and is right-associative.
-fn parse_func<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let lhs = parse_primary(ts, arena)?;
-    if matches!(ts.peek(), Some((Token::Arrow, _))) {
-        ts.next();
-        let rhs = parse_func(ts, arena)?;
-        Ok(arena.alloc(Ast::Func(lhs, rhs)))
-    } else {
-        Ok(lhs)
-    }
-}
-
-// Application level: application (f(arg)) binds tighter than Not and logic.
-// We only allow application when the callee is a Var (as in the AST shape).
-fn parse_app<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let mut e = parse_func(ts, arena)?;
-    loop {
-        // application form: Var '(' expr ')'
-        if let Some((Token::LParen, _)) = ts.peek() {
-            match e {
-                Ast::Var(v) => {
-                    ts.next();
-                    let arg = parse_if(ts, arena)?;
-                    if !ts.eat(&Token::RParen) {
-                        return Err("expected ')' after call".into());
-                    }
-                    e = arena.alloc(Ast::App { func: *v, arg });
-                }
-                _ => break,
-            }
-        } else {
-            break;
-        }
-    }
-    Ok(e)
-}
-
-// Tuple level: comma-separated expressions, left-associative, built on app level.
-fn parse_tuple<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let mut e = parse_app(ts, arena)?;
-    while matches!(ts.peek(), Some((Token::Comma, _))) {
-        ts.next();
-        let rhs = parse_app(ts, arena)?;
-        e = arena.alloc(Ast::Tuple(e, rhs));
-    }
-    Ok(e)
-}
-
-// parse_prefix: handles leading `!` operators and wraps tuple-level expressions.
-fn parse_prefix<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let mut count = 0;
-    while matches!(ts.peek(), Some((Token::Not, _))) {
-        ts.next();
-        count += 1;
-    }
-    let mut e = parse_tuple(ts, arena)?;
-    for _ in 0..count {
-        e = arena.alloc(Ast::Not(e));
-    }
-    Ok(e)
-}
-
-// Equality level sits above prefix/app/tuple and below logic-level operators.
-fn parse_equal<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let mut e = parse_prefix(ts, arena)?;
-    while matches!(ts.peek(), Some((Token::Equal, _))) {
-        ts.next();
-        let rhs = parse_prefix(ts, arena)?;
-        e = arena.alloc(Ast::Equal(e, rhs));
-    }
-    Ok(e)
-}
-
-// Combined logic-level: And/Or/Iff at the same precedence, Implies right-assoc.
-fn parse_logic<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    let mut e = parse_equal(ts, arena)?;
-    loop {
-        match ts.peek() {
-            Some((Token::And, _)) => {
-                ts.next();
-                let rhs = parse_equal(ts, arena)?;
-                e = arena.alloc(Ast::And(e, rhs));
-            }
-            Some((Token::Or, _)) => {
-                ts.next();
-                let rhs = parse_equal(ts, arena)?;
-                e = arena.alloc(Ast::Or(e, rhs));
-            }
-            Some((Token::Implies, _)) => {
-                ts.next();
-                let rhs = parse_logic(ts, arena)?;
-                return Ok(arena.alloc(Ast::Implies(e, rhs)));
-            }
-            Some((Token::Iff, _)) => {
-                ts.next();
-                let rhs = parse_equal(ts, arena)?;
-                e = arena.alloc(Ast::Iff(e, rhs));
-            }
-            _ => break,
-        }
-    }
-    Ok(e)
-}
-
-// Top-level: If and quantifiers have the lowest precedence on the term side
-// (they wrap full expressions). parse_if handles `if ... then ... else ...` and
-// delegates to parse_logic for condition/branches; quantifiers are similar.
-fn parse_if<'a>(ts: &mut TS<'a>, arena: &'a Arena<Ast<'a>>) -> Result<&'a Ast<'a>, String> {
-    if matches!(ts.peek(), Some((Token::If, _))) {
-        ts.next();
-        let cond = parse_logic(ts, arena)?;
-        if !ts.eat(&Token::Then) {
-            return Err("expected 'then'".into());
-        }
-        let th = parse_logic(ts, arena)?;
-        if !ts.eat(&Token::Else) {
-            return Err("expected 'else'".into());
-        }
-        let el = parse_logic(ts, arena)?;
-        Ok(arena.alloc(Ast::If {
-            condition: cond,
-            then_branch: th,
-            else_branch: el,
-        }))
-    } else if matches!(ts.peek(), Some((Token::ForAll, _))) {
-        ts.next();
-        let v = match ts.next() {
-            Some((Token::Var(v), _)) => *v,
-            _ => return Err("expected variable after 'forall'".into()),
+        let value = select! {
+            Token::True => Ast::True,
+            Token::False => Ast::False,
+            Token::Bool => Ast::Bool,
+            Token::Omega => Ast::Omega,
+            Token::NeverSym => Ast::Never,
         };
-        if !ts.eat(&Token::Colon) {
-            return Err("expected ':' after variable".into());
-        }
-        let dt = parse_logic(ts, arena)?;
-        if !ts.eat(&Token::Dot) {
-            return Err("expected '.' after domain".into());
-        }
-        let inner = parse_logic(ts, arena)?;
-        Ok(arena.alloc(Ast::ForAll {
-            variable: v,
-            dtype: dt,
-            inner,
-        }))
-    } else if matches!(ts.peek(), Some((Token::Exists, _))) {
-        ts.next();
-        let v = match ts.next() {
-            Some((Token::Var(v), _)) => *v,
-            _ => return Err("expected variable after 'exists'".into()),
-        };
-        if !ts.eat(&Token::Colon) {
-            return Err("expected ':' after variable".into());
-        }
-        let dt = parse_logic(ts, arena)?;
-        if !ts.eat(&Token::Dot) {
-            return Err("expected '.' after domain".into());
-        }
-        let inner = parse_logic(ts, arena)?;
-        Ok(arena.alloc(Ast::Exists {
-            variable: v,
-            dtype: dt,
-            inner,
-        }))
-    } else {
-        // otherwise parse the next-lower precedence expression (logic level)
-        parse_logic(ts, arena)
-    }
-}
 
-// (helpers removed; integrated into expr_parser)
+        // Parenthesised expressions (recover mismatched/missing parens)
+        let paren_expr = expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .recover_with(via_parser(nested_delimiters(
+                Token::LParen,
+                Token::RParen,
+                [],
+                |_| Ast::Error,
+            )))
+            .labelled("parentheses");
+
+        // Powerset(expr)
+        let powerset = just(Token::Powerset)
+            .ignore_then(
+                expr.clone()
+                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .recover_with(via_parser(nested_delimiters(
+                        Token::LParen,
+                        Token::RParen,
+                        [],
+                        |_| Ast::Error,
+                    )))
+                    .labelled("powerset-args"),
+            )
+            .map(|e| Ast::Powerset(arena.alloc(e)))
+            .labelled("Powerset");
+
+        // Atomic expressions (no ambiguity)
+        let atom = value
+            .or(ident.map(Ast::Var))
+            .or(powerset)
+            .or(paren_expr)
+            .labelled("atom");
+
+        // Calls (left-assoc, very high precedence)
+        let call = atom
+            .clone()
+            .foldl(
+                expr.clone()
+                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .recover_with(via_parser(nested_delimiters(
+                        Token::LParen,
+                        Token::RParen,
+                        [],
+                        |_| Ast::Error,
+                    )))
+                    .labelled("call-args")
+                    .repeated(),
+                |f, a| Ast::Call {
+                    func: arena.alloc(f),
+                    arg: arena.alloc(a),
+                },
+            )
+            .labelled("call");
+
+        // Tuples: comma at the lowest of the high-precedence level, left-assoc
+        let tuple = call
+            .clone()
+            .foldl(
+                just(Token::Comma).ignore_then(call.clone()).repeated(),
+                |a, b| Ast::Tuple(arena.alloc(a), arena.alloc(b)),
+            )
+            .labelled("tuple");
+
+        // Prefix not: ! binds looser than tuple/call
+        let prefix = just(Token::Not)
+            .repeated()
+            .foldr(tuple.clone(), |_, rhs| Ast::Not(arena.alloc(rhs)));
+
+        // Equality: left-assoc
+        let equal = prefix
+            .clone()
+            .foldl(
+                just(Token::Equal).ignore_then(prefix.clone()).repeated(),
+                |a, b| Ast::Equal(arena.alloc(a), arena.alloc(b)),
+            )
+            .labelled("equality");
+
+        // And/Or/Iff at same precedence, left-assoc
+        #[derive(Clone, Copy)]
+        enum LOp {
+            And,
+            Or,
+            Iff,
+        }
+        let lop = choice((
+            just(Token::And).to(LOp::And),
+            just(Token::Or).to(LOp::Or),
+            just(Token::Iff).to(LOp::Iff),
+        ));
+        let logic_non_impl = equal
+            .clone()
+            .foldl(lop.then(equal).repeated(), |a, (op, b)| match op {
+                LOp::And => Ast::And(arena.alloc(a), arena.alloc(b)),
+                LOp::Or => Ast::Or(arena.alloc(a), arena.alloc(b)),
+                LOp::Iff => Ast::Iff(arena.alloc(a), arena.alloc(b)),
+            })
+            .labelled("logic");
+
+        // Implies is right-assoc
+        let implies = recursive(|imp| {
+            logic_non_impl
+                .clone()
+                .then(just(Token::Implies).ignore_then(imp).or_not())
+                .map(|(a, b)| match b {
+                    Some(b) => Ast::Implies(arena.alloc(a), arena.alloc(b)),
+                    None => a,
+                })
+                .labelled("implies")
+        });
+
+        // Lambda: right-assoc, looser than logic
+        let lambda = recursive(|lam| {
+            implies
+                .clone()
+                .then(just(Token::Arrow).ignore_then(lam).or_not())
+                .map(|(a, b)| match b {
+                    Some(b) => Ast::Lambda {
+                        arg: arena.alloc(a),
+                        body: arena.alloc(b),
+                    },
+                    None => a,
+                })
+                .labelled("lambda")
+        });
+
+        // Quantifiers & If wrap full lambda-level expressions
+        let quant = choice((
+            just(Token::ForAll)
+                .ignore_then(ident)
+                .then_ignore(just(Token::Colon))
+                .then(lambda.clone())
+                .then_ignore(just(Token::Dot))
+                .then(expr.clone())
+                .map(|((v, dt), inner)| Ast::ForAll {
+                    variable: v,
+                    dtype: arena.alloc(dt),
+                    inner: arena.alloc(inner),
+                }),
+            just(Token::Exists)
+                .ignore_then(ident)
+                .then_ignore(just(Token::Colon))
+                .then(lambda.clone())
+                .then_ignore(just(Token::Dot))
+                .then(expr.clone())
+                .map(|((v, dt), inner)| Ast::Exists {
+                    variable: v,
+                    dtype: arena.alloc(dt),
+                    inner: arena.alloc(inner),
+                }),
+        ))
+        .labelled("quantifier");
+
+        let if_ = just(Token::If)
+            .ignore_then(lambda.clone())
+            .then_ignore(just(Token::Then))
+            .then(lambda.clone())
+            .then_ignore(just(Token::Else))
+            .then(lambda.clone())
+            .map(|((cond, th), el)| Ast::If {
+                condition: arena.alloc(cond),
+                then_branch: arena.alloc(th),
+                else_branch: arena.alloc(el),
+            })
+            .labelled("if-expression");
+
+        // Top-level expression preference: if/quantifiers or plain lambda-level expr
+        if_.or(quant).or(lambda)
+    })
+}
 
 // ---------------- Public API ----------------
 
 /// Parse a pretty-printed unified expression into a dynamically-encoded `DynExpr`.
 /// Returns a `Result` with either the expression or a list of error strings.
 pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
-    // 1) Lexing
+    // 1) Lexing (unchanged)
     let (tokens, lex_errs) = lexer().parse(src).into_output_errors();
     let mut errors: Vec<String> = Vec::new();
-    errors.extend(lex_errs.into_iter().map(|e: Simple<char>| e.to_string()));
+    errors.extend(lex_errs.into_iter().map(|e| format!("lexing error: {}", e)));
 
     let tokens = match tokens {
         Some(toks) => toks,
         None => return Err(errors),
     };
 
-    // 2) Parsing to arena AST (manual)
-    let arena: Arena<Ast> = Arena::new();
-    let mut ts = TS::new(tokens.as_slice());
-    let ast = match parse_if(&mut ts, &arena) {
-        Ok(a) => a,
-        Err(msg) => {
-            errors.push(msg);
-            return Err(errors);
-        }
-    };
-    if ts.peek().is_some() {
-        errors.push("unexpected trailing tokens".into());
+    // 2) Parsing with chumsky over the token stream
+    // Convert to a plain token stream for the parser (we keep spans only for lexing)
+    let mut arena = Arena::new();
+    let plain: Vec<Token> = tokens.iter().map(|(t, _s)| t.clone()).collect();
+    let (ast, parse_errs) = ast_parser(&mut arena)
+        .then_ignore(end())
+        .parse(plain.as_slice())
+        .into_output_errors();
+    errors.extend(
+        parse_errs
+            .into_iter()
+            .map(|e| format!("parse error: {}", e)),
+    );
+    if errors.len() > 0 {
         return Err(errors);
     }
 
-    // 3) Encode to DynExpr
-    let mut buf = DynBuf::new();
-    ast.encode_into(&mut |bytes| buf.extend_from_slice(bytes));
-    Ok(AnyExpr { bytes: buf })
+    let ast = match ast {
+        Some(a) => a,
+        None => return Err(errors),
+    };
+
+    // 3) Encode to AnyExpr via TreeBuf
+    let mut tree = TreeBuf::new();
+    let root = ast.encode_into_tree(&mut tree);
+    tree.set_root(root);
+    tree.consolite_if_needed();
+    Ok(AnyExpr { tree })
 }
