@@ -26,6 +26,16 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
     /// Describe the expression's outer constructor and expose children.
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
 
+    /// Encode this expr into an AnyExpr.
+    #[inline]
+    fn encode(&self) -> AnyExpr {
+        let mut tree = TreeBuf::new();
+        let root = self.encode_tree_step(&mut tree);
+        tree.set_root(root);
+        tree.consolite_if_needed();
+        AnyExpr { tree }
+    }
+
     // Encode this expr into a dynamic, byte-backed representation.
     // #[inline]
     // fn encode(&self) -> AnyExprLegacy {
@@ -243,7 +253,7 @@ impl EncodableExpr for AnyExpr {
         self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
-        todo!()
+        tree.push_tree(&self.tree, self.tree.root().unwrap())
     }
 }
 
@@ -266,7 +276,7 @@ impl<'a> EncodableExpr for AnyExprRef<'a> {
         self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
-        todo!()
+        tree.push_tree(&self.tree, self.tree.root().unwrap())
     }
 }
 

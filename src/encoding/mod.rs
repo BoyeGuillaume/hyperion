@@ -12,7 +12,7 @@ pub trait EncodableExpr: Clone {
     #[inline]
     fn encode_tree(self, tree: &mut tree::TreeBuf) {
         let noderef = self.encode_tree_step(tree);
-        tree.update_root_node(noderef);
+        tree.set_root(noderef);
         tree.consolite_if_needed();
     }
 }

@@ -26,14 +26,18 @@ thread_local! {
 }
 
 impl TreeBuf {
+    const MAX_NODE_SIZE: usize = 2 + 4 + 7 * 2; // 1 byte opcode + 1 byte flags + 4 bytes data + 7 * 2 bytes references
+    pub const MAX_NUM_REFERENCES: usize = 7;
+
     fn encode_node<'a>(
         opcode: u8,
         data: Option<u32>,
         references: &'a [TreeBufNodeRef],
     ) -> impl Iterator<Item = u8> + 'a {
         debug_assert!(
-            references.len() <= 7,
-            "InlineTree nodes can have at most 7 references"
+            references.len() <= Self::MAX_NUM_REFERENCES,
+            "InlineTree nodes can have at most {} references",
+            Self::MAX_NUM_REFERENCES
         );
 
         // Current allocation algorithm is stupid, just appending everything at the end of the buffer. Format
@@ -65,7 +69,11 @@ impl TreeBuf {
     fn decode_node(
         buffer: &[u8],
         node_ref: TreeBufNodeRef,
-    ) -> (u8, Option<u32>, StaticVec<TreeBufNodeRef, 8>) {
+    ) -> (
+        u8,
+        Option<u32>,
+        StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }>,
+    ) {
         let node_ref = node_ref as usize;
         let magic_byte = buffer[node_ref];
         let flag_byte = buffer[node_ref + 1];
@@ -92,15 +100,74 @@ impl TreeBuf {
         (magic_byte, data, references)
     }
 
-    fn static_buffer_writer(
-        buffer: &mut [u8],
-        buffer_len: &mut usize,
-        iter: impl Iterator<Item = u8>,
-    ) {
-        for byte in iter {
-            buffer[*buffer_len] = byte;
-            *buffer_len += 1;
+    fn consolidate_internal(
+        buffer: &[u8],
+        mut write_callback: impl FnMut(&[u8], &mut Option<TreeBufNodeRef>),
+        root_offset: TreeBufNodeRef,
+    ) -> TreeBufNodeRef {
+        debug_assert!(
+            root_offset as usize + 2 <= buffer.len(),
+            "Root offset out of bounds"
+        );
+
+        // Description of the algorithm
+        //  1. Pop a node from the stack (offset in old buffer)
+        //  2. Write data, flag and magic byte to the intermediate buffer of current
+        //  3. Estimate size of all of its children, write dummy children to the write_callback
+        //  4. Push children to the stack
+        let mut stack: SmallVec<[(TreeBufNodeRef, TreeBufNodeRef); 32]> = SmallVec::new(); // Scales with depth of the tree
+
+        // Push root node (from iterator)
+        let new_root_offset = {
+            let (opcode, data, reference_iter) = Self::decode_node(buffer, root_offset);
+            let references: StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }> =
+                reference_iter
+                    .into_iter()
+                    .map(|_| TreeBufNodeRef::MAX)
+                    .collect();
+            let static_node: StaticVec<u8, { Self::MAX_NODE_SIZE }> =
+                Self::encode_node(opcode, data, &references).collect();
+
+            // Finally encode the data into the intermediate buffer
+            let mut new_root_offset = None; // None means at the end
+            write_callback(&static_node, &mut new_root_offset);
+            stack.push((root_offset, new_root_offset.unwrap())); // (old offset, new offset)
+            new_root_offset.unwrap()
+        };
+
+        while let Some((old_offset, new_offset)) = stack.pop() {
+            let (opcode, data, reference_iter) = Self::decode_node(&buffer, old_offset);
+
+            let new_references: StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }> =
+                reference_iter
+                    .into_iter()
+                    .map(|t| {
+                        // Write the dummy child now
+                        let (opcode, data, references) = Self::decode_node(&buffer, t);
+                        let references: StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }> =
+                            references
+                                .into_iter()
+                                .map(|_| TreeBufNodeRef::MAX)
+                                .collect();
+                        let dummy_node: StaticVec<u8, { Self::MAX_NODE_SIZE }> =
+                            Self::encode_node(opcode, data, &references).collect();
+
+                        let mut child_offset = None; // None means at the end
+                        write_callback(&dummy_node, &mut child_offset);
+                        stack.push((t, child_offset.unwrap()));
+                        child_offset.unwrap()
+                    })
+                    .collect();
+
+            // Now that we have the new references, we can write the current node with the correct references
+            let static_node: StaticVec<u8, { Self::MAX_NODE_SIZE }> =
+                Self::encode_node(opcode, data, &new_references).collect();
+            let mut child_offset = Some(new_offset);
+            write_callback(&static_node, &mut child_offset);
         }
+
+        // Return new root offset
+        new_root_offset
     }
 
     fn consolidate_buffered(&mut self, intermediate_buffer: &mut [u8]) {
@@ -118,62 +185,34 @@ impl TreeBuf {
         // First pass, we explore the tree in a depth-first manner, starting from the root node, and we write each node
         // to the intermediate buffer, keeping track of the new offsets of each node in a map
         let mut intermediate_buffer_len: usize = 0;
-        let mut stack: SmallVec<[(TreeBufNodeRef, TreeBufNodeRef); 32]> = SmallVec::new(); // Scales with depth of the tree
 
-        // Push root node (from iterator)
-        {
-            stack.push((root_offset, 0)); // (old offset, new offset)
+        // Closure that writes to the intermediate buffer and keeps track of new offsets
+        let mut write_callback = |data: &[u8], new_offset: &mut Option<TreeBufNodeRef>| {
+            let offset = if let Some(o) = new_offset {
+                *o as usize
+            } else {
+                new_offset.replace(intermediate_buffer_len as TreeBufNodeRef);
+                intermediate_buffer_len as usize
+            };
 
-            let (opcode, data, reference_iter) = Self::decode_node(&self.bytes, self.root_offset);
-            let references: StaticVec<TreeBufNodeRef, 8> = reference_iter
-                .into_iter()
-                .map(|_| TreeBufNodeRef::MAX)
-                .collect();
-            let encoder = Self::encode_node(opcode, data, &references);
+            // 1. Ensure we have enough space in the intermediate buffer
+            debug_assert!(
+                intermediate_buffer_len + data.len() <= intermediate_buffer.len(),
+                "Intermediate buffer overflow"
+            );
 
-            // Finally encode the data into the intermediate buffer
-            Self::static_buffer_writer(intermediate_buffer, &mut intermediate_buffer_len, encoder);
-            self.set_root_offset(Some(0));
-        }
+            // 2. Write data to the intermediate buffer
+            intermediate_buffer[offset..offset + data.len()].copy_from_slice(data);
+            intermediate_buffer_len += data.len();
+        };
 
-        // In the first pass, we allocate each node that is reachable from the root node
-        // we proceed in such manner
-        // 1. Pop a node from the stack (offset in old buffer)
-        // 2. Write data, flag and magic byte to the intermediate buffer of current node
-        // 3. Estimate size of all of its children, calculate offsets of each child in the intermediate buffer
-        // 4. Push children to the stack
-        while let Some((old_offset, new_offset)) = stack.pop() {
-            let (opcode, data, reference_iter) = Self::decode_node(&self.bytes, old_offset);
-
-            let new_references: StaticVec<TreeBufNodeRef, 8> = reference_iter
-                .into_iter()
-                .map(|t| {
-                    // Each child will be written at the end of the intermediate buffer
-                    let child_offset = intermediate_buffer_len as TreeBufNodeRef;
-                    stack.push((t, child_offset));
-
-                    // Write the dummy child now
-                    let (opcode, data, references) = Self::decode_node(&self.bytes, t);
-                    let references: StaticVec<TreeBufNodeRef, 8> = references
-                        .into_iter()
-                        .map(|_| TreeBufNodeRef::MAX)
-                        .collect();
-                    let encoder = Self::encode_node(opcode, data, &references);
-                    Self::static_buffer_writer(
-                        intermediate_buffer,
-                        &mut intermediate_buffer_len,
-                        encoder,
-                    );
-
-                    child_offset
-                })
-                .collect();
-
-            // Now that we have the new references, we can write the current node with the correct references
-            let encoder = Self::encode_node(opcode, data, &new_references);
-            let mut fake_buffer_len = new_offset as usize;
-            Self::static_buffer_writer(intermediate_buffer, &mut fake_buffer_len, encoder);
-        }
+        let new_root_offset =
+            Self::consolidate_internal(&self.bytes, &mut write_callback, root_offset);
+        debug_assert!(
+            new_root_offset == 0,
+            "New root offset should be 0 after consolidation"
+        );
+        self.set_root_offset(Some(new_root_offset));
 
         // Now that we have the intermediate buffer, we can swap it with the current buffer
         self.bytes.clear();
@@ -277,11 +316,41 @@ impl TreeBuf {
         offset as TreeBufNodeRef
     }
 
-    pub fn get_node(&self, node_ref: TreeBufNodeRef) -> (u8, Option<u32>, StaticVec<u16, 8>) {
+    pub fn push_tree(&mut self, other: &TreeBuf, other_node_ref: TreeBufNodeRef) -> TreeBufNodeRef {
+        // Call to consolidate_callback to copy the other tree into this one in an efficient manner
+        Self::consolidate_internal(
+            &other.bytes,
+            |data: &[u8], new_offset: &mut Option<TreeBufNodeRef>| {
+                if let Some(offset) = new_offset {
+                    debug_assert!(
+                        *offset as usize + data.len() <= self.bytes.len(),
+                        "Offset out of bounds"
+                    );
+
+                    self.bytes[*offset as usize..*offset as usize + data.len()]
+                        .copy_from_slice(data);
+                } else {
+                    let offset = self.bytes.len();
+                    self.bytes.extend_from_slice(data);
+                    *new_offset = Some(offset as TreeBufNodeRef);
+                }
+            },
+            other_node_ref,
+        )
+    }
+
+    pub fn get_node(
+        &self,
+        node_ref: TreeBufNodeRef,
+    ) -> (
+        u8,
+        Option<u32>,
+        StaticVec<u16, { Self::MAX_NUM_REFERENCES }>,
+    ) {
         Self::decode_node(&self.bytes, node_ref)
     }
 
-    pub fn update_root_node(&mut self, new_ref: TreeBufNodeRef) {
+    pub fn set_root(&mut self, new_ref: TreeBufNodeRef) {
         self.set_root_offset(Some(new_ref));
 
         debug_assert!(
