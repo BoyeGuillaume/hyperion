@@ -68,6 +68,27 @@ impl<T, const N: usize> StaticVec<T, N> {
         self.as_slice().iter()
     }
 
+    /// Drain iterator in reverse order.
+    pub fn drain_rev(&mut self) -> impl Iterator<Item = T> {
+        pub struct Drain<'a, T, const N: usize> {
+            vec: &'a mut StaticVec<T, N>,
+        }
+
+        impl<'a, T, const N: usize> Iterator for Drain<'a, T, N> {
+            type Item = T;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.vec.pop()
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                (self.vec.len(), Some(self.vec.len()))
+            }
+        }
+
+        Drain { vec: self }
+    }
+
     /// Iterator over mutable references.
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, T> {
         self.as_mut_slice().iter_mut()

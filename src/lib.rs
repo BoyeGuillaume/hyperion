@@ -47,9 +47,12 @@ pub mod encoding;
 pub mod expr;
 /// Parser for the pretty-printed language.
 pub mod parser;
+/// Utility types and traits for working with small vectors and slices.
 pub mod utils;
 /// Inline variables used across types, expressions, and propositions.
 pub mod variable;
+/// Tree walker for traversing and transforming expressions.
+pub mod walker;
 
 pub mod prelude {
     //! Convenient re-exports for end users.

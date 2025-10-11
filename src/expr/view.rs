@@ -5,14 +5,11 @@
 //! traversals allocation-free and monomorphized for performance.
 use strum::EnumIs;
 
-use crate::{
-    expr::{Expr, variant::ExprType},
-    variable::InlineVariable,
-};
+use crate::{expr::variant::ExprType, variable::InlineVariable};
 
 /// Describes the outer constructor of an expression and borrows its children.
 #[derive(Debug, Clone, Copy, EnumIs)]
-pub enum ExprView<E1: Expr, E2: Expr, E3: Expr> {
+pub enum ExprView<E1, E2, E3> {
     // Constant expr
     Bool,
     Omega,
@@ -61,8 +58,9 @@ pub enum ExprView<E1: Expr, E2: Expr, E3: Expr> {
     Variable(InlineVariable),
 }
 
-impl<E1: Expr, E2: Expr, E3: Expr> ExprView<E1, E2, E3> {
+impl<E1, E2, E3> ExprView<E1, E2, E3> {
     /// Return the discriminant identifying the kind of this node.
+    #[inline]
     pub fn type_(&self) -> ExprType {
         pub use ExprView::*;
 
@@ -89,9 +87,72 @@ impl<E1: Expr, E2: Expr, E3: Expr> ExprView<E1, E2, E3> {
         }
     }
 
-    #[inline]
     /// Alias for [`type_`], useful when `type` is a reserved word.
+    #[inline]
     pub fn r#type(&self) -> ExprType {
         self.type_()
+    }
+
+    /// Map the children of this expression view to new values.
+    #[inline]
+    pub fn map<F1, F2, F3, O1, O2, O3>(self, f1: F1, f2: F2, f3: F3) -> ExprView<O1, O2, O3>
+    where
+        F1: FnOnce(E1) -> O1,
+        F2: FnOnce(E2) -> O2,
+        F3: FnOnce(E3) -> O3,
+    {
+        pub use ExprView::*;
+
+        match self {
+            Bool => Bool,
+            Omega => Omega,
+            True => True,
+            False => False,
+            Never => Never,
+            Not(e) => Not(f1(e)),
+            Powerset(e) => Powerset(f1(e)),
+            And(e1, e2) => And(f1(e1), f2(e2)),
+            Or(e1, e2) => Or(f1(e1), f2(e2)),
+            Implies(e1, e2) => Implies(f1(e1), f2(e2)),
+            Iff(e1, e2) => Iff(f1(e1), f2(e2)),
+            Equal(e1, e2) => Equal(f1(e1), f2(e2)),
+            Lambda { arg, body } => Lambda {
+                arg: f1(arg),
+                body: f2(body),
+            },
+            Call { func, arg } => Call {
+                func: f1(func),
+                arg: f2(arg),
+            },
+            Tuple(e1, e2) => Tuple(f1(e1), f2(e2)),
+            Forall {
+                variable,
+                dtype,
+                inner,
+            } => Forall {
+                variable,
+                dtype: f1(dtype),
+                inner: f2(inner),
+            },
+            Exists {
+                variable,
+                dtype,
+                inner,
+            } => Exists {
+                variable,
+                dtype: f1(dtype),
+                inner: f2(inner),
+            },
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => If {
+                condition: f1(condition),
+                then_branch: f2(then_branch),
+                else_branch: f3(else_branch),
+            },
+            Variable(v) => Variable(v),
+        }
     }
 }

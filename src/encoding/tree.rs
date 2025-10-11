@@ -504,6 +504,11 @@ impl TreeBuf {
         self.bytes.len()
     }
 
+    /// Estimated number of bytes that can be reclaimed by consolidation.
+    pub fn wasted_bytes(&self) -> usize {
+        self.wasted_bytes as usize
+    }
+
     /// Return the current root node, if any.
     pub fn root(&self) -> Option<TreeBufNodeRef> {
         self.get_root_offset()

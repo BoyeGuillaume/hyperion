@@ -123,7 +123,7 @@ impl AnyExpr {
     /// Borrow this expression as an [`AnyExprRef`].
     ///
     /// Useful for zero-copy traversal and pretty-printing without cloning the buffer.
-    fn _view(
+    pub(crate) fn _view(
         tree: &TreeBuf,
         node: TreeBufNodeRef,
     ) -> ExprView<AnyExprRef<'_>, AnyExprRef<'_>, AnyExprRef<'_>> {
@@ -217,6 +217,16 @@ impl AnyExpr {
             tree: &self.tree,
             node: self.tree.root().unwrap(),
         }
+    }
+
+    /// Length of underlying storage
+    pub fn storage_size(&self) -> usize {
+        self.tree.total_bytes()
+    }
+
+    /// Estimated number of bytes that can be reclaimed by consolidation.
+    pub fn estimated_wasted_bytes(&self) -> usize {
+        self.tree.wasted_bytes()
     }
 
     /// Consolidate the internal buffer if it is fragmented. This invalidates any existing handles however this
