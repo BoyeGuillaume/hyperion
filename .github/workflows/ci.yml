@@ -23,12 +23,16 @@ jobs:
       - name: Display Rust version
         run: rustc --version
 
+      - name: Set up Rust
+        run: |
+          rustup component add clippy
+          cargo install cargo-pretty-test
+
       - name: Build project
         run: cargo build
 
       - name: Run tests
         run: |
-          cargo install cargo-pretty-test
           cargo pretty-test --color=always
           echo '```text' >> $GITHUB_STEP_SUMMARY
           echo "$(cargo pretty-test --color=never)" >> $GITHUB_STEP_SUMMARY
@@ -36,5 +40,4 @@ jobs:
 
       - name: Run clippy
         run: |
-          cargo install cargo-clippy
           cargo clippy --all-targets --all-features
