@@ -27,6 +27,8 @@ pub mod pretty;
 pub mod variant;
 pub mod view;
 
+use smallvec::SmallVec;
+
 use crate::encoding::EncodableExpr;
 use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
 use crate::expr::variant::ExprType;
@@ -114,6 +116,11 @@ impl<'a, T: Expr> Expr for &'a T {
 ///
 /// Role
 /// - Stores the encoded tree in a [`TreeBuf`]. Use [`AnyExpr::as_ref`] to borrow a zero-copy view.
+///
+/// Equality semantics
+/// - [`AnyExpr`] compares by structure (via its root [`AnyExprRef`]); two values are equal if
+///   their trees have the same constructors, payloads, and pairwise-equal children, even if
+///   they were built independently in different buffers.
 #[derive(Clone)]
 pub struct AnyExpr {
     pub(crate) tree: TreeBuf,
@@ -252,10 +259,25 @@ impl Expr for AnyExpr {
     }
 }
 
+impl PartialEq for AnyExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
+impl Eq for AnyExpr {}
+
 /// Borrowed reference to an encoded expression node.
 ///
 /// Role
 /// - Small handle pointing into an [`AnyExpr`] buffer; cheap to copy and pass around.
+///
+/// Equality semantics
+/// - [`AnyExprRef`] implements structural equality: two references are equal if the subtrees
+///   they point to have the same constructor, data payload (for variables and quantifiers),
+///   and pairwise-equal children, regardless of whether they come from the same buffer.
+/// - Fast path: if two references point to the exact same node in the same buffer, the
+///   comparison short-circuits to `true`.
 #[derive(Clone, Copy)]
 pub struct AnyExprRef<'a> {
     pub(crate) tree: &'a TreeBuf,
@@ -269,7 +291,7 @@ impl<'a> EncodableExpr for AnyExprRef<'a> {
         self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
-        tree.push_tree(&self.tree, self.tree.root().unwrap())
+        tree.push_tree(&self.tree, self.node)
     }
 }
 
@@ -278,3 +300,39 @@ impl<'a> Expr for AnyExprRef<'a> {
         AnyExpr::_view(self.tree, self.node)
     }
 }
+
+impl<'a> PartialEq for AnyExprRef<'a> {
+    /// Run structural equality comparison between two expression references. Expect
+    /// O(n) complexity in the number of nodes in the worst case.
+    fn eq(&self, other: &Self) -> bool {
+        // Quick path: exactly the same node in the same buffer
+        if std::ptr::eq(self.tree, other.tree) && self.node == other.node {
+            return true;
+        }
+
+        // Structural comparison
+        let mut stack: SmallVec<[(TreeBufNodeRef, TreeBufNodeRef); 12]> = SmallVec::new();
+        stack.push((self.node, other.node));
+
+        // Iterate until we find a mismatch or exhaust the stack
+        while let Some((a, b)) = stack.pop() {
+            let (a_opcode, a_data, a_children) = self.tree.get_node(a);
+            let (b_opcode, b_data, b_children) = other.tree.get_node(b);
+
+            // Check opcode and data
+            if a_opcode != b_opcode || a_data != b_data || a_children.len() != b_children.len() {
+                return false;
+            }
+
+            // Push children pairs onto the stack for further comparison
+            for (ac, bc) in a_children.iter().zip(b_children.iter()) {
+                stack.push((*ac, *bc));
+            }
+        }
+
+        // All nodes matched
+        true
+    }
+}
+
+impl<'a> Eq for AnyExprRef<'a> {}

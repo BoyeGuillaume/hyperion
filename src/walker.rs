@@ -106,7 +106,7 @@ use std::{cell::RefCell, ops::Deref};
 
 use crate::{
     encoding::tree::{TreeBuf, TreeBufNodeRef},
-    expr::{AnyExpr, AnyExprRef, view::ExprView},
+    expr::{AnyExpr, AnyExprRef, Expr, view::ExprView},
     utils::staticvec::StaticVec,
 };
 
@@ -212,8 +212,8 @@ where
     }
 }
 
-#[inline]
 /// Convenience when no input/state needs to be threaded.
+#[inline]
 pub fn walk_no_input<F>(expr: AnyExprRef, mut walker: F)
 where
     F: FnMut(
@@ -225,4 +225,120 @@ where
     ),
 {
     walk(expr, (), |(), node| walker(node));
+}
+
+/// Compare two expressions for structural equality.
+///
+/// Notice that this is different from the default [`PartialEq`] implementation
+/// for [`AnyExpr`] and [`AnyExprRef`], which compare by identity (same buffer and node).
+///
+/// When comparing two AnyExpr, prefer using [`AnyExpr::eq`] or `==` instead of calling
+/// this function directly.
+pub fn compare_expressions<E1: Expr, E2: Expr>(a: E1, b: E2) -> bool {
+    let a_view = a.view();
+    let b_view = b.view();
+
+    if a_view.type_() != b_view.type_() {
+        return false;
+    }
+
+    match (a_view, b_view) {
+        (ExprView::Bool, ExprView::Bool) => true,
+        (ExprView::Omega, ExprView::Omega) => true,
+        (ExprView::True, ExprView::True) => true,
+        (ExprView::False, ExprView::False) => true,
+        (ExprView::Never, ExprView::Never) => true,
+        (ExprView::Not(inner_a), ExprView::Not(inner_b)) => compare_expressions(inner_a, inner_b),
+        (ExprView::Powerset(inner_a), ExprView::Powerset(inner_b)) => {
+            compare_expressions(inner_a, inner_b)
+        }
+        (ExprView::And(lhs_a, rhs_a), ExprView::And(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (ExprView::Or(lhs_a, rhs_a), ExprView::Or(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (ExprView::Implies(lhs_a, rhs_a), ExprView::Implies(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (ExprView::Iff(lhs_a, rhs_a), ExprView::Iff(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (ExprView::Equal(lhs_a, rhs_a), ExprView::Equal(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (
+            ExprView::Lambda {
+                arg: arg_a,
+                body: body_a,
+            },
+            ExprView::Lambda {
+                arg: arg_b,
+                body: body_b,
+            },
+        ) => compare_expressions(arg_a, arg_b) && compare_expressions(body_a, body_b),
+        (
+            ExprView::Call {
+                func: func_a,
+                arg: arg_a,
+            },
+            ExprView::Call {
+                func: func_b,
+                arg: arg_b,
+            },
+        ) => compare_expressions(func_a, func_b) && compare_expressions(arg_a, arg_b),
+        (ExprView::Tuple(lhs_a, rhs_a), ExprView::Tuple(lhs_b, rhs_b)) => {
+            compare_expressions(lhs_a, lhs_b) && compare_expressions(rhs_a, rhs_b)
+        }
+        (
+            ExprView::Forall {
+                variable: variable_a,
+                dtype: dtype_a,
+                inner: inner_a,
+            },
+            ExprView::Forall {
+                variable: variable_b,
+                dtype: dtype_b,
+                inner: inner_b,
+            },
+        ) => {
+            variable_a == variable_b
+                && compare_expressions(dtype_a, dtype_b)
+                && compare_expressions(inner_a, inner_b)
+        }
+        (
+            ExprView::Exists {
+                variable: variable_a,
+                dtype: dtype_a,
+                inner: inner_a,
+            },
+            ExprView::Exists {
+                variable: variable_b,
+                dtype: dtype_b,
+                inner: inner_b,
+            },
+        ) => {
+            variable_a == variable_b
+                && compare_expressions(dtype_a, dtype_b)
+                && compare_expressions(inner_a, inner_b)
+        }
+        (
+            ExprView::If {
+                condition: condition_a,
+                then_branch: then_branch_a,
+                else_branch: else_branch_a,
+            },
+            ExprView::If {
+                condition: condition_b,
+                then_branch: then_branch_b,
+                else_branch: else_branch_b,
+            },
+        ) => {
+            compare_expressions(condition_a, condition_b)
+                && compare_expressions(then_branch_a, then_branch_b)
+                && compare_expressions(else_branch_a, else_branch_b)
+        }
+        (ExprView::Variable(inner_a), ExprView::Variable(inner_b)) => inner_a == inner_b,
+        _ => unreachable!(),
+    }
 }
