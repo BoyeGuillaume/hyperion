@@ -133,7 +133,7 @@ fn walk_large_tree_smoke() {
             e.storage_size(),
             e.estimated_wasted_bytes()
         );
-        let var = InlineVariable::new_from_raw((i % 10) as u32);
+        let var = InlineVariable::new_from_raw(i % 10);
         let dtype = Bool; // keep a consistent static type for generics
         let quant = hyformal::expr::func::forall(var, dtype, e.as_ref());
         let t = True; // keep a consistent constructor type
@@ -148,7 +148,7 @@ fn walk_large_tree_smoke() {
     });
 
     // Expect a sizable count; exact number depends on construction but must be > baseline
-    assert!(count > 5000, "expected many nodes visited, got {}", count);
+    assert!(count > 5000, "expected many nodes visited, got {count}");
 }
 
 #[test]

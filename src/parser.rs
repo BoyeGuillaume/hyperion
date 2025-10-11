@@ -96,7 +96,7 @@ impl std::fmt::Display for Token {
             Token::Bool => write!(f, "Bool"),
             Token::Omega => write!(f, "Omega"),
             Token::Powerset => write!(f, "Powerset"),
-            Token::Var(v) => write!(f, "{}", v),
+            Token::Var(v) => write!(f, "{v}"),
         }
     }
 }
@@ -108,7 +108,7 @@ fn char_to_id(c: char) -> u32 {
     if lc.is_ascii_lowercase() {
         (lc as u8 - b'a') as u32
     } else {
-        panic!("Invalid variable character: {}", c);
+        panic!("Invalid variable character: {c}");
     }
 }
 
@@ -159,8 +159,7 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
                             return Err(Rich::custom(
                                 span,
                                 format!(
-                                    "invalid variable '{}': expected 'v<number>' or '_<number>' (e.g., v0, _42)",
-                                    s
+                                    "invalid variable '{s}': expected 'v<number>' or '_<number>' (e.g., v0, _42)"
                                 ),
                             ));
                         }
@@ -168,8 +167,7 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
                         return Err(Rich::custom(
                             span,
                             format!(
-                                "unrecognized identifier '{}': expected a variable name like a, X, v<number>, or _<number>",
-                                s
+                                "unrecognized identifier '{s}': expected a variable name like a, X, v<number>, or _<number>"
                             ),
                         ));
                     }
@@ -569,7 +567,7 @@ pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
     // 1) Lexing (unchanged)
     let (tokens, lex_errs) = lexer().parse(src).into_output_errors();
     let mut errors: Vec<String> = Vec::new();
-    errors.extend(lex_errs.into_iter().map(|e| format!("lexing error: {}", e)));
+    errors.extend(lex_errs.into_iter().map(|e| format!("lexing error: {e}")));
 
     let tokens = match tokens {
         Some(toks) => toks,
@@ -584,12 +582,8 @@ pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
         .then_ignore(end())
         .parse(plain.as_slice())
         .into_output_errors();
-    errors.extend(
-        parse_errs
-            .into_iter()
-            .map(|e| format!("parse error: {}", e)),
-    );
-    if errors.len() > 0 {
+    errors.extend(parse_errs.into_iter().map(|e| format!("parse error: {e}")));
+    if !errors.is_empty() {
         return Err(errors);
     }
 

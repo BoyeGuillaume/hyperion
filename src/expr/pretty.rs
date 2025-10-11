@@ -336,7 +336,7 @@ impl<'w, W: WriteColor + Write> pretty::Render for ColorWriter<'w, W> {
         self.out.write_all(s.as_bytes())
     }
     fn fail_doc(&self) -> Self::Error {
-        io::Error::new(io::ErrorKind::Other, "render failed")
+        io::Error::other("render failed")
     }
 }
 

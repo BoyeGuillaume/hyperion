@@ -34,7 +34,7 @@ macro_rules! define_ops_expr {
             type Output = And<Self, _O1>;
 
             fn bitand(self, rhs: _O1) -> Self::Output {
-                And { lhs: self, rhs: rhs }
+                And { lhs: self, rhs }
             }
         }
 
@@ -51,7 +51,7 @@ macro_rules! define_ops_expr {
             type Output = Or<Self, _O1>;
 
             fn bitor(self, rhs: _O1) -> Self::Output {
-                Or { lhs: self, rhs: rhs }
+                Or { lhs: self, rhs }
             }
         }
 

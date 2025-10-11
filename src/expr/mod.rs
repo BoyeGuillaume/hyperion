@@ -40,7 +40,7 @@ use crate::variable::InlineVariable;
 pub(crate) mod expr_sealed {
     pub trait Sealed {}
 
-    impl<'a, T: Sealed> Sealed for &'a T {}
+    impl<T: Sealed> Sealed for &T {}
 }
 
 /// Trait implemented by all unified expression nodes provided by this crate.
@@ -106,7 +106,7 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
     }
 }
 
-impl<'a, T: Expr> Expr for &'a T {
+impl<T: Expr> Expr for &T {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         (*self).view()
     }
@@ -147,9 +147,7 @@ impl AnyExpr {
                     expr_type,
                     ExprType::Variable | ExprType::Forall | ExprType::Exists
                 ),
-            "Expected data for Variable, Forall, and Exists nodes only (got {:?} with data {:?})",
-            expr_type,
-            data
+            "Expected data for Variable, Forall, and Exists nodes only (got {expr_type:?} with data {data:?})"
         );
         debug_assert!(
             children.len()
@@ -291,7 +289,7 @@ impl<'a> EncodableExpr for AnyExprRef<'a> {
         self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
-        tree.push_tree(&self.tree, self.node)
+        tree.push_tree(self.tree, self.node)
     }
 }
 

@@ -65,7 +65,7 @@ fn main() {
             stdout.set_color(&error_color).unwrap();
             writeln!(stdout, "Some errors were found during parsing:").unwrap();
             for err in e {
-                writeln!(stdout, "  - {}", err).unwrap();
+                writeln!(stdout, "  - {err}").unwrap();
             }
             stdout.reset().unwrap();
         }

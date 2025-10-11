@@ -11,9 +11,9 @@ fn inline_variable_encoding_and_display() {
 
     // Small ids print as a..z, larger as v<N>
     let small = InlineVariable::new_from_raw(0);
-    assert_eq!(format!("{}", small), "a");
+    assert_eq!(format!("{small}"), "a");
     let large = InlineVariable::new_from_raw(26);
-    assert_eq!(format!("{}", large), "v0");
+    assert_eq!(format!("{large}"), "v0");
 }
 
 #[test]

@@ -48,7 +48,7 @@ pub trait EncodableExpr: Clone {
     }
 }
 
-impl<'a, T: EncodableExpr> EncodableExpr for &'a T {
+impl<T: EncodableExpr> EncodableExpr for &T {
     #[inline]
     fn encode_tree_step(self, tree: &mut tree::TreeBuf) -> TreeBufNodeRef {
         (*self).clone().encode_tree_step(tree)

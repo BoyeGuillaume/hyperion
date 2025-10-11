@@ -72,8 +72,8 @@ impl TreeBuf {
         // of each node is: opcode (1 byte), flag byte (1 byte), data (0 or 4 bytes), references (2 bytes each).
         let flag_byte = ((references.len() as u8) << 1) | data.is_some() as u8;
 
-        std::iter::once(opcode as u8)
-            .chain(std::iter::once(flag_byte as u8))
+        std::iter::once(opcode)
+            .chain(std::iter::once(flag_byte))
             .chain(data.into_iter().flat_map(|d| d.to_le_bytes().into_iter()))
             .chain(references.iter().flat_map(|r| r.to_le_bytes().into_iter()))
     }
@@ -164,14 +164,14 @@ impl TreeBuf {
         };
 
         while let Some((old_offset, new_offset)) = stack.pop() {
-            let (opcode, data, reference_iter) = Self::decode_node(&buffer, old_offset);
+            let (opcode, data, reference_iter) = Self::decode_node(buffer, old_offset);
 
             let new_references: StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }> =
                 reference_iter
                     .into_iter()
                     .map(|t| {
                         // Write the dummy child now
-                        let (opcode, data, references) = Self::decode_node(&buffer, t);
+                        let (opcode, data, references) = Self::decode_node(buffer, t);
                         let references: StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }> =
                             references
                                 .into_iter()
@@ -220,7 +220,7 @@ impl TreeBuf {
                 *o as usize
             } else {
                 new_offset.replace(intermediate_buffer_len as TreeBufNodeRef);
-                intermediate_buffer_len as usize
+                intermediate_buffer_len
             };
 
             // 1. Ensure we have enough space in the intermediate buffer
@@ -245,7 +245,7 @@ impl TreeBuf {
         // Now that we have the intermediate buffer, we can swap it with the current buffer
         self.bytes.clear();
         self.bytes
-            .extend_from_slice(&intermediate_buffer[..intermediate_buffer_len as usize]);
+            .extend_from_slice(&intermediate_buffer[..intermediate_buffer_len]);
         self.wasted_bytes = 0;
     }
 
@@ -303,7 +303,7 @@ impl TreeBuf {
         }
 
         debug_assert!(
-            self.detect_cycle(self.root_offset) == false,
+            !self.detect_cycle(self.root_offset),
             "Cycle detected in tree after consolidation"
         );
     }
@@ -354,7 +354,7 @@ impl TreeBuf {
             "InlineTree cannot exceed 65535 bytes"
         );
         debug_assert!(
-            self.detect_cycle(offset as TreeBufNodeRef) == false,
+            !self.detect_cycle(offset as TreeBufNodeRef),
             "Cycle detected in tree"
         );
         offset as TreeBufNodeRef
@@ -408,10 +408,7 @@ impl TreeBuf {
     pub fn set_root(&mut self, new_ref: TreeBufNodeRef) {
         self.set_root_offset(Some(new_ref));
 
-        debug_assert!(
-            self.detect_cycle(new_ref) == false,
-            "Cycle detected in tree"
-        );
+        debug_assert!(!self.detect_cycle(new_ref), "Cycle detected in tree");
     }
 
     /// Update the `reference_index`-th child pointer of `node_ref` to `new_ref`.
@@ -467,7 +464,7 @@ impl TreeBuf {
         self.bytes[reference_offset..reference_offset + 2].copy_from_slice(&new_ref.to_le_bytes());
 
         debug_assert!(
-            self.detect_cycle(node_ref as TreeBufNodeRef) == false,
+            !self.detect_cycle(node_ref as TreeBufNodeRef),
             "Cycle detected in tree"
         );
     }

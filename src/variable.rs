@@ -56,9 +56,9 @@ impl Variable {
     }
 }
 
-impl Into<InlineVariable> for Variable {
-    fn into(self) -> InlineVariable {
-        InlineVariable::new(self)
+impl From<Variable> for InlineVariable {
+    fn from(v: Variable) -> InlineVariable {
+        InlineVariable::new(v)
     }
 }
 
@@ -113,15 +113,14 @@ impl InlineVariable {
 impl std::fmt::Display for InlineVariable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(c) = self.symbol(f.alternate()) {
-            write!(f, "{}", c)
+            write!(f, "{c}")
         } else {
             write!(f, "v{}", self.raw() - 26)
         }
     }
 }
 
-/// ======================== Encoding & Traits ========================
-
+// ======================== Encoding & Traits ========================
 impl expr_sealed::Sealed for InlineVariable {}
 
 impl EncodableExpr for InlineVariable {
