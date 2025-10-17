@@ -56,6 +56,8 @@ impl TreeBuf {
     const MAX_NODE_SIZE: usize = 2 + 4 + 7 * 2; // 1 byte opcode + 1 byte flags + 4 bytes data + 7 * 2 bytes references
     /// Maximum number of child references allowed per node.
     pub const MAX_NUM_REFERENCES: usize = 7;
+    /// Special invalid node reference. Each node must be at least 2 bytes, so offset 1 is never valid.
+    pub const INVALID_NODE_REF: TreeBufNodeRef = 1;
 
     fn encode_node<'a>(
         opcode: u8,
@@ -79,7 +81,7 @@ impl TreeBuf {
     }
 
     fn get_root_offset(&self) -> Option<TreeBufNodeRef> {
-        if self.root_offset == 1 {
+        if self.root_offset == Self::INVALID_NODE_REF {
             None
         } else {
             Some(self.root_offset)
@@ -88,7 +90,7 @@ impl TreeBuf {
 
     fn set_root_offset(&mut self, new_root: Option<TreeBufNodeRef>) {
         debug_assert!(
-            new_root != Some(1),
+            new_root != Some(Self::INVALID_NODE_REF),
             "Cannot set root node to offset 1, it is reserved"
         );
         self.root_offset = new_root.unwrap_or(1);

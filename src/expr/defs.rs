@@ -83,7 +83,7 @@ pub struct True;
 impl expr_sealed::Sealed for True {}
 
 impl EncodableExpr for True {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::True as u8, None, &[])
     }
 }
@@ -105,7 +105,7 @@ pub struct False;
 impl expr_sealed::Sealed for False {}
 
 impl EncodableExpr for False {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::False as u8, None, &[])
     }
 }
@@ -129,7 +129,7 @@ pub struct Not<P: Expr> {
 impl<P: Expr> expr_sealed::Sealed for Not<P> {}
 
 impl<P: Expr> EncodableExpr for Not<P> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(ExprType::Not as u8, None, &[inner_ref])
     }
@@ -155,7 +155,7 @@ pub struct And<P: Expr, Q: Expr> {
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for And<P, Q> {}
 
 impl<P: Expr, Q: Expr> EncodableExpr for And<P, Q> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::And as u8, None, &[left_ref, right_ref])
@@ -182,7 +182,7 @@ pub struct Or<P: Expr, Q: Expr> {
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Or<P, Q> {}
 
 impl<P: Expr, Q: Expr> EncodableExpr for Or<P, Q> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Or as u8, None, &[left_ref, right_ref])
@@ -209,7 +209,7 @@ pub struct Implies<P: Expr, Q: Expr> {
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Implies<P, Q> {}
 
 impl<P: Expr, Q: Expr> EncodableExpr for Implies<P, Q> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.antecedent.encode_tree_step(tree);
         let right_ref = self.consequent.encode_tree_step(tree);
         tree.push_node(ExprType::Implies as u8, None, &[left_ref, right_ref])
@@ -236,7 +236,7 @@ pub struct Iff<P: Expr, Q: Expr> {
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Iff<P, Q> {}
 
 impl<P: Expr, Q: Expr> EncodableExpr for Iff<P, Q> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Iff as u8, None, &[left_ref, right_ref])
@@ -263,7 +263,7 @@ pub struct Equal<P: Expr, Q: Expr> {
 impl<P: Expr, Q: Expr> expr_sealed::Sealed for Equal<P, Q> {}
 
 impl<P: Expr, Q: Expr> EncodableExpr for Equal<P, Q> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Equal as u8, None, &[left_ref, right_ref])
@@ -292,7 +292,7 @@ pub struct ForAll<DT: Expr, P: Expr> {
 impl<DT: Expr, P: Expr> expr_sealed::Sealed for ForAll<DT, P> {}
 
 impl<DT: Expr, P: Expr> EncodableExpr for ForAll<DT, P> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let dtype_ref = self.dtype.encode_tree_step(tree);
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(
@@ -328,7 +328,7 @@ pub struct Exists<DT: Expr, P: Expr> {
 impl<DT: Expr, P: Expr> expr_sealed::Sealed for Exists<DT, P> {}
 
 impl<DT: Expr, P: Expr> EncodableExpr for Exists<DT, P> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let dtype_ref = self.dtype.encode_tree_step(tree);
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(
@@ -363,7 +363,7 @@ pub struct Bool;
 impl expr_sealed::Sealed for Bool {}
 
 impl EncodableExpr for Bool {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Bool as u8, None, &[])
     }
 }
@@ -383,7 +383,7 @@ pub struct Omega;
 impl expr_sealed::Sealed for Omega {}
 
 impl EncodableExpr for Omega {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Omega as u8, None, &[])
     }
 }
@@ -403,7 +403,7 @@ pub struct Never;
 impl expr_sealed::Sealed for Never {}
 
 impl EncodableExpr for Never {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Never as u8, None, &[])
     }
 }
@@ -426,7 +426,7 @@ pub struct Powerset<P: Expr> {
 impl<P: Expr> expr_sealed::Sealed for Powerset<P> {}
 
 impl<P: Expr> EncodableExpr for Powerset<P> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(ExprType::Powerset as u8, None, &[inner_ref])
     }
@@ -452,7 +452,7 @@ pub struct Lambda<A: Expr, B: Expr> {
 impl<A: Expr, B: Expr> expr_sealed::Sealed for Lambda<A, B> {}
 
 impl<A: Expr, B: Expr> EncodableExpr for Lambda<A, B> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let arg_ref = self.arg.encode_tree_step(tree);
         let body_ref = self.body.encode_tree_step(tree);
         tree.push_node(ExprType::Lambda as u8, None, &[arg_ref, body_ref])
@@ -480,7 +480,7 @@ pub struct Call<A: Expr, B: Expr> {
 impl<A: Expr, B: Expr> expr_sealed::Sealed for Call<A, B> {}
 
 impl<A: Expr, B: Expr> EncodableExpr for Call<A, B> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let func_ref = self.func.encode_tree_step(tree);
         let arg_ref = self.arg.encode_tree_step(tree);
         tree.push_node(ExprType::Call as u8, None, &[func_ref, arg_ref])
@@ -508,7 +508,7 @@ pub struct Tuple<A: Expr, B: Expr> {
 impl<A: Expr, B: Expr> expr_sealed::Sealed for Tuple<A, B> {}
 
 impl<A: Expr, B: Expr> EncodableExpr for Tuple<A, B> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let first_ref = self.first.encode_tree_step(tree);
         let second_ref = self.second.encode_tree_step(tree);
         tree.push_node(ExprType::Tuple as u8, None, &[first_ref, second_ref])
@@ -535,7 +535,7 @@ pub struct If<P: Expr, T: Expr, E: Expr> {
 impl<P: Expr, T: Expr, E: Expr> expr_sealed::Sealed for If<P, T, E> {}
 
 impl<P: Expr, T: Expr, E: Expr> EncodableExpr for If<P, T, E> {
-    fn encode_tree_step(self, tree: &mut TreeBuf) -> TreeBufNodeRef {
+    fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let cond_ref = self.condition.encode_tree_step(tree);
         let then_ref = self.then_branch.encode_tree_step(tree);
         let else_ref = self.else_branch.encode_tree_step(tree);

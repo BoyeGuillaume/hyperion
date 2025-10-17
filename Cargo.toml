@@ -10,15 +10,15 @@ keywords = ["formal", "symbolic", "hyperion"]
 authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
 
 [dependencies]
-smallvec = ">1.12"
-strum = { version = ">0.26", features = ["derive"] }
-pretty = { version = ">=0.12.5", features = ["termcolor"] }
-termcolor = ">=1"
+smallvec = "^1"
+strum = { version = ">=0.26", features = ["derive"] }
+pretty = { version = "^0.12", features = ["termcolor"] }
+termcolor = "^1"
 term_size = ">=0.3"
 chumsky = ">=0.11"
-typed-arena = ">=2.0"
-bytemuck = ">=1.20.0"
-stackalloc = "1.2.1"
+typed-arena = "^2"
+stackalloc = "^1"
+either = ">=1"
 
 [dev-dependencies]
 clap = { version = ">=4.0", features = ["derive"] }

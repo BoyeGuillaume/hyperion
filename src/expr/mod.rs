@@ -244,7 +244,7 @@ impl AnyExpr {
 impl expr_sealed::Sealed for AnyExpr {}
 impl EncodableExpr for AnyExpr {
     fn encode_tree_step(
-        self,
+        &self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
         tree.push_tree(&self.tree, self.tree.root().unwrap())
@@ -286,7 +286,7 @@ impl<'a> expr_sealed::Sealed for AnyExprRef<'a> {}
 
 impl<'a> EncodableExpr for AnyExprRef<'a> {
     fn encode_tree_step(
-        self,
+        &self,
         tree: &mut crate::encoding::tree::TreeBuf,
     ) -> crate::encoding::tree::TreeBufNodeRef {
         tree.push_tree(self.tree, self.node)
