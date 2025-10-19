@@ -3,6 +3,8 @@
 //! All these types implement [`crate::expr::Expr`] and support encoding/decoding. They are
 //! lightweight wrappers that provide structure; you normally compose them via the builder
 //! methods on [`Expr`](crate::expr::Expr) or helpers in [`crate::expr::func`].
+use std::cell::RefCell;
+
 use crate::{
     arena::{ArenaAllocableExpr, ArenaAnyExpr, ExprArenaCtx},
     encoding::{
@@ -88,11 +90,7 @@ impl EncodableExpr for True {
 }
 
 impl<'a> ArenaAllocableExpr<'a> for True {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::True))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::True))
     }
 }
@@ -118,11 +116,7 @@ impl EncodableExpr for False {
 }
 
 impl<'a> ArenaAllocableExpr<'a> for False {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::False))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::False))
     }
 }
@@ -151,12 +145,7 @@ impl<P: Expr> EncodableExpr for Not<P> {
 }
 
 impl<'a, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a> for Not<P> {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let inner_alloc = self.inner.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(inner_alloc)))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let inner_alloc = self.inner.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(inner_alloc)))
     }
@@ -190,13 +179,7 @@ impl<P: Expr, Q: Expr> EncodableExpr for And<P, Q> {
 impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for And<P, Q>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let lhs_alloc = self.lhs.alloc_in(ctx);
-        let rhs_alloc = self.rhs.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::And(lhs_alloc, rhs_alloc)))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let lhs_alloc = self.lhs.alloc_in(ctx);
         let rhs_alloc = self.rhs.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::And(lhs_alloc, rhs_alloc)))
@@ -231,13 +214,7 @@ impl<P: Expr, Q: Expr> EncodableExpr for Or<P, Q> {
 impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Or<P, Q>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let lhs_alloc = self.lhs.alloc_in(ctx);
-        let rhs_alloc = self.rhs.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Or(lhs_alloc, rhs_alloc)))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let lhs_alloc = self.lhs.alloc_in(ctx);
         let rhs_alloc = self.rhs.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Or(lhs_alloc, rhs_alloc)))
@@ -272,15 +249,7 @@ impl<P: Expr, Q: Expr> EncodableExpr for Implies<P, Q> {
 impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Implies<P, Q>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let lhs_alloc = self.antecedent.alloc_in(ctx);
-        let rhs_alloc = self.consequent.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Implies(
-            lhs_alloc, rhs_alloc,
-        )))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let lhs_alloc = self.antecedent.alloc_in(ctx);
         let rhs_alloc = self.consequent.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Implies(
@@ -317,13 +286,7 @@ impl<P: Expr, Q: Expr> EncodableExpr for Iff<P, Q> {
 impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Iff<P, Q>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let lhs_alloc = self.lhs.alloc_in(ctx);
-        let rhs_alloc = self.rhs.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Iff(lhs_alloc, rhs_alloc)))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let lhs_alloc = self.lhs.alloc_in(ctx);
         let rhs_alloc = self.rhs.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Iff(lhs_alloc, rhs_alloc)))
@@ -358,15 +321,7 @@ impl<P: Expr, Q: Expr> EncodableExpr for Equal<P, Q> {
 impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Equal<P, Q>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let lhs_alloc = self.lhs.alloc_in(ctx);
-        let rhs_alloc = self.rhs.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Equal(
-            lhs_alloc, rhs_alloc,
-        )))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let lhs_alloc = self.lhs.alloc_in(ctx);
         let rhs_alloc = self.rhs.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Equal(
@@ -409,17 +364,7 @@ impl<DT: Expr, P: Expr> EncodableExpr for ForAll<DT, P> {
 impl<'a, DT: Expr + ArenaAllocableExpr<'a>, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for ForAll<DT, P>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let dtype_alloc = self.dtype.alloc_in(ctx);
-        let inner_alloc = self.inner.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Forall {
-            variable: self.variable,
-            dtype: dtype_alloc,
-            inner: inner_alloc,
-        }))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let dtype_alloc = self.dtype.alloc_in(ctx);
         let inner_alloc = self.inner.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Forall {
@@ -467,17 +412,7 @@ impl<DT: Expr, P: Expr> EncodableExpr for Exists<DT, P> {
 impl<'a, DT: Expr + ArenaAllocableExpr<'a>, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Exists<DT, P>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let dtype_alloc = self.dtype.alloc_in(ctx);
-        let inner_alloc = self.inner.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Exists {
-            variable: self.variable,
-            dtype: dtype_alloc,
-            inner: inner_alloc,
-        }))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let dtype_alloc = self.dtype.alloc_in(ctx);
         let inner_alloc = self.inner.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Exists {
@@ -516,11 +451,7 @@ impl EncodableExpr for Bool {
 }
 
 impl<'a> ArenaAllocableExpr<'a> for Bool {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Bool))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Bool))
     }
 }
@@ -544,11 +475,7 @@ impl EncodableExpr for Omega {
 }
 
 impl<'a> ArenaAllocableExpr<'a> for Omega {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Omega))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Omega))
     }
 }
@@ -572,11 +499,7 @@ impl EncodableExpr for Never {
 }
 
 impl<'a> ArenaAllocableExpr<'a> for Never {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Never))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Never))
     }
 }
@@ -604,12 +527,7 @@ impl<P: Expr> EncodableExpr for Powerset<P> {
 }
 
 impl<'a, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a> for Powerset<P> {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let inner_alloc = self.inner.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Powerset(inner_alloc)))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let inner_alloc = self.inner.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Powerset(inner_alloc)))
     }
@@ -643,16 +561,7 @@ impl<A: Expr, B: Expr> EncodableExpr for Lambda<A, B> {
 impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Lambda<A, B>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let arg_alloc = self.arg.alloc_in(ctx);
-        let body_alloc = self.body.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Lambda {
-            arg: arg_alloc,
-            body: body_alloc,
-        }))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let arg_alloc = self.arg.alloc_in(ctx);
         let body_alloc = self.body.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Lambda {
@@ -691,16 +600,7 @@ impl<A: Expr, B: Expr> EncodableExpr for Call<A, B> {
 impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Call<A, B>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let func_alloc = self.func.alloc_in(ctx);
-        let arg_alloc = self.arg.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Call {
-            func: func_alloc,
-            arg: arg_alloc,
-        }))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let func_alloc = self.func.alloc_in(ctx);
         let arg_alloc = self.arg.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Call {
@@ -739,16 +639,7 @@ impl<A: Expr, B: Expr> EncodableExpr for Tuple<A, B> {
 impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
     for Tuple<A, B>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let first_alloc = self.first.alloc_in(ctx);
-        let second_alloc = self.second.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Tuple(
-            first_alloc,
-            second_alloc,
-        )))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let first_alloc = self.first.alloc_in(ctx);
         let second_alloc = self.second.alloc_in(ctx);
         ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Tuple(
@@ -791,18 +682,7 @@ impl<
     E: Expr + ArenaAllocableExpr<'a>,
 > ArenaAllocableExpr<'a> for If<P, T, E>
 {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
-        let cond_alloc = self.condition.alloc_in(ctx);
-        let then_alloc = self.then_branch.alloc_in(ctx);
-        let else_alloc = self.else_branch.alloc_in(ctx);
-        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::If {
-            condition: cond_alloc,
-            then_branch: then_alloc,
-            else_branch: else_alloc,
-        }))
-    }
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let cond_alloc = self.condition.alloc_in(ctx);
         let then_alloc = self.then_branch.alloc_in(ctx);
         let else_alloc = self.else_branch.alloc_in(ctx);

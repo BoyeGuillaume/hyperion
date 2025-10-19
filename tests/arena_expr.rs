@@ -158,8 +158,7 @@ fn arena_manual_build_and_encode() {
     // Build an arena-allocated expression: And(Variable(x), True)
     let ctx = ExprArenaCtx::new();
     let x = InlineVariable::new_from_raw(3);
-    let var_leaf_mut = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Variable(x)));
-    let var_leaf: &ArenaAnyExpr = &*var_leaf_mut;
+    let var_leaf = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Variable(x)));
     let true_leaf = True.alloc_in(&ctx);
 
     let and_view = ExprView::And(var_leaf, true_leaf);
@@ -167,11 +166,81 @@ fn arena_manual_build_and_encode() {
 
     // Encode to a TreeBuf from the arena node and check shape
     let mut tree = hyformal::encoding::tree::TreeBuf::new();
-    let root = EncodableExpr::encode_tree_step(&*and_node, &mut tree);
+    let root = EncodableExpr::encode_tree_step(and_node, &mut tree);
     tree.set_root(root);
     let (op, _data, children) = tree.get_node(root);
     assert_eq!(op, ExprType::And as u8);
     assert_eq!(children.len(), 2);
+}
+
+#[test]
+fn deep_copy_simple_leaf_and_unary() {
+    let ctx = ExprArenaCtx::new();
+    let leaf = True.alloc_in(&ctx);
+    let not_leaf = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(leaf)));
+
+    // Deep copy the Not(True) node
+    let copy = ctx.deep_copy(not_leaf);
+
+    // Encoding both should yield identical buffers
+    let e1 = not_leaf.encode();
+    let e2 = copy.encode();
+    assert_eq!(type_of(&e1), ExprType::Not);
+    assert_eq!(type_of(&e2), ExprType::Not);
+    assert!(e1 == e2);
+}
+
+#[test]
+fn deep_copy_complex_tree_and_independence() {
+    // Build: If(And(True, False), Lambda(x, Tuple(x, True))(False), Forall x: Bool. (x = x))
+    let ctx = ExprArenaCtx::new();
+    let t = True.alloc_in(&ctx);
+    let f = False.alloc_in(&ctx);
+    let and = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::And(t, f)));
+
+    let x = InlineVariable::new_from_raw(42);
+    let var_x = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Variable(x)));
+    let tup = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Tuple(var_x, t)));
+    let lam = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Lambda {
+        arg: var_x,
+        body: tup,
+    }));
+    let app = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Call {
+        func: lam,
+        arg: f,
+    }));
+
+    let dtype = Bool.alloc_in(&ctx);
+    let var_x2 = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Variable(x)));
+    let eq_x = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Equal(var_x2, var_x2)));
+    let forall = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Forall {
+        variable: x,
+        dtype,
+        inner: eq_x,
+    }));
+
+    let root = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::If {
+        condition: and,
+        then_branch: app,
+        else_branch: forall,
+    }));
+
+    // Deep copy
+    let copy = ctx.deep_copy(root);
+
+    // Structural equality after encoding
+    let e1 = root.encode();
+    let e2 = copy.encode();
+    assert!(e1 == e2);
+
+    // Mutate original root to ensure independence: wrap with Not
+    let wrapped_original = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(root)));
+    let e_wrapped = wrapped_original.encode();
+    assert_eq!(type_of(&e_wrapped), ExprType::Not);
+
+    // Copy should remain the same as before
+    let e2_again = copy.encode();
+    assert!(e2 == e2_again);
 }
 
 #[test]
@@ -185,12 +254,11 @@ fn arena_with_exprref_leaf_copying() {
     let sub_ref = sub.as_ref();
 
     let ctx = ExprArenaCtx::new();
-    let leaf_mut = ctx.alloc_expr(ArenaAnyExpr::ExprRef(sub_ref));
-    let leaf: &ArenaAnyExpr = &*leaf_mut;
+    let leaf = ctx.alloc_expr(ArenaAnyExpr::ExprRef(sub_ref));
     let wrapped = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(leaf)));
 
     let mut tree = hyformal::encoding::tree::TreeBuf::new();
-    let root = EncodableExpr::encode_tree_step(&*wrapped, &mut tree);
+    let root = EncodableExpr::encode_tree_step(wrapped, &mut tree);
     tree.set_root(root);
     let (op, _data, children) = tree.get_node(root);
     assert_eq!(op, ExprType::Not as u8);

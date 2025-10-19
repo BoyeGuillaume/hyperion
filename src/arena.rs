@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use either::Either;
 use smallvec::SmallVec;
 use typed_arena::Arena;
@@ -41,15 +43,12 @@ use crate::{
 /// Trait for values that can be allocated into an expression arena.
 ///
 /// Contract
-/// - Implementors produce arena-lifetime values (`&'a ArenaAnyExpr<'a>`) describing an expression
-///   either as a view (structural node) or a borrowed encoded subtree.
-/// - [`alloc_in`] may return an immutable reference to an already-allocated node (including
-///   `self` if it is an arena reference already). [`alloc_in_mut`] always returns a unique mutable
-///   reference suitable for later updates in builder-like scenarios.
+/// - Implementors produce arena-lifetime values (`&'a RefCell<ArenaAnyExpr<'a>>`) describing an
+///   expression either as a view (structural node) or a borrowed encoded subtree.
+/// - [`alloc_in`] may return a reference to an already-allocated node (including `self` if it is
+///   an arena reference already). Interior mutability is available through `RefCell` when needed.
 pub trait ArenaAllocableExpr<'a> {
-    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a>;
-
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a>;
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>>;
 }
 
 /// Allocation context holding a `typed_arena` of expression nodes.
@@ -57,7 +56,7 @@ pub trait ArenaAllocableExpr<'a> {
 /// A context owns all nodes created within its lifetime. Drop the context when you no longer
 /// need the arena-allocated views; you typically encode the final expression first.
 pub struct ExprArenaCtx<'a> {
-    arena: Arena<ArenaAnyExpr<'a>>,
+    arena: Arena<RefCell<ArenaAnyExpr<'a>>>,
 }
 
 impl<'a> ExprArenaCtx<'a> {
@@ -71,8 +70,227 @@ impl<'a> ExprArenaCtx<'a> {
     /// Allocate a concrete arena expression into this context.
     ///
     /// Note: this simply forwards to `typed_arena::Arena::alloc`.
-    pub fn alloc_expr(&'a self, expr: ArenaAnyExpr<'a>) -> &'a mut ArenaAnyExpr<'a> {
-        self.arena.alloc(expr)
+    pub fn alloc_expr(&'a self, expr: ArenaAnyExpr<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
+        self.arena.alloc(RefCell::new(expr))
+    }
+
+    /// Create an arena node that references a pre-encoded external subtree.
+    ///
+    /// The referenced [`AnyExprRef`] is treated as a leaf during encoding of the arena tree and
+    /// copied into the target buffer. This allows mixing owned/borrowed subtrees with arena-local
+    /// structural nodes.
+    pub fn reference_external(&'a self, expr: AnyExprRef<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
+        self.arena.alloc(RefCell::new(ArenaAnyExpr::ExprRef(expr)))
+    }
+
+    /// Deep copy an arena-backed expression within this context.
+    ///
+    /// Semantics
+    /// - Performs an iterative post-order traversal of `expr` and allocates a structurally
+    ///   identical tree of new nodes inside this arena.
+    /// - Returns a reference to the newly-allocated root node.
+    /// - Leaves that are borrowed encoded subtrees ([`AnyExprRef`]) are preserved as borrowed
+    ///   leaves in the copy; when the arena tree is encoded later, such leaves are copied into
+    ///   the destination buffer.
+    ///
+    /// Complexity
+    /// - O(n) over the size of the input tree; allocation cost is amortized by the arena.
+    ///
+    /// Example
+    /// ```
+    /// use hyformal::arena::{ExprArenaCtx, ArenaAnyExpr};
+    /// use hyformal::expr::view::ExprView;
+    /// use hyformal::expr::{Expr, variant::ExprType};
+    ///
+    /// let ctx = ExprArenaCtx::new();
+    /// let t = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::True));
+    /// let not_t = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(t)));
+    /// let copy = ctx.deep_copy(not_t);
+    ///
+    /// // Both encode to structurally equal buffers
+    /// let e1 = not_t.encode();
+    /// let e2 = copy.encode();
+    /// assert_eq!(e1.as_ref().type_(), ExprType::Not);
+    /// assert!(e1 == e2);
+    /// ```
+    pub fn deep_copy(&'a self, expr: &RefCell<ArenaAnyExpr<'a>>) -> &'a RefCell<ArenaAnyExpr<'a>> {
+        enum Frame<'a_, 'b> {
+            Enter(&'b RefCell<ArenaAnyExpr<'a_>>),
+            Exit(&'b RefCell<ArenaAnyExpr<'a_>>),
+        }
+
+        // Post-order iterative traversal to rebuild the tree in this arena.
+        let mut stack: SmallVec<[Frame<'a, '_>; 16]> = SmallVec::new();
+        // Hold newly allocated children while bubbling up; use shared refs for assembling views.
+        let mut results: SmallVec<[&'a RefCell<ArenaAnyExpr<'a>>; 16]> = SmallVec::new();
+        // Track the allocation corresponding to the requested root to return a ref.
+        let mut root_alloc: Option<&'a RefCell<ArenaAnyExpr<'a>>> = None;
+
+        stack.push(Frame::Enter(expr));
+
+        while let Some(frame) = stack.pop() {
+            match frame {
+                Frame::Enter(node) => match *node.borrow() {
+                    // Treat borrowed encoded subtrees as leaves; handle on Exit.
+                    ArenaAnyExpr::ExprRef(_) => {
+                        stack.push(Frame::Exit(node));
+                    }
+                    ArenaAnyExpr::ArenaView(view) => {
+                        // Post-order: visit children, then build this node
+                        stack.push(Frame::Exit(node));
+                        match view {
+                            ExprView::Variable(_)
+                            | ExprView::Bool
+                            | ExprView::Omega
+                            | ExprView::True
+                            | ExprView::False
+                            | ExprView::Never => {}
+                            ExprView::Not(e) | ExprView::Powerset(e) => {
+                                stack.push(Frame::Enter(e));
+                            }
+                            ExprView::And(a, b)
+                            | ExprView::Or(a, b)
+                            | ExprView::Implies(a, b)
+                            | ExprView::Iff(a, b)
+                            | ExprView::Equal(a, b)
+                            | ExprView::Tuple(a, b) => {
+                                stack.push(Frame::Enter(b));
+                                stack.push(Frame::Enter(a));
+                            }
+                            ExprView::Lambda { arg, body }
+                            | ExprView::Call {
+                                func: arg,
+                                arg: body,
+                            } => {
+                                stack.push(Frame::Enter(body));
+                                stack.push(Frame::Enter(arg));
+                            }
+                            ExprView::Forall { dtype, inner, .. }
+                            | ExprView::Exists { dtype, inner, .. } => {
+                                stack.push(Frame::Enter(inner));
+                                stack.push(Frame::Enter(dtype));
+                            }
+                            ExprView::If {
+                                condition,
+                                then_branch,
+                                else_branch,
+                            } => {
+                                stack.push(Frame::Enter(else_branch));
+                                stack.push(Frame::Enter(then_branch));
+                                stack.push(Frame::Enter(condition));
+                            }
+                        }
+                    }
+                },
+                Frame::Exit(node) => match *node.borrow() {
+                    ArenaAnyExpr::ExprRef(r) => {
+                        // Leaf: clone the external reference as a leaf in the copy
+                        let alloc = self.alloc_expr(ArenaAnyExpr::ExprRef(r));
+                        if std::ptr::eq(node, expr) {
+                            root_alloc = Some(alloc);
+                        } else {
+                            results.push(alloc);
+                        }
+                    }
+                    ArenaAnyExpr::ArenaView(view) => {
+                        let new_view = match view {
+                            ExprView::Variable(v) => ExprView::Variable(v),
+                            ExprView::Bool => ExprView::Bool,
+                            ExprView::Omega => ExprView::Omega,
+                            ExprView::True => ExprView::True,
+                            ExprView::False => ExprView::False,
+                            ExprView::Never => ExprView::Never,
+                            ExprView::Not(_) => {
+                                let c = results.pop().unwrap();
+                                ExprView::Not(c)
+                            }
+                            ExprView::Powerset(_) => {
+                                let c = results.pop().unwrap();
+                                ExprView::Powerset(c)
+                            }
+                            ExprView::And(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::And(l, r)
+                            }
+                            ExprView::Or(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::Or(l, r)
+                            }
+                            ExprView::Implies(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::Implies(l, r)
+                            }
+                            ExprView::Iff(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::Iff(l, r)
+                            }
+                            ExprView::Equal(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::Equal(l, r)
+                            }
+                            ExprView::Lambda { .. } => {
+                                let body = results.pop().unwrap();
+                                let arg = results.pop().unwrap();
+                                ExprView::Lambda { arg, body }
+                            }
+                            ExprView::Call { .. } => {
+                                let arg = results.pop().unwrap();
+                                let func = results.pop().unwrap();
+                                ExprView::Call { func, arg }
+                            }
+                            ExprView::Tuple(_, _) => {
+                                let r = results.pop().unwrap();
+                                let l = results.pop().unwrap();
+                                ExprView::Tuple(l, r)
+                            }
+                            ExprView::Forall { variable, .. } => {
+                                let inner = results.pop().unwrap();
+                                let dtype = results.pop().unwrap();
+                                ExprView::Forall {
+                                    variable,
+                                    dtype,
+                                    inner,
+                                }
+                            }
+                            ExprView::Exists { variable, .. } => {
+                                let inner = results.pop().unwrap();
+                                let dtype = results.pop().unwrap();
+                                ExprView::Exists {
+                                    variable,
+                                    dtype,
+                                    inner,
+                                }
+                            }
+                            ExprView::If { .. } => {
+                                let else_b = results.pop().unwrap();
+                                let then_b = results.pop().unwrap();
+                                let cond = results.pop().unwrap();
+                                ExprView::If {
+                                    condition: cond,
+                                    then_branch: then_b,
+                                    else_branch: else_b,
+                                }
+                            }
+                        };
+
+                        let alloc = self.alloc_expr(ArenaAnyExpr::ArenaView(new_view));
+                        if std::ptr::eq(node, expr) {
+                            root_alloc = Some(alloc);
+                        } else {
+                            results.push(alloc);
+                        }
+                    }
+                },
+            }
+        }
+
+        debug_assert!(results.is_empty());
+        root_alloc.expect("deep_copy should produce a root allocation")
     }
 }
 
@@ -92,11 +310,17 @@ impl<'a> Default for ExprArenaCtx<'a> {
 ///   [`TreeBuf::push_tree`](crate::encoding::tree::TreeBuf::push_tree).
 #[derive(Clone)]
 pub enum ArenaAnyExpr<'a> {
-    ArenaView(ExprView<&'a ArenaAnyExpr<'a>, &'a ArenaAnyExpr<'a>, &'a ArenaAnyExpr<'a>>),
+    ArenaView(
+        ExprView<
+            &'a RefCell<ArenaAnyExpr<'a>>,
+            &'a RefCell<ArenaAnyExpr<'a>>,
+            &'a RefCell<ArenaAnyExpr<'a>>,
+        >,
+    ),
     ExprRef(AnyExprRef<'a>),
 }
 
-impl EncodableExpr for ArenaAnyExpr<'_> {
+impl<'a> EncodableExpr for RefCell<ArenaAnyExpr<'a>> {
     /// Encode this arena expression into a compact buffer.
     ///
     /// Implementation detail: we perform an explicit iterative post-order traversal to avoid
@@ -104,19 +328,18 @@ impl EncodableExpr for ArenaAnyExpr<'_> {
     fn encode_tree_step(&self, treebuf: &mut crate::encoding::tree::TreeBuf) -> TreeBufNodeRef {
         use ExprType::*;
 
-        enum Frame<'a> {
-            Enter(&'a ArenaAnyExpr<'a>),
-            Exit(&'a ArenaAnyExpr<'a>),
+        enum Frame<'a, 'b> {
+            Enter(&'b RefCell<ArenaAnyExpr<'a>>),
+            Exit(&'b RefCell<ArenaAnyExpr<'a>>),
         }
 
-        let mut stack: SmallVec<[Frame<'_>; 16]> = SmallVec::new();
+        let mut stack: SmallVec<[Frame; 16]> = SmallVec::new();
         let mut results: SmallVec<[TreeBufNodeRef; 16]> = SmallVec::new();
-
         stack.push(Frame::Enter(self));
 
         while let Some(frame) = stack.pop() {
             match frame {
-                Frame::Enter(node) => match node {
+                Frame::Enter(node) => match *node.borrow() {
                     ArenaAnyExpr::ExprRef(r) => {
                         // Treat borrowed encoded subtrees as leaves by copying them in
                         results.push(r.encode_tree_step(treebuf));
@@ -169,7 +392,7 @@ impl EncodableExpr for ArenaAnyExpr<'_> {
                         }
                     }
                 },
-                Frame::Exit(node) => match node {
+                Frame::Exit(node) => match *node.borrow() {
                     ArenaAnyExpr::ExprRef(_) => {
                         // Already handled as leaf
                     }
@@ -267,12 +490,12 @@ impl EncodableExpr for ArenaAnyExpr<'_> {
     }
 }
 
-impl<'a> Expr for ArenaAnyExpr<'a> {
+impl<'a> Expr for RefCell<ArenaAnyExpr<'a>> {
     /// View this arena expression as a generic [`ExprView`], abstracting over the two storage forms
     /// (`ArenaView` and `ExprRef`).
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        match self {
-            ArenaAnyExpr::ArenaView(view) => (*view).map_unary(|x, _| Either::Left(x)),
+        match *self.borrow() {
+            ArenaAnyExpr::ArenaView(view) => view.map_unary(|x, _| Either::Left(x)),
             ArenaAnyExpr::ExprRef(any_expr_ref) => {
                 any_expr_ref.view_typed().map_unary(|x, _| Either::Right(x))
             }
@@ -280,15 +503,10 @@ impl<'a> Expr for ArenaAnyExpr<'a> {
     }
 }
 
-impl<'a> ArenaAllocableExpr<'a> for &'a ArenaAnyExpr<'a> {
+impl<'a> ArenaAllocableExpr<'a> for &'a RefCell<ArenaAnyExpr<'a>> {
     /// If already an arena reference, return it directly (no re-allocation).
-    fn alloc_in(&self, _ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+    fn alloc_in(&self, _ctx: &'a ExprArenaCtx<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         self
-    }
-
-    /// Clone the node into a fresh allocation inside the context.
-    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
-        ctx.alloc_expr((*self).clone())
     }
 }
 

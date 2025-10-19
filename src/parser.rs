@@ -22,6 +22,8 @@
 //! Note: Parentheses can wrap any full expression; we follow a precedence hierarchy
 //! compatible with the pretty-printer (If < Forall/Exists/Lambda < And/Or/Iff/Implies <
 //! Equal < Not < Tuple/Call < Powerset < atoms).
+use std::cell::RefCell;
+
 use chumsky::{input::ValueInput, prelude::*};
 
 use crate::arena::{ArenaAnyExpr, ExprArenaCtx};
@@ -210,7 +212,7 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
 
 fn arena_expr_parser<'a, I>(
     ctx: &'a ExprArenaCtx<'a>,
-) -> impl Parser<'a, I, &'a ArenaAnyExpr<'a>, extra::Err<Rich<'a, Token, Span>>> + Clone + 'a
+) -> impl Parser<'a, I, &'a RefCell<ArenaAnyExpr<'a>>, extra::Err<Rich<'a, Token, Span>>> + Clone + 'a
 where
     I: ValueInput<'a, Token = Token, Span = Span>,
 {

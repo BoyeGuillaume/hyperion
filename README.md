@@ -16,6 +16,32 @@ let x = InlineVariable::new_from_raw(0);
 let prop = forall(x, Bool, implies(x, equals(x, x)));
 let e = prop.encode();
 assert!(matches!(e.as_ref().view().type_(), expr::variant::ExprType::Forall));
+
+## Arena-backed building and transformation
+
+For short-lived construction and rewriting of expressions without allocation churn, use the arena API in `arena`.
+You can mix structural arena nodes with borrowed pre-encoded subtrees and deep-copy results when needed.
+
+```rust
+use hyformal::arena::{ExprArenaCtx, ArenaAnyExpr};
+use hyformal::expr::{Expr, view::ExprView, variant::ExprType};
+use hyformal::expr::defs::{True, False, And};
+
+let ctx = ExprArenaCtx::new();
+
+// Mix arena views with borrowed encoded subtrees
+let pre = And { lhs: True, rhs: False }.encode();
+let leaf = ctx.reference_external(pre.as_ref());
+let wrapped = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(leaf)));
+
+// Deep copy an arena expression inside the same context
+let copy = ctx.deep_copy(wrapped);
+
+let e1 = wrapped.encode();
+let e2 = copy.encode();
+assert_eq!(e1.as_ref().type_(), ExprType::Not);
+assert!(e1 == e2);
+```
 ```
 
 ## Formal-system syntax
