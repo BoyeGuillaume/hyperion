@@ -1,9 +1,26 @@
 # HyFormal
-This is a formal, symbolic engine for hyperion. It aims to provide a framework for automatic theorem proving and reasoning, using a formal system based on first-order logic.
+
+Unified expressions + zero-copy encoding for types, terms, and logic. This crate provides:
+
+- A single expression language (in `expr::*`) covering type constructors (Bool, Omega, Powerset, Tuple),
+  term constructors (Variable, Lambda, Call, If, Tuple), and logic (True, False, Not, And, Or, Implies, Iff, Equal, Forall, Exists).
+- A compact append-only encoding (`encoding::tree::TreeBuf`) with borrowed decoding (`AnyExprRef`) for allocation-free traversal.
+- A pretty-printer (`expr::pretty`) and a parser (`parser`) for a readable concrete syntax.
+
+Quickstart
+
+```rust
+use hyformal::prelude::*;
+
+let x = InlineVariable::new_from_raw(0);
+let prop = forall(x, Bool, implies(x, equals(x, x)));
+let e = prop.encode();
+assert!(matches!(e.as_ref().view().type_(), expr::variant::ExprType::Forall));
+```
 
 ## Formal-system syntax
 
-We now use a single unified syntax where types, terms, and logical formulas are all expressions. Runtime checks are
+We use a single unified syntax where types, terms, and logical formulas are all expressions. Runtime checks are
 responsible for validating well-formed uses (e.g., using type-shaped expressions in quantifiers or equalities).
 
 ```math
@@ -23,7 +40,7 @@ responsible for validating well-formed uses (e.g., using type-shaped expressions
 \end{aligned}
 ```
 
-Where $x$ is a variable, $T$ is a type, $P$ is a proposition and $E$ is an expression. The expr $\dagger$ symbolizes a never (crash or hang). Notice,
+Where $x$ is a variable, $T$ is a type, $P$ is a proposition and $E$ is an expression. The expr $\dagger$ symbolizes a never (crash or hang). Notice
 that generic types can be represented using the power set constructor $\mathcal{P}(T)$, however a strict type hierarchy **must** be observed to avoid
 the [Russell's paradox](https://en.wikipedia.org/wiki/Russell%27s_paradox). We also decided against defining other useful types like *integers* as they
 can be encoded as a type themselves.
@@ -64,10 +81,10 @@ Equality:
 
 These rules constitute the kernel of the prover. Domain theories can add axioms (e.g., arithmetic) but should preserve consistency by restricting to well-founded theories or using definitional extensions.
 
-### Representation in code (sketch)
+### Representation in code
 
-- Unified expressions live under `src/expr`: constructors for logic (True, False, And, Or, …), terms (Var, App, If, Tuple, …), and types (Bool, Arrow, Tuple, Power, …). A private sealing trait keeps construction controlled.
-- Dynamic encoding uses a single RPN bytecode with opcodes in `encoding::magic` and zero-copy borrowed decoding via `DynBorrowedExpr`.
+- Unified expressions live under `src/expr`: see `defs.rs` (constructors), `func.rs` (builders), `variant.rs` (discriminants), `view.rs` (decoded views), and `pretty.rs` (pretty-printer).
+- Dynamic encoding uses `encoding::tree::TreeBuf`; borrowing is via `AnyExprRef` and ownership via `AnyExpr`.
 
 ### Proof search strategy
 
