@@ -41,11 +41,6 @@ pub struct TreeBuf {
     // Notice that the smallest possible node is 2 bytes (1 byte opcode + 1 byte flags), therefore
     // we can never have a valid node at offset 1, we remap the node offset 1 to mean "no root node":
     root_offset: u16,
-    // Number of bytes that are wasted due to node updates
-    //
-    // Notice that this number is overestimated if we duplicate references to the same node, however
-    // the cost of reference counting is higher than the cost of additional consolidations
-    wasted_bytes: u16,
 }
 
 thread_local! {
@@ -53,11 +48,11 @@ thread_local! {
 }
 
 impl TreeBuf {
-    const MAX_NODE_SIZE: usize = 2 + 4 + 7 * 2; // 1 byte opcode + 1 byte flags + 4 bytes data + 7 * 2 bytes references
     /// Maximum number of child references allowed per node.
     pub const MAX_NUM_REFERENCES: usize = 7;
     /// Special invalid node reference. Each node must be at least 2 bytes, so offset 1 is never valid.
     pub const INVALID_NODE_REF: TreeBufNodeRef = 1;
+    const MAX_NODE_SIZE: usize = 2 + 4 + 7 * 2; // 1 byte opcode + 1 byte flags + 4 bytes data + 7 * 2 bytes references
 
     fn encode_node<'a>(
         opcode: u8,
@@ -206,7 +201,6 @@ impl TreeBuf {
                 Some(r) => r,
                 None => {
                     self.bytes.clear();
-                    self.wasted_bytes = 0;
                     return;
                 }
             }
@@ -227,13 +221,13 @@ impl TreeBuf {
 
             // 1. Ensure we have enough space in the intermediate buffer
             debug_assert!(
-                intermediate_buffer_len + data.len() <= intermediate_buffer.len(),
+                offset + data.len() <= intermediate_buffer.len(),
                 "Intermediate buffer overflow"
             );
 
             // 2. Write data to the intermediate buffer
             intermediate_buffer[offset..offset + data.len()].copy_from_slice(data);
-            intermediate_buffer_len += data.len();
+            intermediate_buffer_len = intermediate_buffer_len.max(offset + data.len());
         };
 
         let new_root_offset =
@@ -248,33 +242,6 @@ impl TreeBuf {
         self.bytes.clear();
         self.bytes
             .extend_from_slice(&intermediate_buffer[..intermediate_buffer_len]);
-        self.wasted_bytes = 0;
-    }
-
-    /// Heuristic check to decide if consolidation is worthwhile.
-    ///
-    /// - Returns `true` if we spilled to the heap and at least 25% of the buffer is wasted,
-    ///   or if there is any waste while still inlined.
-    pub fn should_consolidate(&self) -> bool {
-        // We consolidate only if we have wasted space, in the case where have not yet
-        // spilled over the heap, we consolidate aggressively otherwise we wait until we have
-        // at least 25% wasted space
-        if self.wasted_bytes == 0 {
-            return false;
-        }
-
-        if self.bytes.spilled() {
-            self.wasted_bytes as usize >= self.bytes.len() / 4
-        } else {
-            true
-        }
-    }
-
-    /// Consolidate if [`should_consolidate`] says it would be beneficial.
-    pub fn consolite_if_needed(&mut self) {
-        if self.should_consolidate() {
-            self.consolidate();
-        }
     }
 
     /// Consolidates the tree by removing wasted bytes and reassigning node offsets.
@@ -282,9 +249,6 @@ impl TreeBuf {
     /// WARNING: This invalidates all existing TreeNodeRef references!
     pub fn consolidate(&mut self) {
         // If there are no wasted bytes, we don't need to do anything
-        if self.wasted_bytes == 0 {
-            return;
-        }
 
         if self.bytes.len() >= 512 {
             INTERMEDIATE_BUFFER.with(|buffer_cell| {
@@ -454,12 +418,6 @@ impl TreeBuf {
                 // No change
                 return;
             }
-
-            let previous_flag_byte = self.bytes[previous_reference as usize + 1];
-            let previous_num_references = (previous_flag_byte >> 1) as usize;
-            let previous_node_size =
-                2 + (previous_flag_byte & 1) as usize * 4 + previous_num_references * 2;
-            self.wasted_bytes += previous_node_size as TreeBufNodeRef;
         }
 
         // Update the reference in place
@@ -489,7 +447,6 @@ impl TreeBuf {
         Self {
             bytes: SmallVec::new(),
             root_offset: 1, // No root node
-            wasted_bytes: 0,
         }
     }
 
@@ -501,11 +458,6 @@ impl TreeBuf {
     /// Total number of bytes currently used by the buffer (including waste).
     pub fn total_bytes(&self) -> usize {
         self.bytes.len()
-    }
-
-    /// Estimated number of bytes that can be reclaimed by consolidation.
-    pub fn wasted_bytes(&self) -> usize {
-        self.wasted_bytes as usize
     }
 
     /// Return the current root node, if any.

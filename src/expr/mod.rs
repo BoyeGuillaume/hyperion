@@ -60,7 +60,6 @@ pub trait Expr: Sized + EncodableExpr {
         let mut tree = TreeBuf::new();
         let root = self.encode_tree_step(&mut tree);
         tree.set_root(root);
-        tree.consolite_if_needed();
         AnyExpr { tree }
     }
 
@@ -110,16 +109,8 @@ impl<T: Expr> Expr for &T {
 impl<L: Expr, R: Expr> Expr for Either<L, R> {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         match self {
-            Either::Left(l) => l.view().map(
-                |x| Either::Left(x),
-                |x| Either::Left(x),
-                |x| Either::Left(x),
-            ),
-            Either::Right(r) => r.view().map(
-                |x| Either::Right(x),
-                |x| Either::Right(x),
-                |x| Either::Right(x),
-            ),
+            Either::Left(l) => l.view().map(Either::Left, Either::Left, Either::Left),
+            Either::Right(r) => r.view().map(Either::Right, Either::Right, Either::Right),
         }
     }
 }
@@ -241,15 +232,10 @@ impl AnyExpr {
         self.tree.total_bytes()
     }
 
-    /// Estimated number of bytes that can be reclaimed by consolidation.
-    pub fn estimated_wasted_bytes(&self) -> usize {
-        self.tree.wasted_bytes()
-    }
-
     /// Consolidate the internal buffer if it is fragmented. This invalidates any existing handles however this
     /// is already enforced by borrowing rules.
     pub fn consolidate(&mut self) {
-        self.tree.consolite_if_needed();
+        self.tree.consolidate();
     }
 }
 

@@ -46,7 +46,6 @@ pub trait EncodableExpr {
     fn encode_tree(&self, tree: &mut tree::TreeBuf) {
         let noderef = self.encode_tree_step(tree);
         tree.set_root(noderef);
-        tree.consolite_if_needed();
     }
 }
 

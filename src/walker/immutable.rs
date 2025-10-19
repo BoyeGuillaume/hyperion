@@ -105,7 +105,7 @@ impl<'a, I>
     fn as_ref(
         &self,
     ) -> &ExprView<WalkerNodeHandle<'a, I>, WalkerNodeHandle<'a, I>, WalkerNodeHandle<'a, I>> {
-        &self.view
+        self.view
     }
 }
 

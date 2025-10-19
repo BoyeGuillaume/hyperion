@@ -29,6 +29,12 @@ impl<'a> ExprArenaCtx<'a> {
     }
 }
 
+impl<'a> Default for ExprArenaCtx<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone)]
 pub enum ArenaAnyExpr<'a> {
     ArenaView(ExprView<&'a ArenaAnyExpr<'a>, &'a ArenaAnyExpr<'a>, &'a ArenaAnyExpr<'a>>),
@@ -205,7 +211,7 @@ impl EncodableExpr for ArenaAnyExpr<'_> {
 impl<'a> Expr for ArenaAnyExpr<'a> {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         match self {
-            ArenaAnyExpr::ArenaView(view) => view.clone().map_unary(|x, _| Either::Left(x)),
+            ArenaAnyExpr::ArenaView(view) => (*view).map_unary(|x, _| Either::Left(x)),
             ArenaAnyExpr::ExprRef(any_expr_ref) => {
                 any_expr_ref.view_typed().map_unary(|x, _| Either::Right(x))
             }
@@ -225,10 +231,10 @@ impl<'a> ArenaAllocableExpr<'a> for &'a ArenaAnyExpr<'a> {
 
 pub fn with_arena_ctx<F>(callback: F)
 where
-    F: for<'a> FnOnce(ExprArenaCtx<'a>),
+    F: for<'a> FnOnce(&'a ExprArenaCtx<'a>),
 {
     let ctx = ExprArenaCtx {
         arena: Arena::new(),
     };
-    callback(ctx);
+    callback(&ctx);
 }

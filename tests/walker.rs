@@ -121,12 +121,7 @@ fn walk_large_tree_smoke() {
     let mut e: AnyExpr = True.encode();
     for i in 0..2000u32 {
         // produces ~O(n) nodes
-        println!(
-            "Building step {}/2000: {} - estimated wasted bytes: {}",
-            i,
-            e.storage_size(),
-            e.estimated_wasted_bytes()
-        );
+        println!("Building step {}/2000: {}", i, e.storage_size(),);
         let var = InlineVariable::new_from_raw(i % 10);
         let dtype = Bool; // keep a consistent static type for generics
         let quant = hyformal::expr::func::forall(var, dtype, e.as_ref());
@@ -154,26 +149,26 @@ fn walk_matches_encode_view_types() {
     walk_no_input(expr.as_ref(), |node| {
         let t = node.type_();
         // Reconstruct via viewing the underlying AnyExprRef
-        match node.as_ref() {
-            &view::ExprView::Bool => assert_eq!(t, ExprType::Bool),
-            &view::ExprView::Omega => assert_eq!(t, ExprType::Omega),
-            &view::ExprView::True => assert_eq!(t, ExprType::True),
-            &view::ExprView::False => assert_eq!(t, ExprType::False),
-            &view::ExprView::Never => assert_eq!(t, ExprType::Never),
-            &view::ExprView::Not(_) => assert_eq!(t, ExprType::Not),
-            &view::ExprView::Powerset(_) => assert_eq!(t, ExprType::Powerset),
-            &view::ExprView::And(_, _) => assert_eq!(t, ExprType::And),
-            &view::ExprView::Or(_, _) => assert_eq!(t, ExprType::Or),
-            &view::ExprView::Implies(_, _) => assert_eq!(t, ExprType::Implies),
-            &view::ExprView::Iff(_, _) => assert_eq!(t, ExprType::Iff),
-            &view::ExprView::Equal(_, _) => assert_eq!(t, ExprType::Equal),
-            &view::ExprView::Lambda { .. } => assert_eq!(t, ExprType::Lambda),
-            &view::ExprView::Call { .. } => assert_eq!(t, ExprType::Call),
-            &view::ExprView::Tuple(_, _) => assert_eq!(t, ExprType::Tuple),
-            &view::ExprView::Forall { .. } => assert_eq!(t, ExprType::Forall),
-            &view::ExprView::Exists { .. } => assert_eq!(t, ExprType::Exists),
-            &view::ExprView::If { .. } => assert_eq!(t, ExprType::If),
-            &view::ExprView::Variable(_) => assert_eq!(t, ExprType::Variable),
+        match *node.as_ref() {
+            view::ExprView::Bool => assert_eq!(t, ExprType::Bool),
+            view::ExprView::Omega => assert_eq!(t, ExprType::Omega),
+            view::ExprView::True => assert_eq!(t, ExprType::True),
+            view::ExprView::False => assert_eq!(t, ExprType::False),
+            view::ExprView::Never => assert_eq!(t, ExprType::Never),
+            view::ExprView::Not(_) => assert_eq!(t, ExprType::Not),
+            view::ExprView::Powerset(_) => assert_eq!(t, ExprType::Powerset),
+            view::ExprView::And(_, _) => assert_eq!(t, ExprType::And),
+            view::ExprView::Or(_, _) => assert_eq!(t, ExprType::Or),
+            view::ExprView::Implies(_, _) => assert_eq!(t, ExprType::Implies),
+            view::ExprView::Iff(_, _) => assert_eq!(t, ExprType::Iff),
+            view::ExprView::Equal(_, _) => assert_eq!(t, ExprType::Equal),
+            view::ExprView::Lambda { .. } => assert_eq!(t, ExprType::Lambda),
+            view::ExprView::Call { .. } => assert_eq!(t, ExprType::Call),
+            view::ExprView::Tuple(_, _) => assert_eq!(t, ExprType::Tuple),
+            view::ExprView::Forall { .. } => assert_eq!(t, ExprType::Forall),
+            view::ExprView::Exists { .. } => assert_eq!(t, ExprType::Exists),
+            view::ExprView::If { .. } => assert_eq!(t, ExprType::If),
+            view::ExprView::Variable(_) => assert_eq!(t, ExprType::Variable),
         }
         ok &= true;
     });
