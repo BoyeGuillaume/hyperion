@@ -41,6 +41,8 @@
 //! assert!(matches!(view, ExprView::Forall { .. }));
 //! ```
 
+/// Mutator for expression rewriting and transformation.
+pub mod arena;
 /// Encoding internals: compact append-only tree buffer and encoding trait.
 pub mod encoding;
 /// Expressions API: builders, dispatch, and dynamic encodings.

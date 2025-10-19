@@ -156,3 +156,14 @@ impl<E1, E2, E3> ExprView<E1, E2, E3> {
         }
     }
 }
+
+impl<E1> ExprView<E1, E1, E1> {
+    /// Map the children of this expression view to new values.
+    #[inline]
+    pub fn map_unary<F, O>(self, f: F) -> ExprView<O, O, O>
+    where
+        F: FnOnce(E1, u8) -> O + Copy,
+    {
+        self.map(|e| f(e, 0), |e| f(e, 1), |e| f(e, 2))
+    }
+}

@@ -27,6 +27,7 @@ pub mod pretty;
 pub mod variant;
 pub mod view;
 
+use either::Either;
 use smallvec::SmallVec;
 
 use crate::encoding::EncodableExpr;
@@ -36,12 +37,6 @@ use crate::expr::view::ExprView;
 use crate::prelude::{Call, Equal, Lambda};
 use crate::utils::staticvec::StaticVec;
 use crate::variable::InlineVariable;
-
-pub(crate) mod expr_sealed {
-    pub trait Sealed {}
-
-    impl<T: Sealed> Sealed for &T {}
-}
 
 /// Trait implemented by all unified expression nodes provided by this crate.
 ///
@@ -53,7 +48,7 @@ pub(crate) mod expr_sealed {
 /// Performance
 /// - [`view`] returns a cheap, decoded wrapper exposing children; no allocations.
 /// - [`encode`] is linear in the size of the expression and may trigger consolidation.
-pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
+pub trait Expr: Sized + EncodableExpr {
     /// Describe the expression's outer constructor and expose children.
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr>;
 
@@ -109,6 +104,23 @@ pub trait Expr: expr_sealed::Sealed + Sized + EncodableExpr {
 impl<T: Expr> Expr for &T {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         (*self).view()
+    }
+}
+
+impl<L: Expr, R: Expr> Expr for Either<L, R> {
+    fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
+        match self {
+            Either::Left(l) => l.view().map(
+                |x| Either::Left(x),
+                |x| Either::Left(x),
+                |x| Either::Left(x),
+            ),
+            Either::Right(r) => r.view().map(
+                |x| Either::Right(x),
+                |x| Either::Right(x),
+                |x| Either::Right(x),
+            ),
+        }
     }
 }
 
@@ -241,7 +253,6 @@ impl AnyExpr {
     }
 }
 
-impl expr_sealed::Sealed for AnyExpr {}
 impl EncodableExpr for AnyExpr {
     fn encode_tree_step(
         &self,
@@ -282,7 +293,26 @@ pub struct AnyExprRef<'a> {
     pub(crate) node: TreeBufNodeRef,
 }
 
-impl<'a> expr_sealed::Sealed for AnyExprRef<'a> {}
+impl<'a> AnyExprRef<'a> {
+    /// Return the discriminant identifying the kind of this node.
+    #[inline]
+    pub fn type_(&self) -> ExprType {
+        let (opcode, _, _) = self.tree.get_node(self.node);
+        ExprType::from_repr(opcode).unwrap()
+    }
+
+    /// Same as [`AnyExprRef::type_`]
+    #[inline]
+    pub fn r#type(&self) -> ExprType {
+        self.type_()
+    }
+
+    /// Similar to [`Expr::view`], but provides the type of output nodes as `AnyExprRef`.
+    #[inline]
+    pub fn view_typed(&self) -> ExprView<AnyExprRef<'a>, AnyExprRef<'a>, AnyExprRef<'a>> {
+        AnyExpr::_view(self.tree, self.node)
+    }
+}
 
 impl<'a> EncodableExpr for AnyExprRef<'a> {
     fn encode_tree_step(
@@ -294,8 +324,9 @@ impl<'a> EncodableExpr for AnyExprRef<'a> {
 }
 
 impl<'a> Expr for AnyExprRef<'a> {
+    #[inline]
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
-        AnyExpr::_view(self.tree, self.node)
+        self.view_typed()
     }
 }
 

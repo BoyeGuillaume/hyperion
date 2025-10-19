@@ -4,11 +4,12 @@
 //! lightweight wrappers that provide structure; you normally compose them via the builder
 //! methods on [`Expr`](crate::expr::Expr) or helpers in [`crate::expr::func`].
 use crate::{
+    arena::{ArenaAllocableExpr, ArenaAnyExpr, ExprArenaCtx},
     encoding::{
         EncodableExpr,
         tree::{TreeBuf, TreeBufNodeRef},
     },
-    expr::{AnyExpr, Expr, expr_sealed, variant::ExprType, view::ExprView},
+    expr::{AnyExpr, Expr, variant::ExprType, view::ExprView},
     variable::InlineVariable,
 };
 
@@ -80,11 +81,19 @@ macro_rules! define_ops_expr {
 #[derive(Clone, Copy)]
 pub struct True;
 
-impl expr_sealed::Sealed for True {}
-
 impl EncodableExpr for True {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::True as u8, None, &[])
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for True {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::True))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::True))
     }
 }
 
@@ -102,11 +111,19 @@ define_ops_expr! { True }
 #[derive(Clone, Copy)]
 pub struct False;
 
-impl expr_sealed::Sealed for False {}
-
 impl EncodableExpr for False {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::False as u8, None, &[])
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for False {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::False))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::False))
     }
 }
 
@@ -126,12 +143,22 @@ pub struct Not<P: Expr> {
     pub inner: P,
 }
 
-impl<P: Expr> expr_sealed::Sealed for Not<P> {}
-
 impl<P: Expr> EncodableExpr for Not<P> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(ExprType::Not as u8, None, &[inner_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a> for Not<P> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(inner_alloc)))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(inner_alloc)))
     }
 }
 
@@ -152,13 +179,27 @@ pub struct And<P: Expr, Q: Expr> {
     pub rhs: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for And<P, Q> {}
-
 impl<P: Expr, Q: Expr> EncodableExpr for And<P, Q> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::And as u8, None, &[left_ref, right_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for And<P, Q>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::And(lhs_alloc, rhs_alloc)))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::And(lhs_alloc, rhs_alloc)))
     }
 }
 
@@ -179,13 +220,27 @@ pub struct Or<P: Expr, Q: Expr> {
     pub rhs: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Or<P, Q> {}
-
 impl<P: Expr, Q: Expr> EncodableExpr for Or<P, Q> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Or as u8, None, &[left_ref, right_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Or<P, Q>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Or(lhs_alloc, rhs_alloc)))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Or(lhs_alloc, rhs_alloc)))
     }
 }
 
@@ -206,13 +261,31 @@ pub struct Implies<P: Expr, Q: Expr> {
     pub consequent: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Implies<P, Q> {}
-
 impl<P: Expr, Q: Expr> EncodableExpr for Implies<P, Q> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.antecedent.encode_tree_step(tree);
         let right_ref = self.consequent.encode_tree_step(tree);
         tree.push_node(ExprType::Implies as u8, None, &[left_ref, right_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Implies<P, Q>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let lhs_alloc = self.antecedent.alloc_in(ctx);
+        let rhs_alloc = self.consequent.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Implies(
+            lhs_alloc, rhs_alloc,
+        )))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let lhs_alloc = self.antecedent.alloc_in(ctx);
+        let rhs_alloc = self.consequent.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Implies(
+            lhs_alloc, rhs_alloc,
+        )))
     }
 }
 
@@ -233,13 +306,27 @@ pub struct Iff<P: Expr, Q: Expr> {
     pub rhs: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Iff<P, Q> {}
-
 impl<P: Expr, Q: Expr> EncodableExpr for Iff<P, Q> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Iff as u8, None, &[left_ref, right_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Iff<P, Q>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Iff(lhs_alloc, rhs_alloc)))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Iff(lhs_alloc, rhs_alloc)))
     }
 }
 
@@ -260,13 +347,31 @@ pub struct Equal<P: Expr, Q: Expr> {
     pub rhs: Q,
 }
 
-impl<P: Expr, Q: Expr> expr_sealed::Sealed for Equal<P, Q> {}
-
 impl<P: Expr, Q: Expr> EncodableExpr for Equal<P, Q> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let left_ref = self.lhs.encode_tree_step(tree);
         let right_ref = self.rhs.encode_tree_step(tree);
         tree.push_node(ExprType::Equal as u8, None, &[left_ref, right_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>, Q: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Equal<P, Q>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Equal(
+            lhs_alloc, rhs_alloc,
+        )))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let lhs_alloc = self.lhs.alloc_in(ctx);
+        let rhs_alloc = self.rhs.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Equal(
+            lhs_alloc, rhs_alloc,
+        )))
     }
 }
 
@@ -289,8 +394,6 @@ pub struct ForAll<DT: Expr, P: Expr> {
     pub inner: P,
 }
 
-impl<DT: Expr, P: Expr> expr_sealed::Sealed for ForAll<DT, P> {}
-
 impl<DT: Expr, P: Expr> EncodableExpr for ForAll<DT, P> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let dtype_ref = self.dtype.encode_tree_step(tree);
@@ -300,6 +403,30 @@ impl<DT: Expr, P: Expr> EncodableExpr for ForAll<DT, P> {
             Some(self.variable.raw()),
             &[dtype_ref, inner_ref],
         )
+    }
+}
+
+impl<'a, DT: Expr + ArenaAllocableExpr<'a>, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for ForAll<DT, P>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let dtype_alloc = self.dtype.alloc_in(ctx);
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Forall {
+            variable: self.variable,
+            dtype: dtype_alloc,
+            inner: inner_alloc,
+        }))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let dtype_alloc = self.dtype.alloc_in(ctx);
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Forall {
+            variable: self.variable,
+            dtype: dtype_alloc,
+            inner: inner_alloc,
+        }))
     }
 }
 
@@ -325,8 +452,6 @@ pub struct Exists<DT: Expr, P: Expr> {
     pub inner: P,
 }
 
-impl<DT: Expr, P: Expr> expr_sealed::Sealed for Exists<DT, P> {}
-
 impl<DT: Expr, P: Expr> EncodableExpr for Exists<DT, P> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let dtype_ref = self.dtype.encode_tree_step(tree);
@@ -336,6 +461,30 @@ impl<DT: Expr, P: Expr> EncodableExpr for Exists<DT, P> {
             Some(self.variable.raw()),
             &[dtype_ref, inner_ref],
         )
+    }
+}
+
+impl<'a, DT: Expr + ArenaAllocableExpr<'a>, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Exists<DT, P>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let dtype_alloc = self.dtype.alloc_in(ctx);
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Exists {
+            variable: self.variable,
+            dtype: dtype_alloc,
+            inner: inner_alloc,
+        }))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let dtype_alloc = self.dtype.alloc_in(ctx);
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Exists {
+            variable: self.variable,
+            dtype: dtype_alloc,
+            inner: inner_alloc,
+        }))
     }
 }
 
@@ -360,11 +509,19 @@ define_ops_expr! { Exists<DT: Expr, P: Expr> }
 #[derive(Clone, Copy)]
 pub struct Bool;
 
-impl expr_sealed::Sealed for Bool {}
-
 impl EncodableExpr for Bool {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Bool as u8, None, &[])
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for Bool {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Bool))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Bool))
     }
 }
 
@@ -380,11 +537,19 @@ impl Expr for Bool {
 #[derive(Clone, Copy)]
 pub struct Omega;
 
-impl expr_sealed::Sealed for Omega {}
-
 impl EncodableExpr for Omega {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Omega as u8, None, &[])
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for Omega {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Omega))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Omega))
     }
 }
 
@@ -400,11 +565,19 @@ impl Expr for Omega {
 #[derive(Clone, Copy)]
 pub struct Never;
 
-impl expr_sealed::Sealed for Never {}
-
 impl EncodableExpr for Never {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Never as u8, None, &[])
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for Never {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Never))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Never))
     }
 }
 
@@ -423,12 +596,22 @@ pub struct Powerset<P: Expr> {
     pub inner: P,
 }
 
-impl<P: Expr> expr_sealed::Sealed for Powerset<P> {}
-
 impl<P: Expr> EncodableExpr for Powerset<P> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let inner_ref = self.inner.encode_tree_step(tree);
         tree.push_node(ExprType::Powerset as u8, None, &[inner_ref])
+    }
+}
+
+impl<'a, P: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a> for Powerset<P> {
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Powerset(inner_alloc)))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let inner_alloc = self.inner.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Powerset(inner_alloc)))
     }
 }
 
@@ -449,13 +632,33 @@ pub struct Lambda<A: Expr, B: Expr> {
     pub body: B,
 }
 
-impl<A: Expr, B: Expr> expr_sealed::Sealed for Lambda<A, B> {}
-
 impl<A: Expr, B: Expr> EncodableExpr for Lambda<A, B> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let arg_ref = self.arg.encode_tree_step(tree);
         let body_ref = self.body.encode_tree_step(tree);
         tree.push_node(ExprType::Lambda as u8, None, &[arg_ref, body_ref])
+    }
+}
+
+impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Lambda<A, B>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let arg_alloc = self.arg.alloc_in(ctx);
+        let body_alloc = self.body.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Lambda {
+            arg: arg_alloc,
+            body: body_alloc,
+        }))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let arg_alloc = self.arg.alloc_in(ctx);
+        let body_alloc = self.body.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Lambda {
+            arg: arg_alloc,
+            body: body_alloc,
+        }))
     }
 }
 
@@ -477,13 +680,33 @@ pub struct Call<A: Expr, B: Expr> {
     pub arg: B,
 }
 
-impl<A: Expr, B: Expr> expr_sealed::Sealed for Call<A, B> {}
-
 impl<A: Expr, B: Expr> EncodableExpr for Call<A, B> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let func_ref = self.func.encode_tree_step(tree);
         let arg_ref = self.arg.encode_tree_step(tree);
         tree.push_node(ExprType::Call as u8, None, &[func_ref, arg_ref])
+    }
+}
+
+impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Call<A, B>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let func_alloc = self.func.alloc_in(ctx);
+        let arg_alloc = self.arg.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Call {
+            func: func_alloc,
+            arg: arg_alloc,
+        }))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let func_alloc = self.func.alloc_in(ctx);
+        let arg_alloc = self.arg.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Call {
+            func: func_alloc,
+            arg: arg_alloc,
+        }))
     }
 }
 
@@ -505,13 +728,33 @@ pub struct Tuple<A: Expr, B: Expr> {
     pub second: B,
 }
 
-impl<A: Expr, B: Expr> expr_sealed::Sealed for Tuple<A, B> {}
-
 impl<A: Expr, B: Expr> EncodableExpr for Tuple<A, B> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let first_ref = self.first.encode_tree_step(tree);
         let second_ref = self.second.encode_tree_step(tree);
         tree.push_node(ExprType::Tuple as u8, None, &[first_ref, second_ref])
+    }
+}
+
+impl<'a, A: Expr + ArenaAllocableExpr<'a>, B: Expr + ArenaAllocableExpr<'a>> ArenaAllocableExpr<'a>
+    for Tuple<A, B>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let first_alloc = self.first.alloc_in(ctx);
+        let second_alloc = self.second.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Tuple(
+            first_alloc,
+            second_alloc,
+        )))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let first_alloc = self.first.alloc_in(ctx);
+        let second_alloc = self.second.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Tuple(
+            first_alloc,
+            second_alloc,
+        )))
     }
 }
 
@@ -532,14 +775,42 @@ pub struct If<P: Expr, T: Expr, E: Expr> {
     pub else_branch: E,
 }
 
-impl<P: Expr, T: Expr, E: Expr> expr_sealed::Sealed for If<P, T, E> {}
-
 impl<P: Expr, T: Expr, E: Expr> EncodableExpr for If<P, T, E> {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         let cond_ref = self.condition.encode_tree_step(tree);
         let then_ref = self.then_branch.encode_tree_step(tree);
         let else_ref = self.else_branch.encode_tree_step(tree);
         tree.push_node(ExprType::If as u8, None, &[cond_ref, then_ref, else_ref])
+    }
+}
+
+impl<
+    'a,
+    P: Expr + ArenaAllocableExpr<'a>,
+    T: Expr + ArenaAllocableExpr<'a>,
+    E: Expr + ArenaAllocableExpr<'a>,
+> ArenaAllocableExpr<'a> for If<P, T, E>
+{
+    fn alloc_in(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a ArenaAnyExpr<'a> {
+        let cond_alloc = self.condition.alloc_in(ctx);
+        let then_alloc = self.then_branch.alloc_in(ctx);
+        let else_alloc = self.else_branch.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::If {
+            condition: cond_alloc,
+            then_branch: then_alloc,
+            else_branch: else_alloc,
+        }))
+    }
+
+    fn alloc_in_mut(&self, ctx: &'a ExprArenaCtx<'a>) -> &'a mut ArenaAnyExpr<'a> {
+        let cond_alloc = self.condition.alloc_in(ctx);
+        let then_alloc = self.then_branch.alloc_in(ctx);
+        let else_alloc = self.else_branch.alloc_in(ctx);
+        ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::If {
+            condition: cond_alloc,
+            then_branch: then_alloc,
+            else_branch: else_alloc,
+        }))
     }
 }
 

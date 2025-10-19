@@ -5,10 +5,7 @@ use hyformal::expr::*;
 use hyformal::variable::InlineVariable;
 use hyformal::walker::{WalkerHandle, walk_no_input};
 
-fn schedule_all_with<I: Clone>(
-    node: WalkerHandle<'_, hyformal::expr::AnyExprRef<'_>, I>,
-    input: I,
-) {
+fn schedule_all_with<I: Clone>(node: WalkerHandle<'_, I>, input: I) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_immediate(input),
@@ -211,7 +208,7 @@ fn build_complex_expr() -> AnyExpr {
     root.encode()
 }
 
-fn schedule_children_lr_bfs(node: WalkerHandle<'_, AnyExprRef<'_>, ()>) {
+fn schedule_children_lr_bfs(node: WalkerHandle<'_, ()>) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_deferred(()),
@@ -245,7 +242,7 @@ fn schedule_children_lr_bfs(node: WalkerHandle<'_, AnyExprRef<'_>, ()>) {
     }
 }
 
-fn schedule_children_lr_dfs(node: WalkerHandle<'_, AnyExprRef<'_>, ()>) {
+fn schedule_children_lr_dfs(node: WalkerHandle<'_, ()>) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_immediate(()),

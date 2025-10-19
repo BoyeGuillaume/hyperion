@@ -23,11 +23,9 @@
 //! compatible with the pretty-printer (If < Forall/Exists/Lambda < And/Or/Iff/Implies <
 //! Equal < Not < Tuple/Call < Powerset < atoms).
 use chumsky::{input::ValueInput, prelude::*};
-use typed_arena::Arena;
 
-use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
-use crate::expr::AnyExpr;
-use crate::expr::variant::ExprType;
+use crate::arena::{ArenaAnyExpr, ExprArenaCtx};
+use crate::expr::{AnyExpr, Expr};
 use crate::variable::InlineVariable;
 // Note: We keep the lexer unchanged. The parsing portion below now uses chumsky combinators
 // directly over the token stream, replacing the previous TS/AST hand-rolled parser.
@@ -208,170 +206,24 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
         .then_ignore(end())
 }
 
-// ---------------- Owned AST (for building via chumsky) ----------------
+// ---------------- chumsky parser over tokens (arena-backed) ----------------
 
-#[derive(Debug, Clone)]
-enum Ast<'a> {
-    // Term-level
-    Var(InlineVariable),
-    Call {
-        func: &'a Ast<'a>,
-        arg: &'a Ast<'a>,
-    },
-    If {
-        condition: &'a Ast<'a>,
-        then_branch: &'a Ast<'a>,
-        else_branch: &'a Ast<'a>,
-    },
-    Tuple(&'a Ast<'a>, &'a Ast<'a>),
-    Lambda {
-        arg: &'a Ast<'a>,
-        body: &'a Ast<'a>,
-    },
-
-    // Logic-level
-    True,
-    False,
-    Not(&'a Ast<'a>),
-    And(&'a Ast<'a>, &'a Ast<'a>),
-    Or(&'a Ast<'a>, &'a Ast<'a>),
-    Implies(&'a Ast<'a>, &'a Ast<'a>),
-    Iff(&'a Ast<'a>, &'a Ast<'a>),
-    ForAll {
-        variable: InlineVariable,
-        dtype: &'a Ast<'a>,
-        inner: &'a Ast<'a>,
-    },
-    Exists {
-        variable: InlineVariable,
-        dtype: &'a Ast<'a>,
-        inner: &'a Ast<'a>,
-    },
-    Equal(&'a Ast<'a>, &'a Ast<'a>),
-
-    // Type-level
-    Bool,
-    Omega,
-    Never,
-    Powerset(&'a Ast<'a>),
-    // Error placeholder (used by recovery) – encodes as Never
-    Error,
-}
-
-impl<'a> Ast<'a> {
-    fn encode_into_tree(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
-        use ExprType::*;
-        match self {
-            // Term-level and misc
-            Ast::Var(v) => tree.push_node(Variable as u8, Some(v.raw()), &[]),
-            Ast::Call { func, arg } => {
-                let f = func.encode_into_tree(tree);
-                let a = arg.encode_into_tree(tree);
-                tree.push_node(Call as u8, None, &[f, a])
-            }
-            Ast::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let c = condition.encode_into_tree(tree);
-                let t = then_branch.encode_into_tree(tree);
-                let e = else_branch.encode_into_tree(tree);
-                tree.push_node(If as u8, None, &[c, t, e])
-            }
-            Ast::Tuple(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(Tuple as u8, None, &[x, y])
-            }
-            Ast::Lambda { arg, body } => {
-                let a = arg.encode_into_tree(tree);
-                let b = body.encode_into_tree(tree);
-                tree.push_node(Lambda as u8, None, &[a, b])
-            }
-
-            // Logic-level
-            Ast::True => tree.push_node(True as u8, None, &[]),
-            Ast::False => tree.push_node(False as u8, None, &[]),
-            Ast::Not(p) => {
-                let i = p.encode_into_tree(tree);
-                tree.push_node(Not as u8, None, &[i])
-            }
-            Ast::And(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(And as u8, None, &[x, y])
-            }
-            Ast::Or(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(Or as u8, None, &[x, y])
-            }
-            Ast::Implies(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(Implies as u8, None, &[x, y])
-            }
-            Ast::Iff(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(Iff as u8, None, &[x, y])
-            }
-            Ast::ForAll {
-                variable,
-                dtype,
-                inner,
-            } => {
-                let dt = dtype.encode_into_tree(tree);
-                let inn = inner.encode_into_tree(tree);
-                tree.push_node(Forall as u8, Some(variable.raw()), &[dt, inn])
-            }
-            Ast::Exists {
-                variable,
-                dtype,
-                inner,
-            } => {
-                let dt = dtype.encode_into_tree(tree);
-                let inn = inner.encode_into_tree(tree);
-                tree.push_node(Exists as u8, Some(variable.raw()), &[dt, inn])
-            }
-            Ast::Equal(a, b) => {
-                let x = a.encode_into_tree(tree);
-                let y = b.encode_into_tree(tree);
-                tree.push_node(Equal as u8, None, &[x, y])
-            }
-
-            // Type-level
-            Ast::Bool => tree.push_node(Bool as u8, None, &[]),
-            Ast::Omega => tree.push_node(Omega as u8, None, &[]),
-            Ast::Never => tree.push_node(Never as u8, None, &[]),
-            Ast::Powerset(a) => {
-                let x = a.encode_into_tree(tree);
-                tree.push_node(Powerset as u8, None, &[x])
-            }
-            Ast::Error => panic!("Should not encode Error AST node"),
-        }
-    }
-}
-
-// ---------------- chumsky parser over tokens ----------------
-
-fn ast_parser<'tokens, I>(
-    arena: &'tokens mut Arena<Ast<'tokens>>,
-) -> impl Parser<'tokens, I, Ast<'tokens>, extra::Err<Rich<'tokens, Token, Span>>> + Clone
+fn arena_expr_parser<'a, I>(
+    ctx: &'a ExprArenaCtx<'a>,
+) -> impl Parser<'a, I, &'a ArenaAnyExpr<'a>, extra::Err<Rich<'a, Token, Span>>> + Clone + 'a
 where
-    I: ValueInput<'tokens, Token = Token, Span = Span>,
+    I: ValueInput<'a, Token = Token, Span = Span>,
 {
     recursive(|expr| {
         // Identifiers/values
         let ident = select! { Token::Var(v) => v };
 
         let value = select! {
-            Token::True => Ast::True,
-            Token::False => Ast::False,
-            Token::Bool => Ast::Bool,
-            Token::Omega => Ast::Omega,
-            Token::NeverSym => Ast::Never,
+            Token::True => ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::True)) as &_,
+            Token::False => ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::False)) as &_,
+            Token::Bool => ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::Bool)) as &_,
+            Token::Omega => ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::Omega)) as &_,
+            Token::NeverSym => ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::Never)) as &_,
         };
 
         // Parenthesised expressions (recover mismatched/missing parens)
@@ -382,7 +234,10 @@ where
                 Token::LParen,
                 Token::RParen,
                 [],
-                |_| Ast::Error,
+                |_| {
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(crate::expr::view::ExprView::Never))
+                        as &_
+                },
             )))
             .labelled("parentheses");
 
@@ -395,16 +250,27 @@ where
                         Token::LParen,
                         Token::RParen,
                         [],
-                        |_| Ast::Error,
+                        |_| {
+                            ctx.alloc_expr(ArenaAnyExpr::ArenaView(
+                                crate::expr::view::ExprView::Never,
+                            )) as &_
+                        },
                     )))
                     .labelled("powerset-args"),
             )
-            .map(|e| Ast::Powerset(arena.alloc(e)))
+            .map(|e| {
+                let view = crate::expr::view::ExprView::Powerset(e);
+                ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+            })
             .labelled("Powerset");
 
         // Atomic expressions (no ambiguity)
         let atom = value
-            .or(ident.map(Ast::Var))
+            .or(ident.map(|v| {
+                ctx.alloc_expr(ArenaAnyExpr::ArenaView(
+                    crate::expr::view::ExprView::Variable(v),
+                )) as &_
+            }))
             .or(powerset)
             .or(paren_expr)
             .labelled("atom");
@@ -419,13 +285,17 @@ where
                         Token::LParen,
                         Token::RParen,
                         [],
-                        |_| Ast::Error,
+                        |_| {
+                            ctx.alloc_expr(ArenaAnyExpr::ArenaView(
+                                crate::expr::view::ExprView::Never,
+                            )) as &_
+                        },
                     )))
                     .labelled("call-args")
                     .repeated(),
-                |f, a| Ast::Call {
-                    func: arena.alloc(f),
-                    arg: arena.alloc(a),
+                |f, a| {
+                    let view = crate::expr::view::ExprView::Call { func: f, arg: a };
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
                 },
             )
             .labelled("call");
@@ -435,21 +305,28 @@ where
             .clone()
             .foldl(
                 just(Token::Comma).ignore_then(call.clone()).repeated(),
-                |a, b| Ast::Tuple(arena.alloc(a), arena.alloc(b)),
+                |a, b| {
+                    let view = crate::expr::view::ExprView::Tuple(a, b);
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                },
             )
             .labelled("tuple");
 
         // Prefix not: ! binds looser than tuple/call
-        let prefix = just(Token::Not)
-            .repeated()
-            .foldr(tuple.clone(), |_, rhs| Ast::Not(arena.alloc(rhs)));
+        let prefix = just(Token::Not).repeated().foldr(tuple.clone(), |_, rhs| {
+            let view = crate::expr::view::ExprView::Not(rhs);
+            ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+        });
 
         // Equality: left-assoc
         let equal = prefix
             .clone()
             .foldl(
                 just(Token::Equal).ignore_then(prefix.clone()).repeated(),
-                |a, b| Ast::Equal(arena.alloc(a), arena.alloc(b)),
+                |a, b| {
+                    let view = crate::expr::view::ExprView::Equal(a, b);
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                },
             )
             .labelled("equality");
 
@@ -468,9 +345,18 @@ where
         let logic_non_impl = equal
             .clone()
             .foldl(lop.then(equal).repeated(), |a, (op, b)| match op {
-                LOp::And => Ast::And(arena.alloc(a), arena.alloc(b)),
-                LOp::Or => Ast::Or(arena.alloc(a), arena.alloc(b)),
-                LOp::Iff => Ast::Iff(arena.alloc(a), arena.alloc(b)),
+                LOp::And => {
+                    let view = crate::expr::view::ExprView::And(a, b);
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                }
+                LOp::Or => {
+                    let view = crate::expr::view::ExprView::Or(a, b);
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                }
+                LOp::Iff => {
+                    let view = crate::expr::view::ExprView::Iff(a, b);
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                }
             })
             .labelled("logic");
 
@@ -480,7 +366,10 @@ where
                 .clone()
                 .then(just(Token::Implies).ignore_then(imp).or_not())
                 .map(|(a, b)| match b {
-                    Some(b) => Ast::Implies(arena.alloc(a), arena.alloc(b)),
+                    Some(b) => {
+                        let view = crate::expr::view::ExprView::Implies(a, b);
+                        ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                    }
                     None => a,
                 })
                 .labelled("implies")
@@ -492,10 +381,10 @@ where
                 .clone()
                 .then(just(Token::Arrow).ignore_then(lam).or_not())
                 .map(|(a, b)| match b {
-                    Some(b) => Ast::Lambda {
-                        arg: arena.alloc(a),
-                        body: arena.alloc(b),
-                    },
+                    Some(b) => {
+                        let view = crate::expr::view::ExprView::Lambda { arg: a, body: b };
+                        ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
+                    }
                     None => a,
                 })
                 .labelled("lambda")
@@ -509,10 +398,13 @@ where
                 .then(lambda.clone())
                 .then_ignore(just(Token::Dot))
                 .then(expr.clone())
-                .map(|((v, dt), inner)| Ast::ForAll {
-                    variable: v,
-                    dtype: arena.alloc(dt),
-                    inner: arena.alloc(inner),
+                .map(|((v, dt), inner)| {
+                    let view = crate::expr::view::ExprView::Forall {
+                        variable: v,
+                        dtype: dt,
+                        inner,
+                    };
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
                 }),
             just(Token::Exists)
                 .ignore_then(ident)
@@ -520,10 +412,13 @@ where
                 .then(lambda.clone())
                 .then_ignore(just(Token::Dot))
                 .then(expr.clone())
-                .map(|((v, dt), inner)| Ast::Exists {
-                    variable: v,
-                    dtype: arena.alloc(dt),
-                    inner: arena.alloc(inner),
+                .map(|((v, dt), inner)| {
+                    let view = crate::expr::view::ExprView::Exists {
+                        variable: v,
+                        dtype: dt,
+                        inner,
+                    };
+                    ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
                 }),
         ))
         .labelled("quantifier");
@@ -534,10 +429,13 @@ where
             .then(lambda.clone())
             .then_ignore(just(Token::Else))
             .then(lambda.clone())
-            .map(|((cond, th), el)| Ast::If {
-                condition: arena.alloc(cond),
-                then_branch: arena.alloc(th),
-                else_branch: arena.alloc(el),
+            .map(|((cond, th), el)| {
+                let view = crate::expr::view::ExprView::If {
+                    condition: cond,
+                    then_branch: th,
+                    else_branch: el,
+                };
+                ctx.alloc_expr(ArenaAnyExpr::ArenaView(view)) as &_
             })
             .labelled("if-expression");
 
@@ -574,11 +472,11 @@ pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
         None => return Err(errors),
     };
 
-    // 2) Parsing with chumsky over the token stream
+    // 2) Parsing with chumsky over the token stream, building arena-backed exprs
     // Convert to a plain token stream for the parser (we keep spans only for lexing)
-    let mut arena = Arena::new();
+    let ctx = ExprArenaCtx::new();
     let plain: Vec<Token> = tokens.iter().map(|(t, _s)| t.clone()).collect();
-    let (ast, parse_errs) = ast_parser(&mut arena)
+    let (root_ref, parse_errs) = arena_expr_parser(&ctx)
         .then_ignore(end())
         .parse(plain.as_slice())
         .into_output_errors();
@@ -587,15 +485,11 @@ pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
         return Err(errors);
     }
 
-    let ast = match ast {
+    let root_ref = match root_ref {
         Some(a) => a,
         None => return Err(errors),
     };
 
-    // 3) Encode to AnyExpr via TreeBuf
-    let mut tree = TreeBuf::new();
-    let root = ast.encode_into_tree(&mut tree);
-    tree.set_root(root);
-    tree.consolite_if_needed();
-    Ok(AnyExpr { tree })
+    // 3) Encode to AnyExpr via the arena-backed expression
+    Ok(root_ref.encode())
 }
