@@ -20,27 +20,27 @@ fn parse_simple_atoms() {
 #[test]
 fn precedence_and_associativity() {
     // Not higher than and/or
-    assert_eq!(roundtrip("!a /\\ b"), "!a /\\ b");
-    assert_eq!(roundtrip("a \\/ !b"), "a \\/ !b");
+    assert_eq!(roundtrip("!%1 /\\ %2"), "!%1 /\\ %2");
+    assert_eq!(roundtrip("%1 \\/ !%2"), "%1 \\/ !%2");
 
     // Equality binds tighter than and/or/iff/implies
-    assert_eq!(roundtrip("a = b /\\ c"), "a = b /\\ c");
-    assert_eq!(roundtrip("a /\\ b = c"), "a /\\ b = c");
+    assert_eq!(roundtrip("%1 = %2 /\\ %3"), "%1 = %2 /\\ %3");
+    assert_eq!(roundtrip("%1 /\\ %2 = %3"), "%1 /\\ %2 = %3");
 
     // Implies right-assoc
-    assert_eq!(roundtrip("a => b => c"), "a => (b => c)");
-    assert_eq!(roundtrip("(a => b) => c"), "(a => b) => c");
+    assert_eq!(roundtrip("%1 => %2 => %3"), "%1 => (%2 => %3)");
+    assert_eq!(roundtrip("(%1 => %2) => %3"), "(%1 => %2) => %3");
 
     // Tuples left-assoc
-    assert_eq!(roundtrip("a, b, c"), "a, b, c");
+    assert_eq!(roundtrip("$000001, %00002, %3"), "$1, %2, %3");
 
     // Calls left-assoc; pretty-printer parenthesizes nested function position
-    assert_eq!(roundtrip("f(a)(b)"), "(f(a))(b)");
+    assert_eq!(roundtrip("$00001(%0001)($00002)"), "($1(%1))($2)");
 }
 
 #[test]
 fn quantifiers_and_if() {
-    let s = "forall a : Bool . exists b : Powerset(Bool) . if a then b(a) else <>";
+    let s = "forall $0 : Bool . exists $0 : Powerset(Bool) . if $0 then $1($0) else <>";
     let pretty = roundtrip(s);
     // Ensure top-level constructs preserved; exact spacing may differ but keywords and structure remain
     assert!(pretty.contains("forall"));
@@ -51,11 +51,10 @@ fn quantifiers_and_if() {
 #[test]
 fn variables_lexing() {
     // single-letter and v<number> forms
-    assert_eq!(roundtrip("a"), "a");
-    assert_eq!(roundtrip("A"), "a"); // Display lowers by default
-    // v0 corresponds to raw id 26
-    let s = roundtrip("v0");
-    assert_eq!(s, "v0");
+    assert_eq!(roundtrip("$0"), "$0");
+    assert_eq!(roundtrip("%0000A"), "%a"); // Display lowers by default
+    let s = roundtrip("%00000");
+    assert_eq!(s, "%0");
 }
 
 #[test]
@@ -71,7 +70,7 @@ fn parse_errors_are_reported() {
 #[test]
 fn large_complex_expression() {
     // Build a relatively complex expression with different operators and nesting
-    let src = "forall x : Bool . (x => true) <=> (!x \\/ false) /\\ (x = x)";
+    let src = "forall %1 : Bool . (%1 => true) <=> (!%1 \\/ false) /\\ (%1 = %1)";
     let e = parse(src).expect("parse ok");
     let v = e.as_ref().view().type_();
     assert_eq!(v, ExprType::Forall);

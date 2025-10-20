@@ -9,11 +9,21 @@ fn inline_variable_encoding_and_display() {
     let iv: InlineVariable = v.into();
     assert_eq!(iv.to_variable(), v);
 
-    // Small ids print as a..z, larger as v<N>
+    // Small ids print as hexadecimal prefixed with '$' or '%'
     let small = InlineVariable::new_from_raw(0);
-    assert_eq!(format!("{small}"), "a");
-    let large = InlineVariable::new_from_raw(26);
-    assert_eq!(format!("{large}"), "v0");
+    assert_eq!(format!("{small}"), "$0");
+    let small = InlineVariable::new_from_raw(1);
+    assert_eq!(format!("{small}"), "%0");
+
+    let large = InlineVariable::new_from_raw(30);
+    assert_eq!(format!("{large}"), "$f");
+    let large = InlineVariable::new_from_raw(31);
+    assert_eq!(format!("{large}"), "%f");
+
+    let multi_byte = InlineVariable::new_from_raw(300);
+    assert_eq!(format!("{multi_byte}"), "$96");
+    let multi_byte = InlineVariable::new_from_raw(301);
+    assert_eq!(format!("{multi_byte}"), "%96");
 }
 
 #[test]

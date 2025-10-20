@@ -11,6 +11,7 @@ use crate::{
         tree::{TreeBuf, TreeBufNodeRef},
     },
     expr::{AnyExpr, Expr, variant::ExprType, view::ExprView},
+    utils::staticvec::StaticVec,
 };
 
 /// Identifier for a variable, either internal or external.
@@ -96,27 +97,73 @@ impl InlineVariable {
         Variable::new_from_raw(self.0)
     }
 
-    /// Return a short printable symbol for small ids.
+    /// Encode a symbolic representation for the variable in hexadecimal form.
     ///
-    /// For `variant = false`, the range 0..=25 maps to `a..z`; for `true`, to `A..Z`.
-    /// Larger ids return `None`.
-    pub fn symbol(&self, variant: bool) -> Option<char> {
-        let base = if variant { b'A' } else { b'a' };
-        if self.0 < 26 {
-            Some((base + (self.0 as u8)) as char)
+    /// Prefix with '%' for external variables and with '$' for internal variables.
+    pub fn to_string(&self) -> StaticVec<u8, 9> {
+        let mut buf = StaticVec::new();
+        if self.raw() & 1 == 0 {
+            buf.push(b'$');
         } else {
-            None
+            buf.push(b'%');
         }
+
+        for offset in (0..8).rev() {
+            let nibble = (self.raw() >> ((offset * 4) + 1)) & 0xF;
+            if nibble == 0 && buf.len() == 1 && offset != 0 {
+                continue; // Skip leading zeros
+            }
+
+            let c = match nibble {
+                0..=9 => b'0' + (nibble as u8),
+                10..=15 => b'a' + ((nibble as u8) - 10),
+                _ => unreachable!(),
+            };
+            buf.push(c);
+        }
+
+        buf
+    }
+
+    /// Transfrom any string-like representation back into an `InlineVariable`.
+    pub fn from_string<S: AsRef<str>>(s: S) -> Result<Self, &'static str> {
+        let s = s.as_ref();
+        let mut raw = 0u32;
+        let is_internal = match s.chars().next() {
+            Some('$') => true,
+            Some('%') => false,
+            _ => return Err("Invalid variable string: must start with '$' or '%'"),
+        };
+
+        for c in s.chars().skip(1) {
+            if raw >= (1 << (32 - 5)) {
+                return Err("Maximum variable id exceeded, must not exceed 0x7fffffff");
+            }
+
+            raw <<= 4;
+            let nibble = match c {
+                '0'..='9' => c as u32 - '0' as u32,
+                'a'..='f' => c as u32 - 'a' as u32 + 10,
+                'A'..='F' => c as u32 - 'A' as u32 + 10,
+                _ => return Err("Invalid character in variable string"),
+            };
+            raw |= nibble;
+        }
+
+        if is_internal {
+            raw = (raw << 1) & !1;
+        } else {
+            raw = (raw << 1) | 1;
+        }
+
+        Ok(InlineVariable::new_from_raw(raw))
     }
 }
 
 impl std::fmt::Display for InlineVariable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(c) = self.symbol(f.alternate()) {
-            write!(f, "{c}")
-        } else {
-            write!(f, "v{}", self.raw() - 26)
-        }
+        let buf = self.to_string();
+        write!(f, "{}", std::str::from_utf8(&buf).unwrap())
     }
 }
 

@@ -70,46 +70,24 @@ enum Token {
     Var(InlineVariable), // directly parsed variable
 }
 
-impl std::fmt::Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Token::LParen => write!(f, "("),
-            Token::RParen => write!(f, ")"),
-            Token::Comma => write!(f, ","),
-            Token::Colon => write!(f, ":"),
-            Token::Dot => write!(f, "."),
-            Token::Not => write!(f, "!"),
-            Token::And => write!(f, "/\\"),
-            Token::Or => write!(f, "\\/"),
-            Token::Implies => write!(f, "=>"),
-            Token::Iff => write!(f, "<=>"),
-            Token::Equal => write!(f, "="),
-            Token::Arrow => write!(f, "->"),
-            Token::NeverSym => write!(f, "<>"),
-            Token::If => write!(f, "if"),
-            Token::Then => write!(f, "then"),
-            Token::Else => write!(f, "else"),
-            Token::ForAll => write!(f, "forall"),
-            Token::Exists => write!(f, "exists"),
-            Token::True => write!(f, "true"),
-            Token::False => write!(f, "false"),
-            Token::Bool => write!(f, "Bool"),
-            Token::Omega => write!(f, "Omega"),
-            Token::Powerset => write!(f, "Powerset"),
-            Token::Var(v) => write!(f, "{v}"),
-        }
-    }
-}
-
 // ---------------- Lexer ----------------
-
-fn char_to_id(c: char) -> u32 {
-    let lc = c.to_ascii_lowercase();
-    if lc.is_ascii_lowercase() {
-        (lc as u8 - b'a') as u32
-    } else {
-        panic!("Invalid variable character: {c}");
-    }
+fn raw_variable_lexer<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>>> {
+    // Single-letter variables a..z or A..Z
+    one_of("$%")
+        .then(
+            any()
+                .filter(|c: &char| c.is_ascii_hexdigit())
+                .repeated(),
+        )
+        .to_slice()
+        .try_map(|s: &str, span| -> Result<Token, Rich<char>> {
+            let var = InlineVariable::from_string(s).map_err(|msg| {
+                Rich::custom(span, format!(
+                    "invalid variable '{s}': expected format '$<hex>' or '%<hex>' (e.g., $1a2b3c). {msg}"
+                ))
+            })?;
+            Ok(Token::Var(var))
+        })
 }
 
 fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<'a, char>>> {
@@ -123,58 +101,50 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
 
     // Keywords
     // Use word boundary: ensure next char isn't an ASCII alphanumeric or underscore
-    let word = any()
-        .filter(|c: &char| c.is_ascii_alphabetic() || *c == '_')
-        .then(
-            any()
-                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
-                .repeated(),
-        )
-        .to_slice()
-        .try_map(|s: &str, span| -> Result<Token, Rich<char>> {
-            // Keywords
-            let tok = match s {
-                "if" => Token::If,
-                "then" => Token::Then,
-                "else" => Token::Else,
-                "forall" => Token::ForAll,
-                "exists" => Token::Exists,
-                "true" => Token::True,
-                "false" => Token::False,
-                "Bool" => Token::Bool,
-                "Omega" => Token::Omega,
-                "Powerset" => Token::Powerset,
-                _ => {
-                    // Variables
-                    if s.len() == 1 && s.chars().next().unwrap().is_ascii_alphabetic() {
-                        Token::Var(InlineVariable::new_from_raw(char_to_id(
-                            s.chars().next().unwrap(),
-                        )))
-                    } else if s.starts_with('v') || s.starts_with('_') {
-                        let num_part = &s[1..];
-                        if !num_part.is_empty() && num_part.chars().all(|c| c.is_ascii_digit()) {
-                            let id: u32 = num_part.parse().unwrap();
-                            Token::Var(InlineVariable::new_from_raw(id + 26))
-                        } else {
-                            return Err(Rich::custom(
-                                span,
-                                format!(
-                                    "invalid variable '{s}': expected 'v<number>' or '_<number>' (e.g., v0, _42)"
-                                ),
-                            ));
-                        }
-                    } else {
-                        return Err(Rich::custom(
-                            span,
-                            format!(
-                                "unrecognized identifier '{s}': expected a variable name like a, X, v<number>, or _<number>"
-                            ),
-                        ));
-                    }
-                }
-            };
-            Ok(tok)
-        });
+    let keywords = choice((
+        just("if").map(|_| Token::If),
+        just("then").map(|_| Token::Then),
+        just("else").map(|_| Token::Else),
+        just("forall").map(|_| Token::ForAll),
+        just("exists").map(|_| Token::Exists),
+        just("true").map(|_| Token::True),
+        just("false").map(|_| Token::False),
+        just("Bool").map(|_| Token::Bool),
+        just("Omega").map(|_| Token::Omega),
+        just("Powerset").map(|_| Token::Powerset),
+    ));
+    // let word = any()
+    //     .filter(|c: &char| c.is_ascii_alphabetic())
+    //     .then(
+    //         any()
+    //             .filter(|c: &char| c.is_ascii_alphanumeric())
+    //             .repeated(),
+    //     )
+    //     .to_slice()
+    //     .try_map(|s: &str, span| -> Result<Token, Rich<char>> {
+    //         // Keywords
+    //         let tok = match s {
+    //             "if" => Token::If,
+    //             "then" => Token::Then,
+    //             "else" => Token::Else,
+    //             "forall" => Token::ForAll,
+    //             "exists" => Token::Exists,
+    //             "true" => Token::True,
+    //             "false" => Token::False,
+    //             "Bool" => Token::Bool,
+    //             "Omega" => Token::Omega,
+    //             "Powerset" => Token::Powerset,
+    //             _ => {
+    //                 return Err(Rich::custom(
+    //                     span,
+    //                     format!(
+    //                         "unrecognized identifier '{s}': expected a keyword like 'if', 'forall', 'Bool', etc."
+    //                     ),
+    //                 ));
+    //             }
+    //         };
+    //         Ok(tok)
+    //     });
 
     let punct = choice((
         just('(').to(Token::LParen),
@@ -188,8 +158,14 @@ fn lexer<'a>() -> impl Parser<'a, &'a str, Vec<Spanned<Token>>, extra::Err<Rich<
 
     let token = choice((
         // Operators (longest first)
-        iff, implies, arrow, never, and_op, or_op, // Keywords and identifiers
-        word,  // Punct/single char ops
+        iff,
+        implies,
+        arrow,
+        never,
+        and_op,
+        or_op,    // Keywords and identifiers
+        keywords, // Punct/single char ops
+        raw_variable_lexer(),
         punct,
     ));
 
@@ -460,7 +436,7 @@ where
 /// ```
 /// use hyformal::parser::parse;
 /// use hyformal::expr::Expr;
-/// let e = parse("forall x : Bool . x = x").unwrap();
+/// let e = parse("forall %0 : Bool . %0 = %0").unwrap();
 /// assert_eq!(e.as_ref().view().type_(), hyformal::expr::variant::ExprType::Forall);
 /// ```
 pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
@@ -482,7 +458,11 @@ pub fn parse(src: &str) -> Result<AnyExpr, Vec<String>> {
         .then_ignore(end())
         .parse(plain.as_slice())
         .into_output_errors();
-    errors.extend(parse_errs.into_iter().map(|e| format!("parse error: {e}")));
+    errors.extend(
+        parse_errs
+            .into_iter()
+            .map(|e| format!("parse error: {e:?}. Input tokens: {plain:?}")),
+    );
     if !errors.is_empty() {
         return Err(errors);
     }
