@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, ops::Deref};
 
 use either::Either;
 use smallvec::SmallVec;
@@ -7,6 +7,7 @@ use typed_arena::Arena;
 use crate::{
     encoding::{EncodableExpr, tree::TreeBufNodeRef},
     expr::{AnyExprRef, Expr, variant::ExprType, view::ExprView},
+    walker::walk,
 };
 
 /// Arena-backed expressions for building and transforming trees without allocation churn.
@@ -291,6 +292,86 @@ impl<'a> ExprArenaCtx<'a> {
 
         debug_assert!(results.is_empty());
         root_alloc.expect("deep_copy should produce a root allocation")
+    }
+
+    /// Import and deeply copy a borrowed, already-encoded expression into this arena.
+    ///
+    /// Purpose
+    /// - Reconstructs a tree of arena-local nodes from an [`AnyExprRef`], so the result can be
+    ///   mixed with other arena-allocated views and further transformed without touching the
+    ///   original buffer.
+    ///
+    /// Semantics
+    /// - Traverses `expr_ref` iteratively and rebuilds an equivalent tree as [`ArenaView`] nodes
+    ///   allocated inside this context.
+    /// - Returns a reference to the freshly allocated root (`&RefCell<ArenaAnyExpr>`).
+    /// - The copy is independent from the source; subsequent mutations to the arena tree do not
+    ///   affect `expr_ref`.
+    ///
+    /// Notes
+    /// - If you already have an arena root and want to copy it within the same context, see
+    ///   [`ExprArenaCtx::deep_copy`]. If you merely want to reference an external subtree as a
+    ///   leaf (without expanding it into arena nodes), use [`ExprArenaCtx::reference_external`].
+    ///
+    /// Complexity
+    /// - O(n) allocations and time where n is the number of nodes in `expr_ref`.
+    ///
+    /// Example: copy a borrowed encoded tree and extend it in the arena
+    /// ```
+    /// use hyformal::arena::{ExprArenaCtx, ArenaAnyExpr};
+    /// use hyformal::expr::defs::*;
+    /// use hyformal::expr::{Expr, variant::ExprType};
+    ///
+    /// // Build an owned, encoded expression first
+    /// let owned = Not { inner: And { lhs: True, rhs: False } }.encode();
+    /// let borrowed = owned.as_ref();
+    ///
+    /// // Bring it into an arena as a fully materialized tree
+    /// let ctx = ExprArenaCtx::new();
+    /// let arena_root = ctx.deep_copy_ref(borrowed);
+    ///
+    /// // We can now build more nodes around it in the arena
+    /// let wrapped = ctx.alloc_expr(ArenaAnyExpr::ArenaView(hyformal::expr::view::ExprView::Not(arena_root)));
+    ///
+    /// // Both the original borrowed tree and the arena copy encode to the same structure
+    /// assert!(owned == arena_root.encode());
+    /// assert_eq!(wrapped.view().type_(), ExprType::Not);
+    /// ```
+    pub fn deep_copy_ref(&'a self, expr_ref: AnyExprRef<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
+        let mut latest_stack: SmallVec<[&'a RefCell<ArenaAnyExpr<'a>>; 16]> = SmallVec::new();
+
+        #[derive(Debug)]
+        pub enum WalkState {
+            Enter,
+            Exit,
+        }
+
+        walk(expr_ref, WalkState::Enter, |state, ctx| {
+            match state {
+                WalkState::Enter => {
+                    // Reschedule the current node after processing its children
+                    ctx.schedule_self_immediate(WalkState::Exit);
+
+                    // First we generate the left and right children (if any), then
+                    // we backtrack and revisit the current node once both children are ready.
+                    ctx.deref().for_each_unary(|elem, _| {
+                        // Store the child in a temporary location for later retrieval
+                        elem.schedule_immediate(WalkState::Enter);
+                    });
+                }
+                WalkState::Exit => {
+                    // Reconstruct the current node with allocated children
+                    let new_node = ctx
+                        .deref()
+                        .as_ref()
+                        .map_unary(|_, _| latest_stack.pop().unwrap());
+                    let new_node = self.alloc_expr(ArenaAnyExpr::ArenaView(new_node));
+                    latest_stack.push(new_node);
+                }
+            }
+        });
+
+        latest_stack.pop().unwrap()
     }
 }
 

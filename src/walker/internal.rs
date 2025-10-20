@@ -75,8 +75,9 @@ impl<'a, I> InternalWalkerHandle<'a, I> {
 
     /// Re-schedule the current node for an immediate re-visit.
     pub(crate) fn schedule_self_immediate(&self, input: I) {
+        // Revisit the same current node again; keep the same parent relation.
         self.stack
             .borrow_mut()
-            .push_front((self.parent, self.current_node, input));
+            .push_front((self.current_node, self.parent, input));
     }
 }

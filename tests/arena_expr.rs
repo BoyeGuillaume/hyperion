@@ -264,3 +264,113 @@ fn arena_with_exprref_leaf_copying() {
     assert_eq!(op, ExprType::Not as u8);
     assert_eq!(children.len(), 1);
 }
+
+#[test]
+fn deep_copy_ref_simple_and_unary() {
+    // Build a small owned expression and import it into an arena
+    let owned = Not { inner: True }.encode();
+    let borrowed = owned.as_ref();
+
+    let ctx = ExprArenaCtx::new();
+    let copied = ctx.deep_copy_ref(borrowed);
+
+    // Copied arena tree should encode identically
+    let copied_encoded = copied.encode();
+    assert!(owned == copied_encoded);
+    assert_eq!(copied.view().type_(), ExprType::Not);
+
+    // Wrap the copy and ensure shape
+    let wrapped = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(copied)));
+    let wrapped_encoded = wrapped.encode();
+    assert_eq!(wrapped_encoded.as_ref().type_(), ExprType::Not);
+}
+
+#[test]
+fn deep_copy_ref_complex_mixed_variants() {
+    // Construct a complex owned expression using defs, then import into arena and compare.
+    // expr := if (and(true, false)) then (lambda x. (x, true))(false) else forall x: Bool. (x = x)
+    let x = InlineVariable::new_from_raw(7);
+    let owned_expr = If {
+        condition: And {
+            lhs: True,
+            rhs: False,
+        },
+        then_branch: Call {
+            func: Lambda {
+                arg: InlineVariable::new_from_raw(7),
+                body: Tuple {
+                    first: InlineVariable::new_from_raw(7),
+                    second: True,
+                },
+            },
+            arg: False,
+        },
+        else_branch: ForAll {
+            variable: x,
+            dtype: Bool,
+            inner: Equal {
+                lhs: InlineVariable::new_from_raw(7),
+                rhs: InlineVariable::new_from_raw(7),
+            },
+        },
+    }
+    .encode();
+
+    let ctx = ExprArenaCtx::new();
+    let copied = ctx.deep_copy_ref(owned_expr.as_ref());
+
+    // Verify structural equality via encoding
+    let copied_encoded = copied.encode();
+    assert!(
+        owned_expr == copied_encoded,
+        "Expected equality:\n{}\n  !=\n{}",
+        owned_expr,
+        copied_encoded
+    );
+
+    // Perform additional manipulations on arena nodes to check independence
+    let negated = ctx.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::Not(copied)));
+    let neg_encoded = negated.encode();
+    assert_eq!(neg_encoded.as_ref().type_(), ExprType::Not);
+
+    // Original owned buffer remains the same
+    let owned_again = owned_expr.as_ref().encode();
+    assert!(
+        owned_again == owned_expr,
+        "Original owned expression was mutated:\n{}\n  !=\n{}",
+        owned_again,
+        owned_expr
+    );
+}
+
+#[test]
+fn deep_copy_ref_handles_nested_exprref_and_views() {
+    // Start with an owned subtree and bring it as ExprRef into an arena structure,
+    // then deep_copy_ref on the whole encoded result to ensure it re-materializes as ArenaView nodes.
+    let sub_owned = And {
+        lhs: True,
+        rhs: False,
+    }
+    .encode();
+    let sub_ref = sub_owned.as_ref();
+
+    let ctx1 = ExprArenaCtx::new();
+    let leaf = ctx1.alloc_expr(ArenaAnyExpr::ExprRef(sub_ref));
+    let wrapped = ctx1.alloc_expr(ArenaAnyExpr::ArenaView(ExprView::If {
+        condition: leaf,
+        then_branch: True.alloc_in(&ctx1),
+        else_branch: False.alloc_in(&ctx1),
+    }));
+
+    // Encode the mixed arena expression (contains an ExprRef leaf)
+    let mixed_encoded = wrapped.encode();
+
+    // Now deep-copy-from-ref into a fresh arena; this should produce only ArenaView nodes
+    let ctx2 = ExprArenaCtx::new();
+    let re_mat = ctx2.deep_copy_ref(mixed_encoded.as_ref());
+    let re_mat_view = re_mat.view();
+    assert_eq!(re_mat_view.type_(), ExprType::If);
+
+    // Structural equality preserved across the transformation
+    assert!(mixed_encoded == re_mat.encode());
+}

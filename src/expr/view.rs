@@ -59,8 +59,64 @@ pub enum ExprView<E1, E2, E3> {
 }
 
 impl<E1, E2, E3> ExprView<E1, E2, E3> {
-    /// Return the discriminant identifying the kind of this node.
+    /// Retrieves the arity of this expression view.
     #[inline]
+    pub fn arity(&self) -> u8 {
+        self.type_().arity()
+    }
+
+    /// Return the discriminant identifying the kind of this node.
+    pub fn as_ref(&self) -> ExprView<&E1, &E2, &E3> {
+        pub use ExprView::*;
+
+        match self {
+            Bool => Bool,
+            Omega => Omega,
+            True => True,
+            False => False,
+            Never => Never,
+            Not(e) => Not(e),
+            Powerset(e) => Powerset(e),
+            And(e1, e2) => And(e1, e2),
+            Or(e1, e2) => Or(e1, e2),
+            Implies(e1, e2) => Implies(e1, e2),
+            Iff(e1, e2) => Iff(e1, e2),
+            Equal(e1, e2) => Equal(e1, e2),
+            Lambda { arg, body } => Lambda { arg, body },
+            Call { func, arg } => Call { func, arg },
+            Tuple(e1, e2) => Tuple(e1, e2),
+            Forall {
+                variable,
+                dtype,
+                inner,
+            } => Forall {
+                variable: *variable,
+                dtype,
+                inner,
+            },
+            Exists {
+                variable,
+                dtype,
+                inner,
+            } => Exists {
+                variable: *variable,
+                dtype,
+                inner,
+            },
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => If {
+                condition,
+                then_branch,
+                else_branch,
+            },
+            Variable(v) => Variable(*v),
+        }
+    }
+
+    /// Return the discriminant identifying the kind of this node.
     pub fn type_(&self) -> ExprType {
         pub use ExprView::*;
 
@@ -155,15 +211,132 @@ impl<E1, E2, E3> ExprView<E1, E2, E3> {
             Variable(v) => Variable(v),
         }
     }
+
+    /// For each child of this expression view, call the corresponding function.
+    #[inline]
+    pub fn for_each<F1, F2, F3>(&self, f1: F1, f2: F2, f3: F3)
+    where
+        F1: FnOnce(&E1),
+        F2: FnOnce(&E2),
+        F3: FnOnce(&E3),
+    {
+        self.as_ref().map(f1, f2, f3);
+    }
 }
 
 impl<E1> ExprView<E1, E1, E1> {
     /// Map the children of this expression view to new values.
     #[inline]
-    pub fn map_unary<F, O>(self, f: F) -> ExprView<O, O, O>
+    pub fn map_unary<F, O>(self, mut f: F) -> ExprView<O, O, O>
     where
-        F: FnOnce(E1, u8) -> O + Copy,
+        F: FnMut(E1, u8) -> O,
     {
-        self.map(|e| f(e, 0), |e| f(e, 1), |e| f(e, 2))
+        pub use ExprView::*;
+
+        match self {
+            Bool => Bool,
+            Omega => Omega,
+            True => True,
+            False => False,
+            Never => Never,
+            Not(e) => Not(f(e, 0)),
+            Powerset(e) => Powerset(f(e, 0)),
+            And(e1, e2) => And(f(e1, 0), f(e2, 1)),
+            Or(e1, e2) => Or(f(e1, 0), f(e2, 1)),
+            Implies(e1, e2) => Implies(f(e1, 0), f(e2, 1)),
+            Iff(e1, e2) => Iff(f(e1, 0), f(e2, 1)),
+            Equal(e1, e2) => Equal(f(e1, 0), f(e2, 1)),
+            Lambda { arg, body } => Lambda {
+                arg: f(arg, 0),
+                body: f(body, 1),
+            },
+            Call { func, arg } => Call {
+                func: f(func, 0),
+                arg: f(arg, 1),
+            },
+            Tuple(e1, e2) => Tuple(f(e1, 0), f(e2, 1)),
+            Forall {
+                variable,
+                dtype,
+                inner,
+            } => Forall {
+                variable,
+                dtype: f(dtype, 0),
+                inner: f(inner, 1),
+            },
+            Exists {
+                variable,
+                dtype,
+                inner,
+            } => Exists {
+                variable,
+                dtype: f(dtype, 0),
+                inner: f(inner, 1),
+            },
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => If {
+                condition: f(condition, 0),
+                then_branch: f(then_branch, 1),
+                else_branch: f(else_branch, 2),
+            },
+            Variable(v) => Variable(v),
+        }
+    }
+
+    /// For each child of this expression view, call the corresponding function.
+    #[inline]
+    pub fn for_each_unary<F>(&self, mut f: F)
+    where
+        F: FnMut(&E1, u8),
+    {
+        self.as_ref().map_unary(|e, i| {
+            f(e, i);
+        });
+    }
+
+    /// For each child of this expression view in reverse order, call the corresponding function.
+    #[inline]
+    pub fn for_each_unary_rev<F>(&self, mut f: F)
+    where
+        F: FnMut(&E1, u8),
+    {
+        use ExprView::*;
+
+        match self.as_ref() {
+            Bool | Omega | True | False | Never | Variable(_) => {}
+            Not(e) | Powerset(e) => f(e, 0),
+            And(e1, e2) | Or(e1, e2) | Implies(e1, e2) | Iff(e1, e2) | Equal(e1, e2) => {
+                f(e2, 1);
+                f(e1, 0);
+            }
+            Lambda { arg, body } => {
+                f(body, 1);
+                f(arg, 0);
+            }
+            Call { func, arg } => {
+                f(arg, 1);
+                f(func, 0);
+            }
+            Tuple(e1, e2) => {
+                f(e2, 1);
+                f(e1, 0);
+            }
+            Forall { dtype, inner, .. } | Exists { dtype, inner, .. } => {
+                f(inner, 1);
+                f(dtype, 0);
+            }
+            If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                f(else_branch, 2);
+                f(then_branch, 1);
+                f(condition, 0);
+            }
+        }
     }
 }

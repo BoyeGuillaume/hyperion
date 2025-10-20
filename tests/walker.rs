@@ -1,8 +1,12 @@
+use std::ops::Deref;
+
 use hyformal::expr::defs::*;
 use hyformal::expr::func;
 use hyformal::expr::variant::ExprType;
 use hyformal::expr::*;
+use hyformal::prelude::not;
 use hyformal::variable::InlineVariable;
+use hyformal::walker::walk;
 use hyformal::walker::{WalkerHandle, walk_no_input};
 
 fn schedule_all_with<I: Clone>(node: WalkerHandle<'_, I>, input: I) {
@@ -541,4 +545,58 @@ fn walk_order_mixed_immediate_and_deferred() {
     assert_eq!(seen[1], ExprType::Not); // else (immediate, last pushed)
     assert_eq!(seen[2], ExprType::True); // condition (immediate, first pushed)
     assert_eq!(seen[3], ExprType::Tuple); // then (deferred)
+}
+
+/// Ensure dual node Enter/Exit scheduling works as intended.
+#[test]
+fn walk_not_variable_schedule_self_after_children() {
+    let expr = {
+        let var = InlineVariable::new_from_raw(42);
+        let expr = not(var);
+        let var2 = InlineVariable::new_from_raw(43);
+        let expr2 = expr & var2;
+        let expr3 = expr2 | True;
+        expr3.encode()
+    };
+
+    #[derive(Debug)]
+    enum WalkState {
+        Enter,
+        Exit,
+    }
+
+    let mut ordering = vec![];
+
+    walk(expr.as_ref(), WalkState::Enter, |state, ctx| {
+        match state {
+            WalkState::Enter => {
+                ctx.schedule_self_immediate(WalkState::Exit);
+                let mut num_scheduled_children = 0;
+
+                // Schedule children
+                ctx.deref().for_each_unary_rev(|elem, _| {
+                    elem.schedule_immediate(WalkState::Enter);
+                    num_scheduled_children += 1;
+                });
+
+                assert_eq!(num_scheduled_children, ctx.deref().arity());
+            }
+            WalkState::Exit => {
+                ordering.push(ctx.deref().type_());
+            }
+        }
+    });
+
+    // This should visit each node exactly once in Exit state
+    assert_eq!(
+        ordering,
+        [
+            ExprType::Variable,
+            ExprType::Not,
+            ExprType::Variable,
+            ExprType::And,
+            ExprType::True,
+            ExprType::Or,
+        ]
+    );
 }

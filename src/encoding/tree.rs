@@ -99,6 +99,8 @@ impl TreeBuf {
         Option<u32>,
         StaticVec<TreeBufNodeRef, { Self::MAX_NUM_REFERENCES }>,
     ) {
+        assert!(node_ref != Self::INVALID_NODE_REF, "Invalid node reference");
+
         let node_ref = node_ref as usize;
         let magic_byte = buffer[node_ref];
         let flag_byte = buffer[node_ref + 1];
