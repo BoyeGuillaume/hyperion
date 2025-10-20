@@ -1,0 +1,32 @@
+[package]
+name = "hyformal"
+version = "0.1.0"
+license = "MIT"
+repository = "https://github.com/HyperionProject/hyformal"
+edition = "2024"
+readme = "README.md"
+description = "A formal, symbolic engine for hyperion"
+keywords = ["formal", "symbolic", "hyperion"]
+authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
+
+[dependencies]
+smallvec.workspace = true
+strum = { workspace = true, features = ["derive"] }
+pretty = { workspace = true, features = ["termcolor"] }
+termcolor.workspace = true
+term_size.workspace = true
+chumsky.workspace = true
+typed-arena.workspace = true
+stackalloc.workspace = true
+either.workspace = true
+
+[dev-dependencies]
+clap = { workspace = true, features = ["derive"] }
+
+[[example]]
+name = "basic"
+path = "examples/basic.rs"
+
+[[example]]
+name = "parser"
+path = "examples/parser.rs"
