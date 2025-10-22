@@ -44,6 +44,18 @@ impl<'a, I, R: ImplRecursiveExpr> WalkerNodeHandle<'a, I, R> {
     pub fn schedule_visit(&self, input: I) {
         self.schedule_immediate(input)
     }
+
+    /// Stop visiting this subtree entirely. Equivalent to breaking out of a loop. Notice that
+    /// if node are scheduled after this call, they will still be visited.
+    #[inline]
+    pub fn break_(&self) {
+        self.internal.break_();
+    }
+
+    #[inline]
+    pub fn r#break(&self) {
+        self.break_();
+    }
 }
 
 impl<'a, I, R: ImplRecursiveExpr> AsRef<R> for WalkerNodeHandle<'a, I, R> {

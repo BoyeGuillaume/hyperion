@@ -38,6 +38,13 @@ impl<'a, I, H: Sized + Copy> InternalWalkerNodeHandle<'a, I, H> {
             .borrow_mut()
             .push_back((self.children_node, Some(self.current_node), input));
     }
+
+    /// Stop visiting this subtree entirely. Equivalent to breaking out of a loop. Notice that
+    /// if node are scheduled after this call, they will still be visited.
+    #[inline]
+    pub fn break_(&self) {
+        self.stack.borrow_mut().clear();
+    }
 }
 
 /// Handle for scheduling the parent or re-scheduling the current node.

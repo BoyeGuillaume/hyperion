@@ -278,6 +278,105 @@ fn schedule_children_lr_dfs(node: WalkerHandle<'_, (), AnyExprRef>) {
 }
 
 #[test]
+fn walk_break_stops_subtree_traversal_using_break_() {
+    // Build a small tree: If(cond=True, then=Tuple(True, True), else=Not(False))
+    let encoded = If {
+        condition: True,
+        then_branch: hyformal::expr::func::tuple(True, True),
+        else_branch: Not { inner: False },
+    }
+    .encode();
+
+    // We'll schedule all children but call break_ on the first child we see to stop visiting the rest
+    let mut seen = Vec::<ExprType>::new();
+    walk_no_input(encoded.as_ref(), |node| {
+        seen.push(node.type_());
+        // Schedule root's children so we eventually visit the Tuple node
+        if let view::ExprView::If {
+            condition,
+            then_branch,
+            else_branch,
+        } = node.as_ref()
+        {
+            condition.schedule_immediate(());
+            then_branch.schedule_immediate(());
+            else_branch.schedule_immediate(());
+        }
+
+        // On visit to the Tuple node, schedule its children then break the traversal of the subtree
+        if let view::ExprView::Tuple(l, r) = node.as_ref() {
+            l.schedule_immediate(());
+            r.schedule_immediate(());
+            // Stop visiting the rest of the currently scheduled subtree
+            l.break_();
+        }
+    });
+
+    // The traversal should still include the Tuple node itself but not both of its children (break_ clears stack)
+    assert!(seen.contains(&ExprType::Tuple));
+    // At least one of the tuple children should be absent after break; ensure we didn't visit both Trues
+    let trues = seen.iter().filter(|t| **t == ExprType::True).count();
+    assert!(
+        trues < 2,
+        "expected at most one True after break_, got {}",
+        trues
+    );
+}
+
+#[test]
+fn walk_break_stops_subtree_traversal_using_raw_ident_rbreak() {
+    // Same structure as previous test but call the raw-ident `r#break` method
+    let encoded = If {
+        condition: Bool,
+        then_branch: hyformal::expr::func::tuple(True, True),
+        else_branch: Not { inner: False },
+    }
+    .encode();
+
+    let mut seen = Vec::<ExprType>::new();
+    walk_no_input(encoded.as_ref(), |node| {
+        seen.push(node.type_());
+        // Ensure the If's children are scheduled so Tuple will be visited
+        if let view::ExprView::If {
+            condition,
+            then_branch,
+            else_branch,
+        } = node.as_ref()
+        {
+            else_branch.schedule_immediate(());
+            then_branch.schedule_immediate(());
+            condition.schedule_immediate(());
+        }
+
+        if let view::ExprView::Tuple(l, r) = node.as_ref() {
+            l.schedule_immediate(());
+            r.schedule_immediate(());
+            // Call the raw-ident form
+            l.r#break();
+        }
+    });
+
+    assert!(seen.contains(&ExprType::Bool));
+    assert!(seen.contains(&ExprType::Tuple));
+    assert!(
+        !seen.contains(&ExprType::True),
+        "expected no True after r#break, got {:?}",
+        seen
+    );
+    assert!(
+        !seen.contains(&ExprType::Not),
+        "expected no Not after r#break, got {:?}",
+        seen,
+    );
+    let trues = seen.iter().filter(|t| **t == ExprType::True).count();
+    assert!(
+        trues < 2,
+        "expected at most one True after r#break, got {}",
+        trues
+    );
+}
+
+#[test]
 fn walk_order_complex_bfs() {
     let e = build_complex_expr();
     let mut seen = Vec::<ExprType>::new();
