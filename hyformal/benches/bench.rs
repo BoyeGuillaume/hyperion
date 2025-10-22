@@ -3,21 +3,19 @@ use std::cell::RefCell;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use hyformal::{arena::ArenaAllocableExpr, prelude::*};
+use hyformal_derive::internal_symbols;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 fn build_simple_expr() -> impl Expr + for<'a> ArenaAllocableExpr<'a> {
     // Simple nested expression: forall x: Powerset(Omega). forall y: Omega. exists z: x. z = y
-    let x = InlineVariable::new(Variable::Internal(0));
-    let y = InlineVariable::new(Variable::Internal(1));
-    let z = InlineVariable::new(Variable::Internal(2));
+    internal_symbols!(x, y, z);
 
-    let omega = forall(
+    forall(
         x,
         powerset(Omega),
         forall(y, Omega, exists(z, x, z.equals(y))),
-    );
-    omega
+    )
 }
 
 fn build_complex_expr() -> hyformal::expr::AnyExpr {
@@ -45,7 +43,7 @@ fn build_complex_expr() -> hyformal::expr::AnyExpr {
         }
 
         // Otherwise build a nested expression
-        return match rng.random_range(0..=7) {
+        match rng.random_range(0..=7) {
             0 => {
                 let left = next_create(budget - 1, rng, arena);
                 let right = next_create(budget - 1, rng, arena);
@@ -87,7 +85,7 @@ fn build_complex_expr() -> hyformal::expr::AnyExpr {
                 not(inner).alloc_in(arena)
             }
             _ => unreachable!(),
-        };
+        }
     }
 
     let expr = next_create(8, &mut rng.clone(), &arena);

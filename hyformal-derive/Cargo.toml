@@ -1,0 +1,15 @@
+[package]
+name = "hyformal-derive"
+version = "0.1.0"
+license = "MIT"
+edition = "2024"
+authors = ["Guillaume Boyé <guillaume.boye@epfl.ch>"]
+
+[dependencies]
+quote = "1.0.41"
+syn = { version = "2", features = ["full"] }
+
+[lib]
+proc-macro = true
+bench = false
+test = false
