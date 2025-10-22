@@ -6,7 +6,7 @@ use typed_arena::Arena;
 
 use crate::{
     encoding::{EncodableExpr, tree::TreeBufNodeRef},
-    expr::{AnyExprRef, Expr, variant::ExprType, view::ExprView},
+    expr::{AnyExprRef, Expr, IntoRecursiveExpr, sealed, variant::ExprType, view::ExprView},
     walker::walk,
 };
 
@@ -581,6 +581,43 @@ impl<'a> Expr for RefCell<ArenaAnyExpr<'a>> {
                 any_expr_ref.view_typed().map_unary(|x, _| Either::Right(x))
             }
         }
+    }
+}
+
+impl<'a> sealed::ImplRecursiveExpr for Either<&'a RefCell<ArenaAnyExpr<'a>>, AnyExprRef<'a>> {
+    type Handle = Either<&'a RefCell<ArenaAnyExpr<'a>>, AnyExprRef<'a>>;
+
+    fn recursed_view(
+        &self,
+        handle: Self::Handle,
+    ) -> ExprView<Self::Handle, Self::Handle, Self::Handle> {
+        match handle {
+            Either::Left(refcell) => match refcell.borrow().deref() {
+                ArenaAnyExpr::ArenaView(view) => view.map_unary(|x, _| Either::Left(x)),
+                ArenaAnyExpr::ExprRef(any_expr_ref) => {
+                    any_expr_ref.view_typed().map_unary(|x, _| Either::Right(x))
+                }
+            },
+            Either::Right(any_expr_ref) => {
+                any_expr_ref.view_typed().map_unary(|x, _| Either::Right(x))
+            }
+        }
+    }
+
+    fn recursed_handle_into(&self, handle: Self::Handle) -> Self {
+        handle
+    }
+
+    fn recursed_root(&self) -> Self::Handle {
+        *self
+    }
+}
+
+impl<'a> IntoRecursiveExpr for &'a RefCell<ArenaAnyExpr<'a>> {
+    type RecursiveExpressionType = Either<&'a RefCell<ArenaAnyExpr<'a>>, AnyExprRef<'a>>;
+
+    fn into_recursive(self) -> Self::RecursiveExpressionType {
+        Either::Left(self)
     }
 }
 

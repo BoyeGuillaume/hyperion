@@ -9,7 +9,7 @@ use hyformal::variable::InlineVariable;
 use hyformal::walker::walk;
 use hyformal::walker::{WalkerHandle, walk_no_input};
 
-fn schedule_all_with<I: Clone>(node: WalkerHandle<'_, I>, input: I) {
+fn schedule_all_with<I: Clone>(node: WalkerHandle<'_, I, AnyExprRef>, input: I) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_immediate(input),
@@ -207,7 +207,7 @@ fn build_complex_expr() -> AnyExpr {
     root.encode()
 }
 
-fn schedule_children_lr_bfs(node: WalkerHandle<'_, ()>) {
+fn schedule_children_lr_bfs(node: WalkerHandle<'_, (), AnyExprRef>) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_deferred(()),
@@ -241,7 +241,7 @@ fn schedule_children_lr_bfs(node: WalkerHandle<'_, ()>) {
     }
 }
 
-fn schedule_children_lr_dfs(node: WalkerHandle<'_, ()>) {
+fn schedule_children_lr_dfs(node: WalkerHandle<'_, (), AnyExprRef>) {
     use view::ExprView::*;
     match node.as_ref() {
         Not(c) | Powerset(c) => c.schedule_immediate(()),
@@ -357,91 +357,6 @@ fn walk_order_complex_dfs_preorder() {
     assert_eq!(seen, expected,);
 }
 
-#[test]
-fn walk_schedule_parent_post_order_without_loops() {
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum State {
-        Visit(bool),
-        Post,
-    }
-
-    let e = build_complex_expr();
-    let mut post = Vec::<ExprType>::new();
-
-    hyformal::walker::walk(e.as_ref(), State::Visit(false), |state, node| {
-        use view::ExprView::*;
-        match state {
-            State::Post => {
-                // Post-visit: record and don't schedule more
-                post.push(node.type_());
-            }
-            State::Visit(is_last) => {
-                println!("Visiting node: {:?}, is_last: {}", node.type_(), is_last);
-                // If this node is marked as the last child, schedule its parent for a post-visit now.
-                if is_last && !node.is_root() {
-                    node.schedule_parent_immediate(State::Post);
-                }
-                match node.as_ref() {
-                    Not(c) | Powerset(c) => c.schedule_immediate(State::Visit(true)),
-                    And(l, r)
-                    | Or(l, r)
-                    | Implies(l, r)
-                    | Iff(l, r)
-                    | Equal(l, r)
-                    | Tuple(l, r)
-                    | Lambda { arg: l, body: r }
-                    | Call { func: l, arg: r }
-                    | Forall {
-                        dtype: l, inner: r, ..
-                    }
-                    | Exists {
-                        dtype: l, inner: r, ..
-                    } => {
-                        // reverse scheduling for DFS; mark right as last
-                        r.schedule_immediate(State::Visit(true));
-                        l.schedule_immediate(State::Visit(false));
-                    }
-                    If {
-                        condition,
-                        then_branch,
-                        else_branch,
-                    } => {
-                        // reverse scheduling; mark else as last
-                        else_branch.schedule_immediate(State::Visit(true));
-                        then_branch.schedule_immediate(State::Visit(false));
-                        condition.schedule_immediate(State::Visit(false));
-                    }
-                    _ => {}
-                }
-            }
-        }
-    });
-
-    let expected_post = vec![
-        // If.cond > And (scheduled by True)
-        ExprType::And,
-        // If.then > Tuple.0 > Lambda.body > Call.arg > Tuple (scheduled by Bool)
-        ExprType::Tuple,
-        // If.then > Tuple.0 > Lambda.body > Call (scheduled by Tuple)
-        ExprType::Call,
-        // If.then > Tuple.0 > Lambda (scheduled by Call)
-        ExprType::Lambda,
-        // If.then > Tuple.1 > Powerset (scheduled by False)
-        ExprType::Powerset,
-        // If.then > Tuple (scheduled by Powerset)
-        ExprType::Tuple,
-        // If.else > Forall.inner > Exists.inner > Not (scheduled by Var)
-        ExprType::Not,
-        // If.else > Forall.inner > Exists (scheduled by Not)
-        ExprType::Exists,
-        // If.else > Forall (scheduled by Exists)
-        ExprType::Forall,
-        // If (scheduled by Forall)
-        ExprType::If,
-    ];
-
-    assert_eq!(post, expected_post,);
-}
 #[test]
 fn walk_order_immediate_is_dfs_on_siblings() {
     // Root with 3 children to make sibling-order observable

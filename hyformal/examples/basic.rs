@@ -18,5 +18,6 @@ fn main() {
         ),
     );
     expr.pretty_print().unwrap();
+
     println!();
 }

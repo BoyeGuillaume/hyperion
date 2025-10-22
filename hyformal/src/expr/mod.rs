@@ -115,6 +115,37 @@ impl<L: Expr, R: Expr> Expr for Either<L, R> {
     }
 }
 
+pub(crate) mod sealed {
+    use crate::expr::{Expr, view::ExprView};
+
+    pub trait ImplRecursiveExpr: Expr {
+        type Handle: Sized + Copy;
+
+        fn recursed_view(
+            &self,
+            handle: Self::Handle,
+        ) -> ExprView<Self::Handle, Self::Handle, Self::Handle>;
+
+        fn recursed_handle_into(&self, handle: Self::Handle) -> Self;
+
+        fn recursed_root(&self) -> Self::Handle;
+    }
+}
+
+pub trait IntoRecursiveExpr: Expr {
+    type RecursiveExpressionType: sealed::ImplRecursiveExpr;
+
+    fn into_recursive(self) -> Self::RecursiveExpressionType;
+}
+
+impl<RE: sealed::ImplRecursiveExpr> IntoRecursiveExpr for RE {
+    type RecursiveExpressionType = RE;
+
+    fn into_recursive(self) -> Self::RecursiveExpressionType {
+        self
+    }
+}
+
 /// Owned, compactly-encoded expression.
 ///
 /// Role
@@ -313,6 +344,28 @@ impl<'a> Expr for AnyExprRef<'a> {
     #[inline]
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         self.view_typed()
+    }
+}
+
+impl<'a> sealed::ImplRecursiveExpr for AnyExprRef<'a> {
+    type Handle = TreeBufNodeRef;
+
+    fn recursed_view(
+        &self,
+        handle: Self::Handle,
+    ) -> ExprView<Self::Handle, Self::Handle, Self::Handle> {
+        AnyExpr::_view(self.tree, handle).map_unary(|elem, _| elem.node)
+    }
+
+    fn recursed_handle_into(&self, handle: Self::Handle) -> Self {
+        AnyExprRef {
+            tree: self.tree,
+            node: handle,
+        }
+    }
+
+    fn recursed_root(&self) -> Self::Handle {
+        self.node
     }
 }
 
