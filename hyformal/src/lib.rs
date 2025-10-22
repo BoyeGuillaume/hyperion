@@ -64,6 +64,18 @@ pub mod prelude {
     //! - Free-function builders from `func::*`
     //! - Pretty-printing via `PrettyExpr`
     //! - Variable types
-    pub use crate::expr::{Expr, defs::*, func::*, pretty::PrettyExpr};
+    pub use crate::expr::{
+        AnyExpr, AnyExprRef, Expr, defs::*, func::*, pretty::PrettyExpr, variant::ExprType,
+        view::ExprView,
+    };
     pub use crate::variable::{InlineVariable, Variable};
+
+    // Arena helpers
+    pub use crate::arena::{ArenaAnyExpr, ExprArenaCtx};
+
+    // Walker ergonomics
+    pub use crate::walker::{WalkerHandle, WalkerNodeHandle, walk, walk_no_input};
+
+    // Parser entrypoint
+    pub use crate::parser::parse;
 }

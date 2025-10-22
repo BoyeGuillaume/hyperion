@@ -6,6 +6,7 @@
 use strum::{EnumIs, EnumTryAs};
 
 use crate::{
+    arena::ArenaAllocableExpr,
     encoding::{
         EncodableExpr,
         tree::{TreeBuf, TreeBufNodeRef},
@@ -180,6 +181,17 @@ impl Expr for InlineVariable {
     }
 }
 
+impl<'a> ArenaAllocableExpr<'a> for InlineVariable {
+    fn alloc_in(
+        &self,
+        ctx: &'a crate::prelude::ExprArenaCtx<'a>,
+    ) -> &'a std::cell::RefCell<crate::prelude::ArenaAnyExpr<'a>> {
+        ctx.alloc_expr(crate::prelude::ArenaAnyExpr::ArenaView(
+            crate::prelude::ExprView::Variable(*self),
+        ))
+    }
+}
+
 impl EncodableExpr for Variable {
     fn encode_tree_step(&self, tree: &mut TreeBuf) -> TreeBufNodeRef {
         tree.push_node(ExprType::Variable as u8, Some(self.raw()), &[])
@@ -189,5 +201,16 @@ impl EncodableExpr for Variable {
 impl Expr for Variable {
     fn view(&self) -> ExprView<impl Expr, impl Expr, impl Expr> {
         ExprView::<AnyExpr, AnyExpr, AnyExpr>::Variable(InlineVariable::new(*self))
+    }
+}
+
+impl<'a> ArenaAllocableExpr<'a> for Variable {
+    fn alloc_in(
+        &self,
+        ctx: &'a crate::prelude::ExprArenaCtx<'a>,
+    ) -> &'a std::cell::RefCell<crate::prelude::ArenaAnyExpr<'a>> {
+        ctx.alloc_expr(crate::prelude::ArenaAnyExpr::ArenaView(
+            crate::prelude::ExprView::Variable(InlineVariable::new(*self)),
+        ))
     }
 }

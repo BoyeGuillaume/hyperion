@@ -337,7 +337,7 @@ impl<'a> ExprArenaCtx<'a> {
     /// assert!(owned == arena_root.encode());
     /// assert_eq!(wrapped.view().type_(), ExprType::Not);
     /// ```
-    pub fn deep_copy_ref(&'a self, expr_ref: AnyExprRef<'a>) -> &'a RefCell<ArenaAnyExpr<'a>> {
+    pub fn deep_copy_ref(&'a self, expr_ref: AnyExprRef<'_>) -> &'a RefCell<ArenaAnyExpr<'a>> {
         let mut latest_stack: SmallVec<[&'a RefCell<ArenaAnyExpr<'a>>; 16]> = SmallVec::new();
 
         #[derive(Debug)]

@@ -27,9 +27,12 @@ pub mod pretty;
 pub mod variant;
 pub mod view;
 
+use std::cell::RefCell;
+
 use either::Either;
 use smallvec::SmallVec;
 
+use crate::arena::ArenaAllocableExpr;
 use crate::encoding::EncodableExpr;
 use crate::encoding::tree::{TreeBuf, TreeBufNodeRef};
 use crate::expr::variant::ExprType;
@@ -268,6 +271,16 @@ impl AnyExpr {
     pub fn consolidate(&mut self) {
         self.tree.consolidate();
     }
+
+    /// Deep-copy this expression into the given arena context.
+    #[inline]
+    pub fn deep_copy_in<'a>(
+        &self,
+        ctx: &'a crate::prelude::ExprArenaCtx<'a>,
+    ) -> &'a RefCell<crate::prelude::ArenaAnyExpr<'a>> {
+        let borrowed = self.as_ref();
+        ctx.deep_copy_ref(borrowed)
+    }
 }
 
 impl EncodableExpr for AnyExpr {
@@ -404,3 +417,12 @@ impl<'a> PartialEq for AnyExprRef<'a> {
 }
 
 impl<'a> Eq for AnyExprRef<'a> {}
+
+impl<'a, 'b: 'a> ArenaAllocableExpr<'a> for AnyExprRef<'b> {
+    fn alloc_in(
+        &self,
+        ctx: &'a crate::prelude::ExprArenaCtx<'a>,
+    ) -> &'a std::cell::RefCell<crate::prelude::ArenaAnyExpr<'a>> {
+        ctx.alloc_expr(crate::prelude::ArenaAnyExpr::ExprRef(*self))
+    }
+}
