@@ -3,13 +3,13 @@ resolver = "2"
 members = ["hyformal"]
 
 [workspace.dependencies]
-smallvec = "^1"
-strum = { version = ">=0.26", features = ["derive"] }
-either = ">=1"
-termcolor = "^1"
-pretty = { version = "^0.12", features = ["termcolor"] }
-term_size = ">=0.3"
+smallvec = ">=0.6.10, <=1.15.1"
+strum = { version = ">=0.25.0", features = ["derive"] }
+either = "*"
+termcolor = "^1.1.1"
+pretty = { version = ">=0.10", features = ["termcolor"] }
+term_size = "*"
 chumsky = ">=0.11"
-typed-arena = "^2"
-stackalloc = "^1"
+typed-arena = "*"
+stackalloc = "^1.1.1"
 clap = ">=4.0"
