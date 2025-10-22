@@ -5,6 +5,10 @@ use crate::{
     walker::internal::{InternalWalkerHandle, InternalWalkerNodeHandle, WalkerStackType},
 };
 
+// Alias the frequently-used complex view type to satisfy clippy's type_complexity lint.
+type WalkerExprView<'a, I, R> =
+    ExprView<WalkerNodeHandle<'a, I, R>, WalkerNodeHandle<'a, I, R>, WalkerNodeHandle<'a, I, R>>;
+
 /// Lightweight handle passed to the visitor, representing a child node plus scheduling control.
 ///
 /// - `E` is the underlying expression reference type (here [`AnyExprRef`]).
@@ -68,11 +72,7 @@ impl<'a, I, R: ImplRecursiveExpr> Deref for WalkerNodeHandle<'a, I, R> {
 ///
 pub struct WalkerHandle<'a, I, R: ImplRecursiveExpr> {
     internal: InternalWalkerHandle<'a, I, <R as ImplRecursiveExpr>::Handle>,
-    view: &'a ExprView<
-        WalkerNodeHandle<'a, I, R>,
-        WalkerNodeHandle<'a, I, R>,
-        WalkerNodeHandle<'a, I, R>,
-    >,
+    view: &'a WalkerExprView<'a, I, R>,
 }
 
 impl<'a, I, R: ImplRecursiveExpr> WalkerHandle<'a, I, R> {
@@ -89,15 +89,7 @@ impl<'a, I, R: ImplRecursiveExpr> WalkerHandle<'a, I, R> {
     }
 }
 
-impl<'a, I, R: ImplRecursiveExpr>
-    AsRef<
-        ExprView<
-            WalkerNodeHandle<'a, I, R>,
-            WalkerNodeHandle<'a, I, R>,
-            WalkerNodeHandle<'a, I, R>,
-        >,
-    > for WalkerHandle<'a, I, R>
-{
+impl<'a, I, R: ImplRecursiveExpr> AsRef<WalkerExprView<'a, I, R>> for WalkerHandle<'a, I, R> {
     #[inline]
     fn as_ref(
         &self,
@@ -108,11 +100,7 @@ impl<'a, I, R: ImplRecursiveExpr>
 }
 
 impl<'a, I, R: ImplRecursiveExpr> Deref for WalkerHandle<'a, I, R> {
-    type Target = ExprView<
-        WalkerNodeHandle<'a, I, R>,
-        WalkerNodeHandle<'a, I, R>,
-        WalkerNodeHandle<'a, I, R>,
-    >;
+    type Target = WalkerExprView<'a, I, R>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
