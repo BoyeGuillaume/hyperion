@@ -1,0 +1,12 @@
+[package]
+name = "hyinstr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+strum = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
