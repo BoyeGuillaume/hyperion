@@ -1,6 +1,7 @@
-use uuid::Uuid;
-
 use crate::{instr::HyInstr, terminator::HyTerminator};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// A basic block containing a sequence of instructions and a terminator.
 #[derive(Debug, Clone)]

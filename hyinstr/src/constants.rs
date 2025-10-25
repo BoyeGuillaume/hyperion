@@ -1,4 +1,6 @@
 use crate::types::primary::{FpType, IType};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// Represents an integer constant with a specific type and value.
 ///
@@ -53,6 +55,7 @@ impl IConst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FpConstDef {
     Regular {
         mantissa: u64,
