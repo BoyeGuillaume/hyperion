@@ -1,38 +1,8 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::{EnumIs, EnumTryAs};
+use strum::{EnumDiscriminants, EnumIs, EnumTryAs};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumTryAs, EnumIs)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum IntConstant {
-    UInt8(u8),
-    SInt8(i8),
-    UInt16(u16),
-    SInt16(i16),
-    UInt32(u32),
-    SInt32(i32),
-    UInt64(u64),
-    SInt64(i64),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum FpType {
-    Bfp16,
-    Fp16,
-    Fp32,
-    Fp64,
-    Fp128,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FpConstant {
-    pub sign: bool,
-    pub exponent: i64,
-    pub mantissa: u64,
-    pub fp_type: FpType,
-}
+use crate::constants::{FpConst, IConst};
 
 pub type Reg = usize;
 
@@ -40,14 +10,14 @@ pub type Reg = usize;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IOperand {
     Reg(Reg),
-    Imm(IntConstant),
+    Imm(IConst),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumTryAs, EnumIs)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumTryAs, EnumIs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FOperand {
     Reg(Reg),
-    Imm(FpConstant),
+    Imm(FpConst),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,7 +160,7 @@ pub struct ISht {
     pub direction: ShiftDirection,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FAdd {
     pub dst: Reg,
@@ -198,7 +168,7 @@ pub struct FAdd {
     pub rhs: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FSub {
     pub dst: Reg,
@@ -206,7 +176,7 @@ pub struct FSub {
     pub rhs: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FMul {
     pub dst: Reg,
@@ -214,7 +184,7 @@ pub struct FMul {
     pub rhs: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FDiv {
     pub dst: Reg,
@@ -222,7 +192,7 @@ pub struct FDiv {
     pub rhs: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FRem {
     pub dst: Reg,
@@ -230,28 +200,28 @@ pub struct FRem {
     pub rhs: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FNeg {
     pub dst: Reg,
     pub val: FOperand,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ILoad {
+pub struct MLoad {
     pub dst: Reg,
     pub addr: (),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct IStore {
+pub struct MStore {
     pub src: Reg,
     pub addr: (),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ICmp {
     pub dst: Reg,
@@ -260,16 +230,19 @@ pub struct ICmp {
     pub op: ICompareOp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct IFCmp {
+pub struct FCmp {
     pub dst: Reg,
     pub lhs: FOperand,
     pub rhs: FOperand,
     pub op: FpCompareOp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumTryAs, EnumIs)]
+#[derive(Debug, Clone, PartialEq, EnumTryAs, EnumIs, EnumDiscriminants)]
+#[strum_discriminants(derive(EnumIs))]
+#[strum_discriminants(name(HyInstrKind))]
+#[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HyInstr {
     Add(IAdd),
@@ -290,9 +263,9 @@ pub enum HyInstr {
     FRem(FRem),
     FNeg(FNeg),
 
-    Load(ILoad),
-    Store(IStore),
+    Load(MLoad),
+    Store(MStore),
 
     ICmp(ICmp),
-    FCmp(IFCmp),
+    FCmp(FCmp),
 }
