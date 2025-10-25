@@ -23,6 +23,8 @@ impl IType {
     pub const I32: Self = Self { num_bits: 32 };
     pub const I64: Self = Self { num_bits: 64 };
     pub const I128: Self = Self { num_bits: 128 };
+    pub const MIN_BITS: u32 = 1;
+    pub const MAX_BITS: u32 = (1 << 23) - 1;
 
     #[inline]
     const fn check_validity(num_bits: u32) -> bool {
@@ -120,6 +122,21 @@ pub enum FpType {
     PPCFp128,
 }
 
+impl std::fmt::Display for FpType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            FpType::Fp16 => "half",
+            FpType::Bf16 => "bf16",
+            FpType::Fp32 => "float",
+            FpType::Fp64 => "double",
+            FpType::Fp128 => "fp128",
+            FpType::X86Fp80 => "x86_fp80",
+            FpType::PPCFp128 => "ppc_fp128",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// The pointer type is used to specify a memory locations. Pointers
 /// are commonly used to reference objects in memory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -173,27 +190,52 @@ pub enum VTypeSize {
 /// Those types are still considered primary as they can be used directly by instructions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct VType {
+pub struct VcType {
     pub size: VTypeSize,
     pub element_type: PrimaryBaseType,
+}
+
+impl VcType {
+    /// Creates a new fixed-size vector type.
+    pub fn fixed(size: usize, element_type: PrimaryBaseType) -> Self {
+        Self {
+            size: VTypeSize::Fixed(size),
+            element_type,
+        }
+    }
+
+    /// Creates a new scalable vector type.
+    pub fn scalable(factor: usize, element_type: PrimaryBaseType) -> Self {
+        Self {
+            size: VTypeSize::VScale(factor),
+            element_type,
+        }
+    }
 }
 
 /// Represents a label used for identifying basic blocks or other entities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Label {
-    pub id: usize,
-}
+pub struct LblType;
 
 /// Represents any primary type in hyperion
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PrimaryType {
+    /// Integer type with specified number of bits.
     Int(IType),
+
+    /// Floating-point type.
     Fp(FpType),
+
+    /// Pointer type.
     Ptr(PtrType),
-    Vector(VType),
-    Label(Label),
+
+    /// Vector type.
+    Vec(VcType),
+
+    /// Label type.
+    Lbl(LblType),
 }
 
 impl From<IType> for PrimaryType {
@@ -214,14 +256,14 @@ impl From<PtrType> for PrimaryType {
     }
 }
 
-impl From<VType> for PrimaryType {
-    fn from(v_type: VType) -> Self {
-        PrimaryType::Vector(v_type)
+impl From<VcType> for PrimaryType {
+    fn from(v_type: VcType) -> Self {
+        PrimaryType::Vec(v_type)
     }
 }
 
-impl From<Label> for PrimaryType {
-    fn from(label: Label) -> Self {
-        PrimaryType::Label(label)
+impl From<LblType> for PrimaryType {
+    fn from(label: LblType) -> Self {
+        PrimaryType::Lbl(label)
     }
 }

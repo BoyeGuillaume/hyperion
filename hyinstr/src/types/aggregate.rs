@@ -4,6 +4,10 @@ use strum::{EnumIs, EnumTryAs};
 
 use crate::types::primary::PrimaryBaseType;
 
+/// An identifier type used to reference types within a context.
+///
+/// I would prefer to name this `TypeId` but that conflicts with the std library.
+///
 pub type IdType = usize;
 
 pub struct Context {}
