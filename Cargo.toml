@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["hyformal", "hyformal-derive", "hyinstr"]
+members = ["hycore", "hyformal", "hyformal-derive", "hyinstr"]
 
 [workspace.dependencies]
 smallvec = ">=0.6.10, <=1.15.1"
@@ -22,3 +22,5 @@ rand_chacha = "0.9.0"
 
 hyformal = { path = "hyformal" }
 hyformal-derive = { path = "hyformal-derive" }
+hyinstr = { path = "hyinstr" }
+hycore = { path = "hycore" }

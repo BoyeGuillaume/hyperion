@@ -1,12 +1,14 @@
-use crate::{instr::HyInstr, terminator::HyTerminator};
+use std::collections::BTreeMap;
+
+use crate::{instr::HyInstr, name::Name, terminator::HyTerminator};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// A basic block containing a sequence of instructions and a terminator.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BasicBlock {
+    pub name: Name,
     pub instructions: Vec<HyInstr>,
     pub terminator: HyTerminator,
 }
@@ -26,14 +28,14 @@ pub enum Visibility {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Function {
-    pub identifier: Uuid,
+    pub identifier: Name,
     pub visibility: Visibility,
-    pub blocks: Vec<BasicBlock>,
+    pub blocks: BTreeMap<Name, BasicBlock>,
 }
 
 /// A module containing multiple functions.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Module {
-    pub functions: Vec<Function>,
+    pub functions: BTreeMap<Name, Function>,
 }

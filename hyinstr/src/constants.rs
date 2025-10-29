@@ -1,6 +1,13 @@
-use crate::types::primary::{FpType, IType};
+use crate::{
+    name::Name,
+    types::{
+        aggregate::TypeRef,
+        primary::{FpType, IType},
+    },
+};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Represents an integer constant with a specific type and value.
 ///
@@ -9,12 +16,12 @@ use serde::{Deserialize, Serialize};
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct IConst {
+pub struct ConstInt {
     pub int_type: IType,
     pub value: u64,
 }
 
-impl IConst {
+impl ConstInt {
     #[inline]
     pub fn verify_debug_assert(&self) {
         debug_assert!(
@@ -56,7 +63,7 @@ impl IConst {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum FpConstDef {
+pub enum ConstFpDef {
     Regular {
         mantissa: u64,
         exponent: i32,
@@ -71,22 +78,43 @@ pub enum FpConstDef {
 /// Represents a floating-point constant.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FpConst {
+pub struct ConstFp {
     pub fp_type: FpType,
-    pub def: FpConstDef,
+    pub def: ConstFpDef,
 }
 
-impl FpConst {
+impl ConstFp {
     /// Creates a new `FloatConstant`.
     #[inline]
     pub const fn new(mantissa: u64, exponent: i32, sign: bool, fp_type: FpType) -> Self {
         Self {
             fp_type,
-            def: FpConstDef::Regular {
+            def: ConstFpDef::Regular {
                 mantissa,
                 exponent,
                 sign,
             },
         }
     }
+}
+
+/// The `null` typeref for pointer types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConstNull(pub TypeRef);
+
+pub struct GlobalReference {
+    pub name: Name,
+    pub ty: TypeRef,
+}
+
+pub struct BlockReference {
+    pub function: Uuid,
+    pub block: Name,
+}
+
+pub enum Constant {
+    Int(ConstInt),
+    Fp(ConstFp),
+    Null(ConstNull),
+    Global(GlobalReference),
 }

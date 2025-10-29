@@ -94,7 +94,7 @@ impl std::fmt::Display for IType {
 }
 
 /// Represents a floating-point type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIs)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIs, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FpType {
     /// 16-bit floating point value (IEEE-754 binary16)
@@ -139,12 +139,12 @@ impl std::fmt::Display for FpType {
 
 /// The pointer type is used to specify a memory locations. Pointers
 /// are commonly used to reference objects in memory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PtrType;
 
 /// Primary base types used for Vector types and arrays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PrimaryBaseType {
     Int(IType),

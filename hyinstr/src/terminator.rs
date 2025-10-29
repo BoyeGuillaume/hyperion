@@ -1,6 +1,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -33,7 +34,7 @@ pub struct TSwitch {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TInvoke {
-    pub function: (),
+    pub function: Uuid,
     pub arguments: Vec<usize>,
     pub result: Option<usize>,
     pub return_target: (),
