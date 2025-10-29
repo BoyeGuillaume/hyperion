@@ -5,7 +5,7 @@ use crate::types::aggregate::{AnyType, AnyTypeRef, TypeRef};
 pub mod aggregate;
 pub mod primary;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TypeRegistry {
     map: BTreeMap<TypeRef, AnyType>,
     inverse_accelerator: BTreeMap<u64, TypeRef>,
@@ -24,7 +24,7 @@ impl TypeRegistry {
     fn find_type_internal(&self, ty_hash: u64, ty: &AnyType) -> Option<TypeRef> {
         if let Some(id_hint) = self.inverse_accelerator.get(&ty_hash) {
             // Potential hash collision however we should be optimistic here
-            let elem = self.map.get(&id_hint).unwrap();
+            let elem = self.map.get(id_hint).unwrap();
             if elem == ty {
                 return Some(*id_hint);
             }
@@ -56,10 +56,7 @@ impl TypeRegistry {
     }
 
     pub fn new() -> Self {
-        Self {
-            map: BTreeMap::new(),
-            inverse_accelerator: BTreeMap::new(),
-        }
+        Self::default()
     }
 
     pub fn insert(&mut self, ty: AnyType) -> TypeRef {

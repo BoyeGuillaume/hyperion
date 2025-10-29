@@ -9,6 +9,7 @@ use crate::types::primary::PrimaryBaseType;
 /// I would prefer to name this `TypeId` but that conflicts with the std library.
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TypeRef(pub(super) usize);
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
