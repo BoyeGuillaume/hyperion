@@ -1,0 +1,20 @@
+#ifndef _HYCORE_VERSION_H
+#define _HYCORE_VERSION_H
+
+/*
+ * This file is auto-generated from cmake/version.h.in by CMake. Do not edit
+ * directly, edit the input file instead.
+ */
+
+#define HY_VERSION_MAJOR @HY_VERSION_MAJOR@
+#define HY_VERSION_MINOR @HY_VERSION_MINOR@
+#define HY_VERSION_PATCH @HY_VERSION_PATCH@
+#define HY_VERSION_PRERELEASE "@HY_VERSION_PRERELEASE@"
+#define HY_VERSION_COMMIT_SHORT_HASH "@HY_VERSION_COMMIT_SHORT_HASH@"
+#define HY_VERSION_COMMIT_HASH "@HY_VERSION_COMMIT_HASH@"
+#define HY_FULL_VERSION "@HY_FULL_VERSION@"
+#define HY_SIMPLE_VERSION "@HY_SIMPLE_VERSION@"
+
+#cmakedefine HY_BUILD_SHARED
+
+#endif // _HYCORE_VERSION_H
