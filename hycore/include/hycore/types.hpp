@@ -117,6 +117,16 @@ namespace hycore::types
         }, lhs, rhs);
     }
 
+    inline bool operator==(const PrimitiveT &lhs, const PrimitiveT &rhs) noexcept
+    {
+        return (lhs <=> rhs) == std::strong_ordering::equal;
+    }
+
+    inline bool operator!=(const PrimitiveT &lhs, const PrimitiveT &rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
+
     struct StructT
     {
         std::vector<TypeId> memberTypes;
@@ -194,8 +204,14 @@ namespace hycore::constants
     struct IntegerC
     {
         hycore::types::IntegerT type;
-        std::int64_t value;
+        std::vector<std::uint8_t> value; // Little-endian byte representation
     };
+
+    HYCORE_API IntegerC i1c(bool val);
+    HYCORE_API IntegerC i8c(uint8_t val);
+    HYCORE_API IntegerC i16c(uint16_t val);
+    HYCORE_API IntegerC i32c(uint32_t val);
+    HYCORE_API IntegerC i64c(uint64_t val);
 
     struct FloatingPointC
     {

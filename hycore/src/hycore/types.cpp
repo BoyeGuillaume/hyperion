@@ -75,3 +75,51 @@ HYCORE_API size_t TypeRegistry::size() const noexcept
 }
 
 }
+
+namespace hycore::constants
+{
+    HYCORE_API IntegerC i1c(bool val) {
+        IntegerC constant;
+        constant.type.bitWidth = 1;
+        constant.value.resize(1);
+        constant.value[0] = val ? 0xff : 0;
+        return constant;
+    }
+
+    HYCORE_API IntegerC i8c(uint8_t val) {
+        IntegerC constant;
+        constant.type.bitWidth = 8;
+        constant.value.resize(1);
+        constant.value[0] = val;
+        return constant;
+    }
+
+    HYCORE_API IntegerC i16c(uint16_t val) {
+        IntegerC constant;
+        constant.type.bitWidth = 16;
+        constant.value.resize(2);
+        constant.value[0] = static_cast<std::uint8_t>(val & 0xFF);
+        constant.value[1] = static_cast<std::uint8_t>((val >> 8) & 0xFF);
+        return constant;
+    }
+
+    HYCORE_API IntegerC i32c(uint32_t val) {
+        IntegerC constant;
+        constant.type.bitWidth = 32;
+        constant.value.resize(4);
+        for (size_t i = 0; i < 4; ++i) {
+            constant.value[i] = static_cast<std::uint8_t>((val >> (i * 8)) & 0xFF);
+        }
+        return constant;
+    }
+
+    HYCORE_API IntegerC i64c(uint64_t val) {
+        IntegerC constant;
+        constant.type.bitWidth = 64;
+        constant.value.resize(8);
+        for (size_t i = 0; i < 8; ++i) {
+            constant.value[i] = static_cast<std::uint8_t>((val >> (i * 8)) & 0xFF);
+        }
+        return constant;
+    }
+}
