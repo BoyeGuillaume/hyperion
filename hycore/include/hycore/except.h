@@ -1,5 +1,5 @@
-#ifndef _HYCORE_EXCEPT_HPP
-#define _HYCORE_EXCEPT_HPP
+#ifndef _HYCORE_EXCEPT_H
+#define _HYCORE_EXCEPT_H
 
 #include <hycore/generated_version.h>
 
@@ -28,4 +28,4 @@
 #define HYCORE_PRIVATE_API
 #endif
 
-#endif // _HYCORE_EXCEPT_HPP
+#endif // _HYCORE_EXCEPT_H

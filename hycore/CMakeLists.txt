@@ -12,12 +12,17 @@ message(STATUS "HYCORE_HEADERS: ${HYCORE_HEADERS}")
 
 # Create the library (shared or static based on HY_BUILD_SHARED option)
 if(HY_BUILD_SHARED)
-    add_library(hycore SHARED ${HYCORE_SOURCES})
+    add_library(hycore SHARED)
     message(STATUS "Building hycore as a shared library")
 else()
-    add_library(hycore STATIC ${HYCORE_SOURCES})
+    add_library(hycore STATIC)
     message(STATUS "Building hycore as a static library")
 endif()
+add_library(hy::core ALIAS hycore)
+
+target_sources(hycore PUBLIC
+    ${HYCORE_SOURCES}
+)
 
 # Additional information about the binary
 set_target_properties(hycore
