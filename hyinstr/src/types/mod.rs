@@ -54,7 +54,25 @@ pub enum AnyType {
     /// An array type: element typeref + element count.
     Array(ArrayType),
     /// A structure type: an ordered list of element typerefs.
-    Structure(StructType),
+    Struct(StructType),
+}
+
+impl<S: Into<PrimaryType>> From<S> for AnyType {
+    fn from(value: S) -> Self {
+        AnyType::Primary(value.into())
+    }
+}
+
+impl From<ArrayType> for AnyType {
+    fn from(value: ArrayType) -> Self {
+        AnyType::Array(value)
+    }
+}
+
+impl From<StructType> for AnyType {
+    fn from(value: StructType) -> Self {
+        AnyType::Struct(value)
+    }
 }
 
 impl AnyType {
@@ -74,7 +92,7 @@ impl AnyType {
                     AnyType::Array(array_type) => {
                         array_type.internal_fmt(self.ref_object.deref()).fmt(f)
                     }
-                    AnyType::Structure(struct_type) => {
+                    AnyType::Struct(struct_type) => {
                         struct_type.internal_fmt(self.ref_object.deref()).fmt(f)
                     }
                 }
@@ -96,6 +114,21 @@ impl AnyType {
 ///
 /// The registry is thread-safe: it uses `parking_lot::RwLock` for concurrent
 /// access and follows a strict locking order to avoid deadlocks.
+///
+///
+/// Example:
+///
+/// ```rust
+/// use hyinstr::types::{TypeRegistry, primary::IType};
+/// use std::sync::Arc;
+///
+/// fn main() {
+///   let reg = TypeRegistry::new([0u8; 6]);
+///   let typeref = reg.search_or_insert(IType::I8.into());
+///   assert_eq!(reg.search_or_insert(IType::I8.into()), typeref);
+///   assert_eq!(reg.get(typeref).as_deref(), Some(&IType::I8.into()));
+/// }
+/// ```
 pub struct TypeRegistry {
     array: RwLock<BTreeMap<Uuid, AnyType>>,
     inverse_lookup: RwLock<BTreeMap<u64, SmallVec<[Uuid; 1]>>>,
@@ -121,12 +154,6 @@ impl TypeRegistry {
     /// registry starts empty and uses internal `RwLock`s to permit many
     /// concurrent readers while allowing safe upgrades to write locks when a
     /// new type must be inserted.
-    ///
-    /// Example:
-    ///
-    /// ```rust
-    /// let reg = TypeRegistry::new([0u8; 6]);
-    /// ```
     pub fn new(node_id: [u8; 6]) -> Self {
         Self {
             array: Default::default(),

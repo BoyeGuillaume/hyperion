@@ -7,10 +7,12 @@ edition = "2024"
 uuid = { workspace = true, features = ["v6"] }
 strum = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"], optional = true }
+bigdecimal.workspace = true
+num-bigint.workspace = true
 parking_lot.workspace = true
 smallvec.workspace = true
 log.workspace = true
 
 [features]
 default = []
-serde = ["dep:serde", "uuid/serde"]
+serde = ["dep:serde", "uuid/serde", "num-bigint/serde", "bigdecimal/serde"]
