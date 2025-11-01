@@ -1,9 +1,11 @@
+//! Integer constants used as immediate operands.
 use num_bigint::BigInt;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::types::primary::IType;
 
+/// An integer literal paired with its `IType` width.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", Serialize, Deserialize)]
 pub struct IConst {
@@ -12,6 +14,7 @@ pub struct IConst {
 }
 
 impl From<u8> for IConst {
+    /// Create an 8‑bit integer constant from a primitive value.
     fn from(value: u8) -> Self {
         Self {
             ty: IType::I8,
@@ -21,6 +24,7 @@ impl From<u8> for IConst {
 }
 
 impl From<u16> for IConst {
+    /// Create a 16‑bit integer constant from a primitive value.
     fn from(value: u16) -> Self {
         Self {
             ty: IType::I16,
@@ -30,6 +34,7 @@ impl From<u16> for IConst {
 }
 
 impl From<u32> for IConst {
+    /// Create a 32‑bit integer constant from a primitive value.
     fn from(value: u32) -> Self {
         Self {
             ty: IType::I32,
@@ -39,6 +44,7 @@ impl From<u32> for IConst {
 }
 
 impl From<u64> for IConst {
+    /// Create a 64‑bit integer constant from a primitive value.
     fn from(value: u64) -> Self {
         Self {
             ty: IType::I64,

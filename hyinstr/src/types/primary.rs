@@ -300,7 +300,10 @@ impl std::fmt::Display for LblType {
     }
 }
 
-/// Represents any primitive type.
+/// Represents any primitive type used by the IR.
+///
+/// This sum type wraps concrete primary kinds like integers, floats, opaque
+/// extension types, pointers, vectors and labels.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PrimaryType {
     Int(IType),

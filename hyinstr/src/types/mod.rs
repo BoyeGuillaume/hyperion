@@ -105,6 +105,16 @@ impl AnyType {
         }
     }
 
+    /// Build a formatting helper that renders this type using the provided
+    /// registry to resolve referenced element types.
+    ///
+    /// Example:
+    /// ```rust
+    /// # use hyinstr::types::{AnyType, TypeRegistry, primary::IType};
+    /// let reg = TypeRegistry::new([0; 6]);
+    /// let t = AnyType::from(IType::I32);
+    /// assert_eq!(format!("{}", t.fmt(&reg)), "i32");
+    /// ```
     pub fn fmt<'a>(&'a self, registry: &'a TypeRegistry) -> impl std::fmt::Display {
         self.internal_fmt(registry.array.read_recursive())
     }

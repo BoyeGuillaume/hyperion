@@ -1,8 +1,10 @@
+//! Floating‑point constants used as immediate operands.
 use crate::types::primary::FType;
 use bigdecimal::{BigDecimal, FromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// A floating‑point literal paired with its `FType`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", Serialize, Deserialize)]
 pub struct FConst {
@@ -13,6 +15,7 @@ pub struct FConst {
 impl TryFrom<f32> for FConst {
     type Error = ();
 
+    /// Convert a Rust `f32` into an `FConst` of type `Fp32`.
     fn try_from(value: f32) -> Result<Self, Self::Error> {
         let value = BigDecimal::from_f32(value).ok_or(())?;
         Ok(Self {
@@ -25,6 +28,7 @@ impl TryFrom<f32> for FConst {
 impl TryFrom<f64> for FConst {
     type Error = ();
 
+    /// Convert a Rust `f64` into an `FConst` of type `Fp32`.
     fn try_from(value: f64) -> Result<Self, Self::Error> {
         let value = BigDecimal::from_f64(value).ok_or(())?;
         Ok(Self {
