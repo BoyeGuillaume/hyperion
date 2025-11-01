@@ -1,3 +1,20 @@
+//! Primary types
+//!
+//! This file contains the primitive and vector types used by the instruction
+//! representation. Primary types are the building blocks for more complex types
+//! (for example vectors, arrays and structures). They are intentionally small
+//! and copyable/value-like so they can be embedded inside other descriptors.
+//!
+//! The important types are:
+//! - `IType`: an integer width in bits (1..<(1<<23)).
+//! - `FType`: floating point kinds (fp16, fp32, fp64, etc.).
+//! - `ExtType`: opaque target-specific types.
+//! - `PtrType`: opaque pointer type.
+//! - `VcType`: vector type (element type + size).
+//! - `LblType`: label type used for code labels.
+//!
+//! These types implement `Display` for readable formatting and can be
+//! serialized with the optional `serde` feature.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};

@@ -1,6 +1,25 @@
+//! Types module
+//!
+//! This module contains the canonical representation of types used by the
+//! `hyinstr` crate. It exposes a small type system built on three layers:
+//!
+//! - Primary types: primitive and vector types (see `primary.rs`).
+//! - Aggregate types: arrays and structures (see `aggregate.rs`).
+//! - A registry-backed `AnyType` wrapper and `TypeRegistry` which deduplicates
+//!   types and provides stable `Typeref` identifiers (UUID-based).
+//!
+//! The registry is thread-safe and optimised for concurrent reads. Types are
+//! hashed for quick lookup and a UUID is allocated for each distinct type.
+//!
+//! The formatting helpers (e.g. `AnyType::fmt`) accept a `&TypeRegistry` so
+//! that aggregate types can resolve their element types for human-friendly
+//! printing.
+//!
+//! See `README.md` in this directory for a higher-level overview and examples.
 use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
+    ops::Deref,
 };
 
 use log::{debug, info};
@@ -17,39 +36,66 @@ use crate::types::{
 pub mod aggregate;
 pub mod primary;
 
+/// A stable reference to a type stored inside a `TypeRegistry`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Typeref(Uuid);
 
+/// A sum-type representing any type that can be stored in the registry.
+///
+/// This includes primary (primitive/vector) types, aggregate types like
+/// arrays and structures. `AnyType` implements `Hash`/`Eq` so it can be
+/// deduplicated by the `TypeRegistry`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AnyType {
+    /// Primitive and vector types.
     Primary(PrimaryType),
+    /// An array type: element typeref + element count.
     Array(ArrayType),
+    /// A structure type: an ordered list of element typerefs.
     Structure(StructType),
 }
 
 impl AnyType {
-    pub fn fmt<'a>(&'a self, registry: &'a TypeRegistry) -> AnyTypeFmt<'a> {
-        AnyTypeFmt { ty: self, registry }
-    }
-}
+    fn internal_fmt<'a, U>(&'a self, ref_object: U) -> impl std::fmt::Display
+    where
+        U: Deref<Target = BTreeMap<Uuid, AnyType>> + Sized,
+    {
+        struct AnyTypeFmt<'a, U> {
+            ty: &'a AnyType,
+            ref_object: U,
+        }
 
-pub struct AnyTypeFmt<'a> {
-    ty: &'a AnyType,
-    registry: &'a TypeRegistry,
-}
+        impl<U: Deref<Target = BTreeMap<Uuid, AnyType>> + Sized> std::fmt::Display for AnyTypeFmt<'_, U> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.ty {
+                    AnyType::Primary(primary_type) => primary_type.fmt(f),
+                    AnyType::Array(array_type) => {
+                        array_type.internal_fmt(self.ref_object.deref()).fmt(f)
+                    }
+                    AnyType::Structure(struct_type) => {
+                        struct_type.internal_fmt(self.ref_object.deref()).fmt(f)
+                    }
+                }
+            }
+        }
 
-impl std::fmt::Display for AnyTypeFmt<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.ty {
-            AnyType::Primary(primary_type) => primary_type.fmt(f),
-            AnyType::Array(array_type) => array_type.fmt(self.registry).fmt(f),
-            AnyType::Structure(struct_type) => struct_type.fmt(self.registry).fmt(f),
+        AnyTypeFmt {
+            ty: self,
+            ref_object,
         }
     }
+
+    pub fn fmt<'a>(&'a self, registry: &'a TypeRegistry) -> impl std::fmt::Display {
+        self.internal_fmt(registry.array.read_recursive())
+    }
 }
 
+/// A central registry that stores and deduplicates `AnyType` values.
+///
+/// The registry is thread-safe: it uses `parking_lot::RwLock` for concurrent
+/// access and follows a strict locking order to avoid deadlocks.
 pub struct TypeRegistry {
     array: RwLock<BTreeMap<Uuid, AnyType>>,
     inverse_lookup: RwLock<BTreeMap<u64, SmallVec<[Uuid; 1]>>>,
@@ -69,6 +115,18 @@ impl TypeRegistry {
         Uuid::new_v6(ts, &self.node_id)
     }
 
+    /// Create a new `TypeRegistry`.
+    ///
+    /// `node_id` is used when allocating UUIDs for newly inserted types. The
+    /// registry starts empty and uses internal `RwLock`s to permit many
+    /// concurrent readers while allowing safe upgrades to write locks when a
+    /// new type must be inserted.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// let reg = TypeRegistry::new([0u8; 6]);
+    /// ```
     pub fn new(node_id: [u8; 6]) -> Self {
         Self {
             array: Default::default(),
@@ -78,15 +136,32 @@ impl TypeRegistry {
         }
     }
 
+    /// Retrieve a borrowed `AnyType` for the given `Typeref`.
+    ///
+    /// Returns `None` if the `Typeref` is not present in the registry. The
+    /// returned guard implements `Deref<Target=AnyType>` and keeps the read
+    /// lock held for the lifetime of the guard. Prefer this method over
+    /// `get_or_insert` when you only need to read an existing type.
     pub fn get(&self, typeref: Typeref) -> Option<MappedRwLockReadGuard<'_, AnyType>> {
-        // Lock ro on array
         let array_lock = self.array.read_recursive();
 
         // Acquire the typeref
         RwLockReadGuard::try_map(array_lock, |map| map.get(&typeref.0)).ok()
     }
 
-    pub fn get_or_insert(&self, ty: AnyType) -> Typeref {
+    /// Insert `ty` into the registry if an equivalent type doesn't already
+    /// exist and return the `Typeref` for it.
+    ///
+    /// This method first computes a 64-bit hash of the type and consults an
+    /// inverse lookup map to find candidates. Any matching `AnyType` is
+    /// compared for equality; if found, its existing `Typeref` is returned.
+    /// Otherwise a new UUID is allocated and the type is inserted. The
+    /// implementation uses upgradable read locks and upgrades them to writes
+    /// only when necessary to avoid blocking readers.
+    ///
+    /// WARNING: Beware of dead-locks this method cannot be used from thread
+    /// holding references to types (outputted by `TypeRegistry::get` method)
+    pub fn search_or_insert(&self, ty: AnyType) -> Typeref {
         // Collision are very are assuming hash function is perfectly uniform
         // For a collection of size N, we have in expectation
         //
@@ -124,13 +199,23 @@ impl TypeRegistry {
                 let new_typeref = self.next_uuid();
 
                 // Insert in the inverse_lookup_lock
-                if let Some(hash) = inverse_lookup_lock.get_mut(&h) {
-                    // TODO: Improve message for hash collision
-                    info!("Hash collision detected on hash {}", h);
-                    hash.push(new_typeref);
+                if let Some(list) = inverse_lookup_lock.get_mut(&h) {
+                    // Important: log collisions at info level with full context.
+                    info!("Detected an hash collision on hash 0x{:016x}. The following types collided:\n{}",
+                        h,
+                        list.iter().map(|uuid| {
+                            format!(" - {} -> {}", uuid, array_lock.get(uuid).unwrap().internal_fmt(&*array_lock))
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    );
+
+                    // Extra debug detail for the inverse lookup structure.
+                    debug!("Inverse lookup updated for hash 0x{:016x}: {:?} (type {})", h, list, ty.internal_fmt(&*array_lock));
+                    list.push(new_typeref);
                 } else {
-                    // TODO: Improve message for hash collision
-                    debug!("Inserting type translation from {} to {}", new_typeref, h);
+                    // Normal insertion is a debug-level event.
+                    debug!("New type encountered {}. Registered with UUID {}.", ty.internal_fmt(&*array_lock), new_typeref);
                     inverse_lookup_lock.insert(h, smallvec![new_typeref]);
                 }
 
