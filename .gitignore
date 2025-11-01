@@ -98,3 +98,8 @@ tags
 
 # Add build folder
 [bB]uild/
+
+
+# Added by cargo
+
+/target

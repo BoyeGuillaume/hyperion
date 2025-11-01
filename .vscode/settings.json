@@ -7,7 +7,7 @@
         "**/Thumbs.db": true,
         "**/build": true,
     },
-    "editor.formatOnSave": false,
+    "editor.formatOnSave": true,
     "files.associations": {
         "array": "cpp",
         "atomic": "cpp",
