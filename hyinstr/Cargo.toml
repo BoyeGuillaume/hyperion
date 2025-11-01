@@ -4,9 +4,12 @@ version = "0.1.2"
 edition = "2024"
 
 [dependencies]
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v6"] }
 strum = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"], optional = true }
+parking_lot.workspace = true
+smallvec.workspace = true
+log.workspace = true
 
 [features]
 default = []
