@@ -61,6 +61,7 @@ impl ArrayType {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StructType {
     pub element_types: Vec<Typeref>,
+    pub packed: bool,
 }
 
 impl StructType {
@@ -77,14 +78,22 @@ impl StructType {
             for StructTypeFmt<'_, U>
         {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "type {{")?;
+                if self.r#ref.packed {
+                    write!(f, "<{{")?;
+                } else {
+                    write!(f, "{{")?;
+                }
 
                 for typeref in self.r#ref.element_types.iter() {
                     let elem = self.ref_object.deref().get(&typeref.0).unwrap();
                     write!(f, "{}", elem.internal_fmt(self.ref_object.deref()))?;
                 }
 
-                write!(f, "}}")
+                if self.r#ref.packed {
+                    write!(f, "}}>")
+                } else {
+                    write!(f, "}}")
+                }
             }
         }
 
