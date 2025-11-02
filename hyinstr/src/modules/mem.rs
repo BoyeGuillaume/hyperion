@@ -23,7 +23,7 @@ use crate::{
 /// aren't precise enough, check those specs
 /// (see specs references on [cppreference](https://en.cppreference.com/w/cpp/atomic/memory_order)).
 /// You can also check LLVM's documentation on [Ordering](https://llvm.org/docs/LangRef.html#atomic-memory-ordering) for more details.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MemoryOrdering {
     Unordered,
@@ -39,7 +39,7 @@ pub enum MemoryOrdering {
 /// When `volatile` is true, the operation is prevented from being removed or
 /// merged by typical optimizations. If an `ordering` other than `Unordered`
 /// is specified, the load is considered atomic with the given ordering.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MLoad {
     pub dest: Name,
@@ -64,7 +64,7 @@ impl Instruction for MLoad {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// Store a value to memory.
 ///

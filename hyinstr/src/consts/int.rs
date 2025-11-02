@@ -7,7 +7,7 @@ use crate::types::primary::IType;
 
 /// An integer literal paired with its `IType` width.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IConst {
     pub ty: IType,
     pub value: BigInt,

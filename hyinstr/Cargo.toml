@@ -15,4 +15,10 @@ log.workspace = true
 
 [features]
 default = []
-serde = ["dep:serde", "uuid/serde", "num-bigint/serde", "bigdecimal/serde"]
+serde = [
+    "dep:serde",
+    "serde/serde_derive",
+    "uuid/serde",
+    "num-bigint/serde",
+    "bigdecimal/serde",
+]

@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Floating-point comparison operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FCmpOp {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
@@ -47,7 +47,7 @@ pub enum FCmpOp {
 }
 
 /// Floating-point addition instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FAdd {
     pub dest: Name,
@@ -67,7 +67,7 @@ impl Instruction for FAdd {
 }
 
 /// Floating-point subtraction instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FSub {
     pub dest: Name,
@@ -87,7 +87,7 @@ impl Instruction for FSub {
 }
 
 /// Floating-point multiplication instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FMul {
     pub dest: Name,
@@ -107,7 +107,7 @@ impl Instruction for FMul {
 }
 
 /// Floating-point division instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FDiv {
     pub dest: Name,
@@ -127,7 +127,7 @@ impl Instruction for FDiv {
 }
 
 /// Floating-point remainder instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FRem {
     pub dest: Name,
@@ -147,7 +147,7 @@ impl Instruction for FRem {
 }
 
 /// Floating-point negation instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FNeg {
     pub dest: Name,
@@ -166,7 +166,7 @@ impl Instruction for FNeg {
 }
 
 /// Floating-point comparison instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FCmp {
     pub dest: Name,

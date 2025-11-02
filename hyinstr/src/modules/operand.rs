@@ -5,20 +5,28 @@
 use crate::consts::AnyConst;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
 pub type Name = u32;
 
-/// Instruction operand.
+/// Represents a code label used as a target for control‑flow instructions (besides invokes).
 ///
-/// - `Reg(Name)`: reference to a previously defined SSA value
-/// - `Imm(AnyConst)`: immediate literal (integer or floating‑point)
-/// - `Lbl(())`: code label placeholder (reserved for control‑flow uses)
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Notice that in hyperion, labels and control-flow may not cross function boundaries. Thus,
+/// labels are only valid within the function they are defined in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Label(pub(super) Uuid);
+
+/// Instruction operand.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Operand {
+    /// Reference to a previously defined SSA value.
     Reg(Name),
+    /// Immediate literal (integer or floating‑point).
     Imm(AnyConst),
-    Lbl(()),
+    /// Code label (used for control‑flow).
+    Lbl(Label),
 }

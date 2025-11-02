@@ -15,15 +15,24 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Array type
+///
+/// An array type represents a fixed-size sequence of elements of a specified type. Notice
+/// that this is very similar to [`super::primary::VcType`], however unlike vectors, arrays
+/// can
+///    1) be nested and reference other aggregate types
+///    2) cannot leverage SIMD instructions for operations
+///    3) must have a fixed size (ie., unlike [`super::primary::VcSize`])
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ArrayType {
+    /// Element type of the array.
     pub ty: Typeref,
+    /// Number of elements in the array.
     pub num_elements: usize,
 }
 
 impl ArrayType {
-    pub(super) fn internal_fmt<'a, U>(&'a self, ref_object: U) -> impl std::fmt::Display
+    pub(super) fn internal_fmt<U>(&self, ref_object: U) -> impl std::fmt::Display
     where
         U: Deref<Target = BTreeMap<Uuid, AnyType>> + Sized,
     {
@@ -57,15 +66,24 @@ impl ArrayType {
 }
 
 /// Structure type
+///
+/// A structure type represents a sequence of elements of specified types. Structures can be
+/// marked as `packed`, which indicates that their elements are laid out without padding
+/// between them.
+///
+/// Note that structure types do not support named fields; elements are accessed by their
+/// index within the structure.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StructType {
+    /// Element types of the structure, in order.
     pub element_types: Vec<Typeref>,
+    /// Whether the structure is packed (no padding between elements).
     pub packed: bool,
 }
 
 impl StructType {
-    pub(super) fn internal_fmt<'a, U>(&'a self, ref_object: U) -> impl std::fmt::Display
+    pub(super) fn internal_fmt<U>(&self, ref_object: U) -> impl std::fmt::Display
     where
         U: Deref<Target = BTreeMap<Uuid, AnyType>> + Sized,
     {

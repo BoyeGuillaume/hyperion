@@ -5,17 +5,12 @@
 //!
 //! - Primary types: primitive and vector types (see `primary.rs`).
 //! - Aggregate types: arrays and structures (see `aggregate.rs`).
-//! - A registry-backed `AnyType` wrapper and `TypeRegistry` which deduplicates
-//!   types and provides stable `Typeref` identifiers (UUID-based).
+//! - A registry-backed [`AnyType`] wrapper and [`TypeRegistry`] which deduplicates
+//!   types and provides stable [`Typeref`] identifiers (UUID-based).
 //!
-//! The registry is thread-safe and optimised for concurrent reads. Types are
-//! hashed for quick lookup and a UUID is allocated for each distinct type.
-//!
-//! The formatting helpers (e.g. `AnyType::fmt`) accept a `&TypeRegistry` so
+//! The formatting helpers (e.g. [`AnyType::fmt`]) accept a reference to [`TypeRegistry`] so
 //! that aggregate types can resolve their element types for human-friendly
 //! printing.
-//!
-//! See `README.md` in this directory for a higher-level overview and examples.
 use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -44,15 +39,27 @@ pub struct Typeref(Uuid);
 /// A sum-type representing any type that can be stored in the registry.
 ///
 /// This includes primary (primitive/vector) types, aggregate types like
-/// arrays and structures. `AnyType` implements `Hash`/`Eq` so it can be
-/// deduplicated by the `TypeRegistry`.
+/// arrays and structures. [`AnyType`] implements `Hash`/`Eq` so it can be
+/// deduplicated by the [`TypeRegistry`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AnyType {
-    /// Primitive and vector types.
+    /// Primary types
+    ///
+    /// All types that can be represented as [`PrimaryType`]. Those are typically non-composite types. These include:
+    /// - Integer types (eg., `i8`, `i32`, `i64`, etc.)
+    /// - Floating-point types (eg., `f32`, `f64`)
+    /// - Vector types (eg., `v4i32`, `v8f16`, etc.)
+    /// - Pointer types (opaque)
+    ///
     Primary(PrimaryType),
+
     /// An array type: element typeref + element count.
+    ///
+    /// Notice that the number of elements MUST be known at compile time. This is inadequate for
+    /// representing dynamically sized arrays.
     Array(ArrayType),
+
     /// A structure type: an ordered list of element typerefs.
     Struct(StructType),
 }
@@ -76,7 +83,7 @@ impl From<StructType> for AnyType {
 }
 
 impl AnyType {
-    fn internal_fmt<'a, U>(&'a self, ref_object: U) -> impl std::fmt::Display
+    fn internal_fmt<U>(&self, ref_object: U) -> impl std::fmt::Display
     where
         U: Deref<Target = BTreeMap<Uuid, AnyType>> + Sized,
     {
@@ -122,22 +129,20 @@ impl AnyType {
 
 /// A central registry that stores and deduplicates `AnyType` values.
 ///
-/// The registry is thread-safe: it uses `parking_lot::RwLock` for concurrent
-/// access and follows a strict locking order to avoid deadlocks.
+/// The registry provides fast lookup by `Typeref` and ensures identical type
+/// descriptions map to the same stable identifier.
 ///
 ///
 /// Example:
 ///
 /// ```rust
-/// use hyinstr::types::{TypeRegistry, primary::IType};
-/// use std::sync::Arc;
+/// # use hyinstr::types::{TypeRegistry, primary::IType};
+/// # use std::sync::Arc;
 ///
-/// fn main() {
-///   let reg = TypeRegistry::new([0u8; 6]);
-///   let typeref = reg.search_or_insert(IType::I8.into());
-///   assert_eq!(reg.search_or_insert(IType::I8.into()), typeref);
-///   assert_eq!(reg.get(typeref).as_deref(), Some(&IType::I8.into()));
-/// }
+/// let reg = TypeRegistry::new([0u8; 6]);
+/// let typeref = reg.search_or_insert(IType::I8.into());
+/// assert_eq!(reg.search_or_insert(IType::I8.into()), typeref);
+/// assert_eq!(reg.get(typeref).as_deref(), Some(&IType::I8.into()));
 /// ```
 pub struct TypeRegistry {
     array: RwLock<BTreeMap<Uuid, AnyType>>,
@@ -158,12 +163,9 @@ impl TypeRegistry {
         Uuid::new_v6(ts, &self.node_id)
     }
 
-    /// Create a new `TypeRegistry`.
+    /// Create a new [`TypeRegistry`] instance.
     ///
-    /// `node_id` is used when allocating UUIDs for newly inserted types. The
-    /// registry starts empty and uses internal `RwLock`s to permit many
-    /// concurrent readers while allowing safe upgrades to write locks when a
-    /// new type must be inserted.
+    /// `node_id` is used when allocating UUIDs for newly inserted types.
     pub fn new(node_id: [u8; 6]) -> Self {
         Self {
             array: Default::default(),
@@ -173,12 +175,27 @@ impl TypeRegistry {
         }
     }
 
-    /// Retrieve a borrowed `AnyType` for the given `Typeref`.
+    /// Retrieve a borrowed [`AnyType`] for the given `typeref`. Returns
+    /// [`None`] if the given `typeref` is not present in the registry.
     ///
-    /// Returns `None` if the `Typeref` is not present in the registry. The
-    /// returned guard implements `Deref<Target=AnyType>` and keeps the read
-    /// lock held for the lifetime of the guard. Prefer this method over
-    /// `get_or_insert` when you only need to read an existing type.
+    /// # A note on concurrency
+    /// This method internally acquires a read lock on the type storage. As a
+    /// result,
+    ///  1) Multiple concurrent readers are allowed.
+    ///  2) You mustn't hold a read-guard while calling [`Self::search_or_insert`] as
+    ///     it may attempt to upgrade to a write lock, leading to a deadlock.
+    ///  3) The returned guard keeps the read lock held for the lifetime of the guard.
+    ///
+    /// Example:
+    /// ```rust
+    /// # use hyinstr::types::{TypeRegistry, primary::IType};
+    /// let reg = TypeRegistry::new([0; 6]);
+    /// let typeref = reg.search_or_insert(IType::I32.into());
+    /// let guard1 = reg.get(typeref).unwrap();
+    /// let guard2 = reg.get(typeref).unwrap();
+    /// assert_eq!(&*guard1, &IType::I32.into());
+    /// assert_eq!(&*guard2, &IType::I32.into());
+    /// ```
     pub fn get(&self, typeref: Typeref) -> Option<MappedRwLockReadGuard<'_, AnyType>> {
         let array_lock = self.array.read_recursive();
 
@@ -187,29 +204,43 @@ impl TypeRegistry {
     }
 
     /// Insert `ty` into the registry if an equivalent type doesn't already
-    /// exist and return the `Typeref` for it.
+    /// exist and return the [`Typeref`] for it.
     ///
-    /// This method first computes a 64-bit hash of the type and consults an
-    /// inverse lookup map to find candidates. Any matching `AnyType` is
-    /// compared for equality; if found, its existing `Typeref` is returned.
-    /// Otherwise a new UUID is allocated and the type is inserted. The
-    /// implementation uses upgradable read locks and upgrades them to writes
-    /// only when necessary to avoid blocking readers.
+    /// If an identical type is already present, its existing [`Typeref`] is returned,
+    /// otherwise if not, a new UUID is allocated and the type is inserted.
     ///
-    /// WARNING: Beware of dead-locks this method cannot be used from thread
-    /// holding references to types (outputted by `TypeRegistry::get` method)
+    /// # A note on concurrency
+    /// This method internally acquires read locks on the type storage, and
+    /// upgrades them to write locks if a new type must be inserted. As a result,
+    ///  1) You **MUST NOT** hold a read-guard returned by [`Self::get`] while calling this method,
+    ///     as it may attempt to upgrade to a write lock, leading to a deadlock.
+    ///  2) Multiple concurrent readers are allowed, but writers are exclusive.
+    ///  3) If you also hold a guard returned by [`Self::get`], release it before calling
+    ///     this method.
+    ///  4) The method uses an "upgradable read lock" pattern to minimize write lock
+    ///     contention. We further assume that writes are rare compared to reads, motivating
+    ///     this design.
+    ///
+    /// # About hash collisions
+    /// The registry uses a hash-based inverse lookup to quickly find candidate types. This section describes
+    /// the access the probability of hash collisions (which are very rare in practice) and how they are handled.
+    ///
+    /// - Assuming a perfectly uniform hash function, the expected number of collisions E\[X\] for N types is:
+    ///
+    ///   E[x != y && H(x) == H(y)] = 1 / (2^64) * math::comb(N, 2) ~= N^2/(2^65)
+    ///
+    /// - In practice, for:
+    ///   | N      | Expected Collisions E\[X\] |
+    ///   |--------|----------------------------|
+    ///   | 100    | 2.7E-16                    |
+    ///   | 10_000 | 2.7E-12                    |
+    ///   | 1E10   | 2.7                        |
+    ///   | 1E12   | 270                        |
+    ///
+    /// - As such collisions are either the consequence of 1) adversarial inputs or 2) bad hash functions, 3) extremely large type sets.
+    ///   In practice such collisions only impact performance downgrading it from O(log N) to O(N log N) in the worst case for lookups.
+    ///
     pub fn search_or_insert(&self, ty: AnyType) -> Typeref {
-        // Collision are very are assuming hash function is perfectly uniform
-        // For a collection of size N, we have in expectation
-        //
-        // E[x != y && H(x) == H(y)] =
-        //         1 / (2^64) * math::comb(N, 2) ~= N^2/(2^65)
-        //
-        // For
-        //   N = 100,             E[X] ~= 2.7E-16
-        //   N = 10_000,          E[X] ~= 2.7E−12
-        //   N = 10_000_000_000,  E[X] ~= 2.7
-        //   N = 1E12,            E[X] ~= 270/
         let h = Self::hash_ty(&ty);
 
         // Lock, notice that the order is critical, always lock first database first

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// A floating‑point literal paired with its `FType`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FConst {
     pub ty: FType,
     pub value: BigDecimal,

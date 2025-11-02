@@ -26,7 +26,7 @@ use uuid::Uuid;
 /// Instructions that operate on signed integers will interpret the bits accordingly.
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
 pub struct IType {
     num_bits: u32,
@@ -67,13 +67,13 @@ impl IType {
     /// Returns the number of bytes required to store the integer type.
     #[inline]
     pub const fn byte_size(&self) -> u32 {
-        (self.num_bits + 7) / 8
+        self.num_bits.div_ceil(8)
     }
 
     /// Returns `true` if the integer type is byte-aligned (i.e., its number of bits is a multiple of 8).
     #[inline]
     pub const fn byte_aligned(&self) -> bool {
-        self.num_bits % 8 == 0
+        self.num_bits.is_multiple_of(8)
     }
 
     /// Returns the maximum value that can be represented by this integer type.
@@ -99,8 +99,11 @@ impl std::fmt::Display for IType {
 }
 
 /// Represents a floating-point type.
+///
+/// Different floating-point types correspond to different precisions and
+/// formats. Not all floating-point types may be supported on all targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FType {
     /// 16-bit floating point value (IEEE-754 binary16)
     /// Also known as "half precision".
@@ -170,7 +173,7 @@ impl std::fmt::Display for FType {
 /// it is legal to use load and store instructions on them. Full semantics for these types are
 /// defined by the target.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ExtType {
     pub ext: Uuid,
     pub parameters: Box<[u32]>,
@@ -201,7 +204,7 @@ impl std::fmt::Display for ExtType {
 /// pointers are opaque and do not have an associated pointee type. Pointer arithmetic and dereferencing requires to add type information
 /// to ensure behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PtrType;
 
 impl std::fmt::Display for PtrType {
@@ -212,7 +215,7 @@ impl std::fmt::Display for PtrType {
 
 /// Primary base types used for vector types and other constructs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumTryAs, EnumIs)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PrimaryBasicType {
     Int(IType),
     Float(FType),
@@ -257,41 +260,57 @@ impl std::fmt::Display for PrimaryBasicType {
 
 /// Size of a vector type, either fixed or scalable.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
-pub enum VectorSize {
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum VcSize {
     /// Fixed size vector with the given number of elements.
+    ///
+    /// The number of elements must be greater than zero, and is known at compile time.
     Fixed(u16),
 
     /// Scalable size vector where number of elements is a multiple of the given factor.
+    ///
+    /// This is typically used to represent "scalable SIMD" such as
+    /// - ARM SVE vectors (ARMv8.2-A and later)
     Scalable(u16),
 }
 
-/// A vector type is a simple derived type that represents a vector of elements.
+/// A vector type represents multiple elements of a primitive type grouped for
+/// parallel operations (SIMD).
 ///
-/// Vector types are used when multiple primitive data are operated in parallel using a single instruction (SIMD).
-/// A vector type requires a size (number of elements), an underlying primitive data type, and a scalable property
-/// to represent vectors where the exact hardware vector length is unknown at compile time.
+/// Vector types combine an element type with a size, which can be either a fixed
+/// number of lanes or a scalable multiple of the hardware "vscale" factor used
+/// by scalable-SIMD ISAs (for example ARM SVE). You can see [`VcSize`] for
+/// further information. They model the logical SIMD lanes used by vector
+/// instructions; exact runtime lane counts for scalable vectors depend on the
+/// target's runtime factor.
 ///
-/// Vector types are considered primary types.
+/// The semantics of a vector (alignment, element byte-size, etc.) are derived
+/// from its element [`PrimaryBasicType`] and the [`VcSize`]. Vector types are
+/// considered primary types and can be embedded inside other type descriptors.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VcType {
     pub ty: PrimaryBasicType,
-    pub size: VectorSize,
+    pub size: VcSize,
 }
 
 impl std::fmt::Display for VcType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.size {
-            VectorSize::Fixed(num) => write!(f, "<{} x {}>", num, self.ty),
-            VectorSize::Scalable(num) => write!(f, "<vscale {} x {}>", num, self.ty),
+            VcSize::Fixed(num) => write!(f, "<{} x {}>", num, self.ty),
+            VcSize::Scalable(num) => write!(f, "<vscale {} x {}>", num, self.ty),
         }
     }
 }
 
 /// The label type represents code labels.
+///
+/// Labels are used as targets for control flow instructions like branches and jumps.
+/// You can check [`crate::modules::operand::Label`] for more information. An added
+/// constraint in hyperion is that labels should not cross function boundaries; they
+/// are local to a function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LblType;
 
 impl std::fmt::Display for LblType {
@@ -305,12 +324,36 @@ impl std::fmt::Display for LblType {
 /// This sum type wraps concrete primary kinds like integers, floats, opaque
 /// extension types, pointers, vectors and labels.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PrimaryType {
+    /// Integer type
+    ///
+    /// See [`IType`] for details.
     Int(IType),
+
+    /// Floating point type
+    ///
+    /// See [`FType`] for details.
     Float(FType),
+
+    /// Extension type
+    ///
+    /// See [`ExtType`] for details.
     Ext(ExtType),
+
+    /// Pointer type
+    ///
+    /// See [`PtrType`] for details.
     Ptr(PtrType),
+
+    /// Vector type
+    ///
+    /// See [`VcType`] for details.
     Vc(VcType),
+
+    /// Label type
+    ///
+    /// See [`LblType`] for details.
     Lbl(LblType),
 }
 

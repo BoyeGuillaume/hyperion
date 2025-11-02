@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Overflow policies for integer operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OverflowPolicy {
     /// Wrap around on overflow
@@ -29,7 +29,7 @@ pub enum OverflowPolicy {
 }
 
 /// Signedness for integer operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IntegerSignedness {
     Signed,
@@ -37,7 +37,7 @@ pub enum IntegerSignedness {
 }
 
 /// Integer comparison operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ICmpOp {
     /// Equal
@@ -63,7 +63,7 @@ pub enum ICmpOp {
 }
 
 /// Integer shift operations disumbiguation
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IShiftOp {
     /// Logical left shift
@@ -79,7 +79,7 @@ pub enum IShiftOp {
 }
 
 /// Integer addition instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAdd {
     pub dest: Name,
@@ -100,7 +100,7 @@ impl Instruction for IAdd {
 }
 
 /// Integer substraction instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISub {
     pub dest: Name,
@@ -121,7 +121,7 @@ impl Instruction for ISub {
 }
 
 /// Integer multiplication instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IMul {
     pub dest: Name,
@@ -142,7 +142,7 @@ impl Instruction for IMul {
 }
 
 /// Integer division instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IDiv {
     pub dest: Name,
@@ -163,7 +163,7 @@ impl Instruction for IDiv {
 }
 
 /// Integer remainder instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IRem {
     pub dest: Name,
@@ -184,7 +184,7 @@ impl Instruction for IRem {
 }
 
 /// Integer comparison instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ICmp {
     pub dest: Name,
@@ -205,7 +205,7 @@ impl Instruction for ICmp {
 }
 
 /// Integer shift instruction
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISht {
     pub dest: Name,
@@ -227,7 +227,7 @@ impl Instruction for ISht {
 
 /// Integer negation instruction
 /// (Negates the value of the operand)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INeg {
     pub dest: Name,
@@ -247,7 +247,7 @@ impl Instruction for INeg {
 
 /// Integer bitwise NOT instruction
 /// (Flips all bits of the operand)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INot {
     pub dest: Name,
@@ -266,7 +266,7 @@ impl Instruction for INot {
 }
 
 /// Integer AND instruction (bitwise AND, logical is equivalent when working on type i1)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAnd {
     pub dest: Name,
@@ -286,7 +286,7 @@ impl Instruction for IAnd {
 }
 
 /// Integer OR instruction (bitwise OR, logical is equivalent when working on type i1)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IOr {
     pub dest: Name,
@@ -306,7 +306,7 @@ impl Instruction for IOr {
 }
 
 /// Integer XOR instruction (bitwise XOR, logical is equivalent when working on type i1)
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IXor {
     pub dest: Name,

@@ -3,7 +3,10 @@
 //! Literal values used as immediate operands in instructions. Both integer
 //! and floating‑point constants are supported, with arbitrary precision types
 //! where appropriate.
-use crate::consts::{fp::FConst, int::IConst};
+use crate::{
+    consts::{fp::FConst, int::IConst},
+    modules::symbol::FunctionPointer,
+};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -16,4 +19,6 @@ pub mod int;
 pub enum AnyConst {
     Int(IConst),
     Float(FConst),
+    /// Function pointer constant (should be used only for function call instructions)
+    FuncPtr(FunctionPointer),
 }
