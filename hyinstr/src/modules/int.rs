@@ -1,7 +1,7 @@
 //! Integer instructions
 //!
 //! Arithmetic, comparisons, shifts, and bitwise operations over integer
-//! values. Each instruction carries its destination `Name`, an `IType`, and
+//! values. Each instruction carries its destination `Name`, an `Typeref`, and
 //! its input operands. Overflow and signedness where relevant are explicit
 //! parameters of the instruction.
 #[cfg(feature = "serde")]
@@ -12,11 +12,11 @@ use crate::{
         Instruction,
         operand::{Name, Operand},
     },
-    types::primary::IType,
+    types::Typeref,
 };
 
 /// Overflow policies for integer operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OverflowPolicy {
     /// Wrap around on overflow
@@ -29,7 +29,7 @@ pub enum OverflowPolicy {
 }
 
 /// Signedness for integer operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IntegerSignedness {
     Signed,
@@ -37,7 +37,7 @@ pub enum IntegerSignedness {
 }
 
 /// Integer comparison operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ICmpOp {
     /// Equal
@@ -62,7 +62,25 @@ pub enum ICmpOp {
     Sle,
 }
 
-/// Integer shift operations disumbiguation
+impl ICmpOp {
+    /// Returns true if the comparison is unsigned
+    pub fn is_unsigned(&self) -> bool {
+        matches!(
+            self,
+            ICmpOp::Ugt | ICmpOp::Uge | ICmpOp::Ult | ICmpOp::Ule | ICmpOp::Eq | ICmpOp::Ne
+        )
+    }
+
+    /// Returns true if the comparison is signed
+    pub fn is_signed(&self) -> bool {
+        matches!(
+            self,
+            ICmpOp::Sgt | ICmpOp::Sge | ICmpOp::Slt | ICmpOp::Sle | ICmpOp::Eq | ICmpOp::Ne
+        )
+    }
+}
+
+/// Integer shift operations disambiguation
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IShiftOp {
@@ -83,10 +101,11 @@ pub enum IShiftOp {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAdd {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub overflow: OverflowPolicy,
+    pub signedness: IntegerSignedness,
 }
 
 impl Instruction for IAdd {
@@ -104,10 +123,11 @@ impl Instruction for IAdd {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISub {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub overflow: OverflowPolicy,
+    pub signedness: IntegerSignedness,
 }
 
 impl Instruction for ISub {
@@ -125,10 +145,11 @@ impl Instruction for ISub {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IMul {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub overflow: OverflowPolicy,
+    pub signedness: IntegerSignedness,
 }
 
 impl Instruction for IMul {
@@ -146,7 +167,7 @@ impl Instruction for IMul {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IDiv {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub signedness: IntegerSignedness,
@@ -167,7 +188,7 @@ impl Instruction for IDiv {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IRem {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub signedness: IntegerSignedness,
@@ -188,7 +209,7 @@ impl Instruction for IRem {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ICmp {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub op: ICmpOp,
@@ -209,7 +230,7 @@ impl Instruction for ICmp {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISht {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub value: Operand,
     pub shift: Operand,
     pub op: IShiftOp,
@@ -231,7 +252,7 @@ impl Instruction for ISht {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INeg {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub value: Operand,
 }
 
@@ -251,7 +272,7 @@ impl Instruction for INeg {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INot {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub value: Operand,
 }
 
@@ -270,7 +291,7 @@ impl Instruction for INot {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAnd {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -290,7 +311,7 @@ impl Instruction for IAnd {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IOr {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -310,7 +331,7 @@ impl Instruction for IOr {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IXor {
     pub dest: Name,
-    pub ty: IType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }

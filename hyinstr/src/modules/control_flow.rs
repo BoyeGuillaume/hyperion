@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     modules::{
-        CallingConvention,
+        CallingConvention, Module,
         operand::{Label, Name, Operand},
     },
-    types::Typeref,
+    types::{TypeRegistry, Typeref},
 };
 
 /// Conditional branch instruction
@@ -89,3 +89,90 @@ pub enum Terminator {
     Invoke(Invoke),
     Ret(Ret),
 }
+
+impl Terminator {
+    pub fn fmt<'a>(
+        &'a self,
+        registry: &'a TypeRegistry,
+        module: Option<&'a Module>,
+    ) -> impl std::fmt::Display + 'a {
+        struct Fmt<'a> {
+            terminator: &'a Terminator,
+            registry: &'a TypeRegistry,
+            module: Option<&'a Module>,
+        }
+
+        impl std::fmt::Display for Fmt<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.terminator {
+                    Terminator::CBranch(cbranch) => write!(
+                        f,
+                        "cbranch {} , %{} , %{}",
+                        cbranch.cond.fmt(self.module),
+                        cbranch.target_true.0,
+                        cbranch.target_false.0
+                    ),
+                    Terminator::Jump(jump) => {
+                        write!(f, "jump %{}", jump.target.0)
+                    }
+                    Terminator::Invoke(invoke) => {
+                        let args_str = invoke
+                            .args
+                            .iter()
+                            .map(|arg| arg.fmt(self.module).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+
+                        let name_str = invoke.function.fmt(self.module).to_string();
+
+                        if let Some(dest) = invoke.dest {
+                            if let Some(ret_ty) = &invoke.ty {
+                                write!(
+                                    f,
+                                    "%{} = invoke {} {} ({}) -> {}",
+                                    dest,
+                                    self.registry.fmt(*ret_ty),
+                                    name_str,
+                                    args_str,
+                                    invoke.exit_label.0
+                                )
+                            } else {
+                                write!(f, "invoke void({}) -> %{}", args_str, invoke.exit_label.0)
+                            }
+                        } else {
+                            write!(f, "invoke void({}) -> %{}", args_str, invoke.exit_label.0)
+                        }
+                    }
+                    Terminator::Ret(ret) => {
+                        if let Some(value) = &ret.value {
+                            write!(f, "ret {}", value.fmt(self.module))
+                        } else {
+                            write!(f, "ret void")
+                        }
+                    }
+                }
+            }
+        }
+
+        Fmt {
+            terminator: self,
+            registry,
+            module,
+        }
+    }
+}
+
+macro_rules! define_terminator_from {
+    ($typ:ty, $variant:ident) => {
+        impl From<$typ> for Terminator {
+            fn from(inst: $typ) -> Self {
+                Terminator::$variant(inst)
+            }
+        }
+    };
+}
+
+define_terminator_from!(CBranch, CBranch);
+define_terminator_from!(Jump, Jump);
+define_terminator_from!(Invoke, Invoke);
+define_terminator_from!(Ret, Ret);

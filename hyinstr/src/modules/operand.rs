@@ -2,7 +2,7 @@
 //!
 //! An instruction operand can be a reference to another SSA value (`Reg`),
 //! an immediate constant (`Imm`) or a code label (`Lbl`).
-use crate::consts::AnyConst;
+use crate::{consts::AnyConst, modules::Module};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -29,4 +29,28 @@ pub enum Operand {
     Imm(AnyConst),
     /// Code label (used for control‑flow).
     Lbl(Label),
+}
+
+impl Operand {
+    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
+        pub struct Fmt<'a> {
+            operand: &'a Operand,
+            module: Option<&'a Module>,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.operand {
+                    Operand::Reg(name) => write!(f, "%{}", name),
+                    Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
+                    Operand::Lbl(label) => write!(f, "label_%{}", label.0),
+                }
+            }
+        }
+
+        Fmt {
+            operand: self,
+            module,
+        }
+    }
 }

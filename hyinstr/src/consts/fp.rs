@@ -12,6 +12,12 @@ pub struct FConst {
     pub value: BigDecimal,
 }
 
+impl std::fmt::Display for FConst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.ty, self.value)
+    }
+}
+
 impl TryFrom<f32> for FConst {
     type Error = ();
 

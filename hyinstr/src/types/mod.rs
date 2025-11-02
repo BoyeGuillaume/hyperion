@@ -293,4 +293,26 @@ impl TypeRegistry {
             })
         })
     }
+
+    /// Format a given `Typeref` using this registry.
+    pub fn fmt(&self, typeref: Typeref) -> impl std::fmt::Display {
+        struct Fmt<'a> {
+            registry: &'a TypeRegistry,
+            typeref: Typeref,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.registry.get(self.typeref) {
+                    Some(ty_guard) => ty_guard.fmt(self.registry).fmt(f),
+                    None => write!(f, "<unknown type {}>", self.typeref.0),
+                }
+            }
+        }
+
+        Fmt {
+            registry: self,
+            typeref,
+        }
+    }
 }

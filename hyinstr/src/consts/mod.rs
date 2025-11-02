@@ -5,7 +5,7 @@
 //! where appropriate.
 use crate::{
     consts::{fp::FConst, int::IConst},
-    modules::symbol::FunctionPointer,
+    modules::{Module, symbol::FunctionPointer},
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -21,4 +21,74 @@ pub enum AnyConst {
     Float(FConst),
     /// Function pointer constant (should be used only for function call instructions)
     FuncPtr(FunctionPointer),
+}
+
+impl AnyConst {
+    /// Format the constant as a string.
+    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
+        pub struct Fmt<'a> {
+            constant: &'a AnyConst,
+            module: Option<&'a Module>,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self.constant {
+                    AnyConst::Int(ic) => write!(f, "{}", ic),
+                    AnyConst::Float(fc) => write!(f, "{}", fc),
+                    AnyConst::FuncPtr(fp) => match fp {
+                        FunctionPointer::Internal(uuid) => {
+                            if let Some(module) = self.module {
+                                if let Some(func) = module.functions.get(uuid) {
+                                    if let Some(name) = &func.name {
+                                        write!(f, "func_ptr {}", name)
+                                    } else {
+                                        write!(f, "func_ptr <unnamed@{:?}>", uuid)
+                                    }
+                                } else {
+                                    write!(f, "func_ptr <invalid@{:?}>", uuid)
+                                }
+                            } else {
+                                write!(f, "func_ptr <unresolved@{:?}>", uuid)
+                            }
+                        }
+                        FunctionPointer::External(name) => {
+                            if let Some(module) = self.module {
+                                if let Some(func) = module.external_functions.get(name) {
+                                    write!(f, "func_ptr external {}", func.name)
+                                } else {
+                                    write!(f, "func_ptr external <invalid@{}>", name)
+                                }
+                            } else {
+                                write!(f, "func_ptr external <unresolved@{}>", name)
+                            }
+                        }
+                    },
+                }
+            }
+        }
+
+        Fmt {
+            constant: self,
+            module,
+        }
+    }
+}
+
+impl<T: Into<IConst>> From<T> for AnyConst {
+    fn from(value: T) -> Self {
+        AnyConst::Int(value.into())
+    }
+}
+
+impl From<FConst> for AnyConst {
+    fn from(value: FConst) -> Self {
+        AnyConst::Float(value.into())
+    }
+}
+
+impl From<FunctionPointer> for AnyConst {
+    fn from(value: FunctionPointer) -> Self {
+        AnyConst::FuncPtr(value)
+    }
 }

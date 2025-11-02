@@ -13,6 +13,12 @@ pub struct IConst {
     pub value: BigInt,
 }
 
+impl std::fmt::Display for IConst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.ty, self.value)
+    }
+}
+
 impl From<u8> for IConst {
     /// Create an 8‑bit integer constant from a primitive value.
     fn from(value: u8) -> Self {

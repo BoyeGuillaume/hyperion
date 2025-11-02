@@ -34,6 +34,19 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
+impl MemoryOrdering {
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            MemoryOrdering::Unordered => "unordered",
+            MemoryOrdering::Monotonic => "monotonic",
+            MemoryOrdering::Acq => "acquire",
+            MemoryOrdering::Rel => "release",
+            MemoryOrdering::AcqRel => "acq_rel",
+            MemoryOrdering::SeqCst => "seq_cst",
+        }
+    }
+}
+
 /// Load from memory into a destination SSA name.
 ///
 /// When `volatile` is true, the operation is prevented from being removed or
@@ -45,12 +58,12 @@ pub struct MLoad {
     pub dest: Name,
     pub ty: Typeref,
     pub addr: Operand,
-    pub alignment: u32,
+    pub alignment: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
     /// are assumed to be cross‑thread unless the access is non‑atomic.
-    pub ordering: MemoryOrdering,
+    pub ordering: Option<MemoryOrdering>,
     pub volatile: bool,
 }
 
@@ -74,12 +87,12 @@ impl Instruction for MLoad {
 pub struct MStore {
     pub addr: Operand,
     pub value: Operand,
-    pub alignment: u32,
+    pub alignment: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
     /// are assumed to be cross‑thread unless the access is non‑atomic.
-    pub ordering: MemoryOrdering,
+    pub ordering: Option<MemoryOrdering>,
     pub volatile: bool,
 }
 

@@ -1,7 +1,7 @@
 //! Floating‑point instructions
 //!
 //! IEEE‑754 oriented arithmetic operations and comparisons. Each instruction
-//! specifies its destination `Name`, the floating‑point `FType`, and input
+//! specifies its destination `Name`, the floating‑point `Typeref`, and input
 //! operands.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use crate::{
         Instruction,
         operand::{Name, Operand},
     },
-    types::primary::FType,
+    types::Typeref,
 };
 
 /// Floating-point comparison operations
@@ -51,7 +51,7 @@ pub enum FCmpOp {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FAdd {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -71,7 +71,7 @@ impl Instruction for FAdd {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FSub {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -91,7 +91,7 @@ impl Instruction for FSub {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FMul {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -111,7 +111,7 @@ impl Instruction for FMul {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FDiv {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -131,7 +131,7 @@ impl Instruction for FDiv {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FRem {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
 }
@@ -151,7 +151,7 @@ impl Instruction for FRem {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FNeg {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub value: Operand,
 }
 
@@ -170,7 +170,7 @@ impl Instruction for FNeg {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FCmp {
     pub dest: Name,
-    pub ty: FType,
+    pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
     pub op: FCmpOp,

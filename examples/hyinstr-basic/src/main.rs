@@ -1,0 +1,175 @@
+use hyinstr::{
+    consts::AnyConst,
+    modules::{
+        BasicBlock, CallingConvention, Module,
+        control_flow::{Invoke, Ret},
+        int::{ICmp, ICmpOp, IMul, ISub, IntegerSignedness, OverflowPolicy},
+        operand::Operand,
+        symbol::FunctionPointer,
+    },
+    types::{TypeRegistry, primary::IType},
+};
+use uuid::Uuid;
+
+fn main() {
+    // Create a simple script that uses hyinstr to define a function (factorial)
+    // Psoeudo code:
+    //   fn factorial(n: i32) -> i32 {
+    //       if n <= 1 {
+    //           return 1;
+    //       } else {
+    //           return n * factorial(n - 1);
+    //       }
+    //   }
+    //
+    //  %1 = icmp sle i32 %n, 1
+    //  br i1 %1, label %base_case, label %recurse
+    //
+    // base_case:
+    //  ret i32 1
+    // recurse_a:
+    //  %2 = sub i32 %n, 1
+    //  %3 = call i32 @factorial(i32 %2)
+    // recurse_b:
+    //  %4 = mul i32 %n, %3
+    //  ret i32 %4
+    let type_registry = TypeRegistry::new([0; 6]);
+    let i32_ty = type_registry.search_or_insert(IType::I32.into());
+    let factorial_func_uuid = Uuid::new_v4();
+
+    let block_base_case = BasicBlock {
+        uuid: Uuid::new_v4(),
+        instructions: vec![],
+        terminator: Ret {
+            value: Some(Operand::Imm(1u32.into())),
+        }
+        .into(),
+    };
+
+    let block_recurse_b = BasicBlock {
+        uuid: Uuid::new_v4(),
+        instructions: vec![
+            IMul {
+                dest: 4,
+                ty: i32_ty,
+                lhs: Operand::Reg(0),
+                rhs: Operand::Reg(3),
+                overflow: OverflowPolicy::Panic,
+                signedness: IntegerSignedness::Unsigned,
+            }
+            .into(),
+        ],
+        terminator: Ret {
+            value: Some(Operand::Reg(4)),
+        }
+        .into(),
+    };
+
+    let block_recurse_a = BasicBlock {
+        uuid: Uuid::new_v4(),
+        instructions: vec![
+            ISub {
+                dest: 2,
+                ty: i32_ty,
+                lhs: Operand::Reg(0),
+                rhs: Operand::Imm(1u32.into()),
+                overflow: OverflowPolicy::Panic,
+                signedness: IntegerSignedness::Unsigned,
+            }
+            .into(),
+        ],
+        terminator: Invoke {
+            function: Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(
+                factorial_func_uuid,
+            ))),
+            args: vec![Operand::Reg(2)],
+            dest: Some(3),
+            ty: Some(i32_ty),
+            exit_label: block_recurse_b.label(),
+            cconv: None,
+        }
+        .into(),
+    };
+
+    let block_entry = BasicBlock {
+        uuid: Uuid::nil(),
+        instructions: vec![
+            ICmp {
+                dest: 1,
+                ty: i32_ty,
+                lhs: Operand::Reg(0),
+                rhs: Operand::Imm(1u32.into()),
+                op: ICmpOp::Sle,
+            }
+            .into(),
+        ],
+        terminator: hyinstr::modules::control_flow::CBranch {
+            cond: Operand::Reg(1),
+            target_true: block_base_case.label(),
+            target_false: block_recurse_a.label(),
+        }
+        .into(),
+    };
+
+    let factorial_function = hyinstr::modules::Function {
+        uuid: factorial_func_uuid,
+        name: Some("factorial".to_string()),
+        cconv: Some(CallingConvention::C),
+        params: vec![(0, i32_ty)],
+        return_type: Some(i32_ty),
+        body: vec![
+            block_entry,
+            block_base_case,
+            block_recurse_a,
+            block_recurse_b,
+        ]
+        .into_iter()
+        .map(|bb| (bb.uuid, bb))
+        .collect(),
+        visibility: Some(hyinstr::modules::Visibility::Default),
+    };
+
+    // Create a module to hold the function
+    let mod_a = Module {
+        functions: vec![factorial_function.clone()]
+            .into_iter()
+            .map(|f| (f.uuid, f))
+            .collect(),
+        external_functions: Default::default(),
+    };
+
+    // Display each block
+    for function in mod_a.functions.values() {
+        println!(
+            "declare {} {} %{} ({})",
+            function
+                .return_type
+                .map(|ty| type_registry.fmt(ty).to_string())
+                .unwrap_or("void".to_string()),
+            function.uuid,
+            function.name.as_deref().unwrap_or("<unnamed>"),
+            function
+                .params
+                .iter()
+                .map(|(name, ty)| format!("%{}: {}", name, type_registry.fmt(*ty)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        for (uuid, block) in function.body.iter() {
+            println!("  {}: ", uuid);
+            if !block.instructions.is_empty() {
+                println!(
+                    "{}",
+                    block
+                        .instructions
+                        .iter()
+                        .map(|instr| format!("   {}", instr.fmt(&type_registry, Some(&mod_a))))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
+            println!("   {}", block.terminator.fmt(&type_registry, Some(&mod_a)));
+        }
+    }
+}

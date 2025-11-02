@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     modules::{
+        instructions::HyInstr,
         operand::{Label, Name, Operand},
         symbol::ExternalFunction,
     },
@@ -23,11 +24,11 @@ use crate::{
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::{EnumDiscriminants, EnumIs, EnumTryAs};
 use uuid::Uuid;
 
 pub mod control_flow;
 pub mod fp;
+pub mod instructions;
 pub mod int;
 pub mod mem;
 pub mod operand;
@@ -55,45 +56,6 @@ pub trait Instruction {
             _ => None,
         })
     }
-}
-
-/// Discriminated union covering all public instruction kinds.
-///
-/// Use this enum to store heterogeneous instruction streams and to pattern‑match
-/// on specific operations. The generated `HyInstrKind` discriminant (via
-/// `strum`) can be helpful for fast classification.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
-#[strum_discriminants(name(HyInstrKind))]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum HyInstr {
-    // Integer instructions
-    IAdd(int::IAdd),
-    ISub(int::ISub),
-    IMul(int::IMul),
-    IDiv(int::IDiv),
-    IRem(int::IRem),
-    ICmp(int::ICmp),
-    ISht(int::ISht),
-    INeg(int::INeg),
-
-    // Bitwise instructions
-    IAnd(int::IAnd),
-    IOr(int::IOr),
-    IXor(int::IXor),
-    INot(int::INot),
-
-    // Floating-point instructions
-    FAdd(fp::FAdd),
-    FSub(fp::FSub),
-    FMul(fp::FMul),
-    FDiv(fp::FDiv),
-    FRem(fp::FRem),
-    FCmp(fp::FCmp),
-    FNeg(fp::FNeg),
-
-    // Memory instructions
-    MLoad(mem::MLoad),
-    MStore(mem::MStore),
 }
 
 /// All Global Variables and Functions have one of the following types of linkage:
@@ -291,6 +253,7 @@ pub struct Function {
     pub uuid: Uuid,
     pub name: Option<String>,
     pub params: Vec<(Name, Typeref)>,
+    pub return_type: Option<Typeref>,
     pub body: BTreeMap<Uuid, BasicBlock>,
     pub visibility: Option<Visibility>,
     pub cconv: Option<CallingConvention>,
