@@ -12,6 +12,8 @@ num-bigint.workspace = true
 parking_lot.workspace = true
 smallvec.workspace = true
 log.workspace = true
+auto_enums.workspace = true
+thiserror.workspace = true
 
 [features]
 default = []

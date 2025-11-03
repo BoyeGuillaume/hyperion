@@ -1,12 +1,14 @@
+use auto_enums::auto_enum;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs};
 
 use crate::{
     modules::{
-        Module, fp,
+        Instruction, Module, fp,
         int::{self, IntegerSignedness, OverflowPolicy},
         mem,
+        operand::Operand,
     },
     types::TypeRegistry,
 };
@@ -48,6 +50,8 @@ pub enum HyInstr {
     // Memory instructions
     MLoad(mem::MLoad),
     MStore(mem::MStore),
+    MAlloca(mem::MAlloca),
+    MGetElementPtr(mem::MGetElementPtr),
 }
 
 impl HyInstr {
@@ -409,6 +413,33 @@ impl HyInstr {
 
                         Ok(())
                     }
+                    HyInstr::MAlloca(malloca) => {
+                        write!(f, "%{} = alloca ", malloca.dest)?;
+
+                        write!(
+                            f,
+                            "{}, {}",
+                            self.registry.fmt(malloca.ty),
+                            malloca.count.fmt(self.module)
+                        )?;
+
+                        if let Some(alignment) = malloca.alignment {
+                            write!(f, ", align {}", alignment)?;
+                        }
+
+                        Ok(())
+                    }
+                    HyInstr::MGetElementPtr(mgep) => {
+                        write!(f, "%{} = getelementptr ", mgep.dest)?;
+
+                        write!(f, "{}", self.registry.fmt(mgep.ty))?;
+
+                        for index in mgep.indices.iter() {
+                            write!(f, ", {}", index.fmt(self.module))?;
+                        }
+
+                        Ok(())
+                    }
                 }
             }
         }
@@ -419,6 +450,74 @@ impl HyInstr {
             module,
         }
     }
+}
+
+macro_rules! define_instr_any_instr {
+    (
+        $($variant:ident),*
+    ) => {
+        impl Instruction for HyInstr {
+            #[auto_enum(Iterator)]
+            fn operands(&self) -> impl Iterator<Item = &Operand> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.operands(),
+                    )*
+                }
+            }
+
+            fn destination(&self) -> Option<super::operand::Name> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.destination(),
+                    )*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.operands_mut(),
+                    )*
+                }
+            }
+
+            fn set_destination(&mut self, name: super::operand::Name) {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.set_destination(name),
+                    )*
+                }
+            }
+        }
+    };
+}
+
+define_instr_any_instr! {
+    IAdd,
+    ISub,
+    IMul,
+    IDiv,
+    IRem,
+    ICmp,
+    ISht,
+    INeg,
+    IAnd,
+    IOr,
+    IXor,
+    INot,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    FRem,
+    FCmp,
+    FNeg,
+    MLoad,
+    MStore,
+    MAlloca,
+    MGetElementPtr
 }
 
 macro_rules! define_hyinstr_from {

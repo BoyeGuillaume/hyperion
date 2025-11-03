@@ -116,6 +116,14 @@ impl Instruction for IAdd {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer substraction instruction
@@ -137,6 +145,14 @@ impl Instruction for ISub {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -160,6 +176,14 @@ impl Instruction for IMul {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer division instruction
@@ -180,6 +204,14 @@ impl Instruction for IDiv {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -202,6 +234,14 @@ impl Instruction for IRem {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer comparison instruction
@@ -222,6 +262,14 @@ impl Instruction for ICmp {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -244,6 +292,14 @@ impl Instruction for ISht {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.value, &mut self.shift].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer negation instruction
@@ -263,6 +319,14 @@ impl Instruction for INeg {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.value)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -284,6 +348,14 @@ impl Instruction for INot {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.value)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer AND instruction (bitwise AND, logical is equivalent when working on type i1)
@@ -303,6 +375,14 @@ impl Instruction for IAnd {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -324,6 +404,14 @@ impl Instruction for IOr {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Integer XOR instruction (bitwise XOR, logical is equivalent when working on type i1)
@@ -343,5 +431,13 @@ impl Instruction for IXor {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }

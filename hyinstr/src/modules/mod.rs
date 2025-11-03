@@ -12,7 +12,7 @@
 //!
 //! You typically manipulate instructions via the `HyInstr` enum which is a
 //! tagged union of all concrete instruction forms.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     modules::{
@@ -21,6 +21,7 @@ use crate::{
         symbol::ExternalFunction,
     },
     types::Typeref,
+    utils::Error,
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,13 @@ pub trait Instruction {
     fn destination(&self) -> Option<Name> {
         None
     }
+
+    /// Update the destination SSA name for this instruction. No-op if the
+    /// instruction does not produce a result.
+    fn set_destination(&mut self, _name: Name) {}
+
+    /// Mutably iterate over all input operands for this instruction.
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand>;
 
     /// Convenience iterator over referenced SSA names (i.e., register
     /// operands). Immediates and labels are ignored.
@@ -248,6 +256,8 @@ impl BasicBlock {
 /// A `Function` owns its control‑flow graph (`body`) and carries optional
 /// metadata such as a display `name`, `visibility`, and a `CallingConvention`.
 /// Parameters are represented as a list of `(Name, Typeref)` pairs.
+///
+/// By convention the entrypoint is the basic block with the [`Uuid::nil()`] UUID.
 #[derive(Debug, Clone, Hash)]
 pub struct Function {
     pub uuid: Uuid,
@@ -257,6 +267,115 @@ pub struct Function {
     pub body: BTreeMap<Uuid, BasicBlock>,
     pub visibility: Option<Visibility>,
     pub cconv: Option<CallingConvention>,
+}
+
+impl Function {
+    /// Find next available [`Name`] for a parameter.
+    pub fn next_available_name(&self) -> Name {
+        let mut max_index = 0;
+        for (name, _) in &self.params {
+            max_index = max_index.max(*name);
+        }
+
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                for op in instr.operands() {
+                    if let Operand::Reg(name) = op {
+                        max_index = max_index.max(*name);
+                    }
+                }
+            }
+        }
+
+        max_index + 1
+    }
+
+    /// Verify SSA form:
+    /// 1) Each operand refers to a defined name.
+    /// 2) Each name is defined exactly once.
+    pub fn check_ssa(&self) -> Result<(), Error> {
+        let mut defined_names = BTreeSet::new();
+
+        // Ensure existence of entry block
+        if !self.body.contains_key(&Uuid::nil()) {
+            return Err(Error::MissingEntryBlock);
+        }
+
+        // Construct a set of defined names from parameters
+        for (name, _) in self.params.iter() {
+            if !defined_names.insert(*name) {
+                return Err(Error::DuplicateSSAName { duplicate: *name });
+            }
+        }
+
+        // Same for each instruction destination of each basic block
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                if let Some(dest) = instr.destination() {
+                    if !defined_names.insert(dest) {
+                        return Err(Error::DuplicateSSAName { duplicate: dest });
+                    }
+                }
+            }
+        }
+
+        // Now ensure all operands refer to defined names
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                for name in instr.name_dependencies() {
+                    if !defined_names.contains(&name) {
+                        return Err(Error::UndefinedSSAName { undefined: name });
+                    }
+                }
+            }
+        }
+
+        // TODO: Verify that all SSA names are defined before use (topological order)
+
+        Ok(())
+    }
+
+    /// Normalize the function by ensuring that all SSA names are sequentially
+    /// numbered from zero upwards without gaps. Because of the use of `BTreeMap`
+    /// for basic blocks, ordering is always deterministic.
+    pub fn normalize_ssa(&mut self) {
+        let mut name_mapping = BTreeMap::new();
+        let mut next_name = 0;
+
+        // Remap all SSA names in parameters
+        for (name, _) in self.params.iter_mut() {
+            let _output = name_mapping.insert(*name, next_name);
+            debug_assert!(_output.is_none());
+            *name = next_name;
+            next_name += 1;
+        }
+
+        // For each instruction destination, allocate a new name if needed
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                if let Some(dest) = instr.destination() {
+                    let _output = name_mapping.insert(dest, next_name);
+                    debug_assert!(_output.is_none());
+                    next_name += 1;
+                }
+            }
+        }
+
+        // Now remap all operands according to the mapping
+        for bb in self.body.values_mut() {
+            for instr in &mut bb.instructions {
+                for op in instr.operands_mut() {
+                    if let Operand::Reg(name) = op {
+                        if let Some(new_name) = name_mapping.get(name) {
+                            *name = *new_name;
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// A module containing defined functions and references to external ones.

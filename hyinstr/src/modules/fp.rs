@@ -64,6 +64,14 @@ impl Instruction for FAdd {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Floating-point subtraction instruction
@@ -83,6 +91,14 @@ impl Instruction for FSub {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -104,6 +120,14 @@ impl Instruction for FMul {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Floating-point division instruction
@@ -123,6 +147,14 @@ impl Instruction for FDiv {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -144,6 +176,14 @@ impl Instruction for FRem {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
 /// Floating-point negation instruction
@@ -162,6 +202,14 @@ impl Instruction for FNeg {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.value)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
 
@@ -183,5 +231,13 @@ impl Instruction for FCmp {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }

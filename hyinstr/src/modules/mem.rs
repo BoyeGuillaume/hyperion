@@ -75,15 +75,23 @@ impl Instruction for MLoad {
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
     }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.addr)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 /// Store a value to memory.
 ///
 /// When `volatile` is true, the operation is prevented from being removed or
 /// merged by typical optimizations. If an `ordering` other than `Unordered`
 /// is specified, the store is considered atomic with the given ordering.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MStore {
     pub addr: Operand,
     pub value: Operand,
@@ -99,5 +107,73 @@ pub struct MStore {
 impl Instruction for MStore {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.addr, &self.value].into_iter()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.addr, &mut self.value].into_iter()
+    }
+}
+
+/// Alloca instruction: allocate memory on the stack.
+///
+/// The allocated memory is automatically freed when the function returns. This is
+/// useful for creating local variables with dynamic sizes and for mutability. In
+/// theory one could use the LLVM `phi` instruction to create SSA values that
+/// change over time, but in practice this is cumbersome and is easier to allocate
+/// on the stack and let the optimizer handle promoting to registers if possible.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MAlloca {
+    pub dest: Name,
+    pub ty: Typeref,
+    pub count: Operand,
+    pub alignment: Option<u32>,
+}
+
+impl Instruction for MAlloca {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.count)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.count)
+    }
+}
+
+/// `getelementptr` instruction is used to get the address of a sub-element
+///
+/// It performs address calculation only and does not access memory. The
+/// instruction can also be used to calculate a vector of such addresses
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MGetElementPtr {
+    pub dest: Name,
+    pub ty: Typeref,
+    pub indices: Vec<Operand>,
+}
+
+impl Instruction for MGetElementPtr {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        self.indices.iter()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        self.indices.iter_mut()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
     }
 }
