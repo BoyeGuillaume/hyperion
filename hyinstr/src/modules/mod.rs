@@ -21,7 +21,7 @@ use crate::{
         operand::{Label, Name, Operand},
         symbol::ExternalFunction,
     },
-    types::Typeref,
+    types::{Typeref, primary::WType},
     utils::Error,
 };
 #[cfg(feature = "serde")]
@@ -276,9 +276,19 @@ pub struct Function {
     pub body: BTreeMap<Uuid, BasicBlock>,
     pub visibility: Option<Visibility>,
     pub cconv: Option<CallingConvention>,
+    pub wildcard_types: BTreeSet<WType>,
 }
 
 impl Function {
+    fn verify_wildcards_soundness(&self) -> Result<(), Error> {
+        todo!()
+    }
+
+    /// Returns whether the function is incomplete (i.e., has unresolved wildcard types).
+    pub fn is_incomplete(&self) -> bool {
+        !self.wildcard_types.is_empty()
+    }
+
     /// Find next available [`Name`] for a parameter.
     pub fn next_available_name(&self) -> Name {
         let mut max_index = 0;
@@ -302,6 +312,7 @@ impl Function {
     /// 2) Each name is defined exactly once.
     pub fn check_ssa(&self) -> Result<(), Error> {
         let mut defined_names = BTreeSet::new();
+        self.verify_wildcards_soundness()?;
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Uuid::nil()) {

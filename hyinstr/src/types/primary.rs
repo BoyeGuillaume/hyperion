@@ -198,6 +198,32 @@ impl std::fmt::Display for ExtType {
     }
 }
 
+/// Represents a wildcard type used in generic instructions
+///
+/// Any function containing wildcard are considered incomplete and cannot be
+/// used until all wildcards are resolved to concrete types. Incomplete functions
+/// may reference other incomplete functions which must be fully resolved in the context
+/// of the caller.
+///
+/// The wildcard type is identified by a unique ID to allow multiple wildcards
+/// to coexist in the same function or module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct WType {
+    pub id: u16,
+}
+
+impl std::fmt::Display for WType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.id <= 25 {
+            let c = (b'A' + (self.id as u8)) as char;
+            write!(f, "{}", c)
+        } else {
+            write!(f, "_{}", self.id)
+        }
+    }
+}
+
 /// Pointer type is represented as a primary basic type.
 ///
 /// The pointer type ptr is used to specify memory locations. Pointers are commonly used to reference objects in memory. By default
@@ -221,6 +247,7 @@ pub enum PrimaryBasicType {
     Float(FType),
     Ext(ExtType),
     Ptr(PtrType),
+    Wildcard(WType),
 }
 
 impl From<IType> for PrimaryBasicType {
@@ -247,6 +274,12 @@ impl From<PtrType> for PrimaryBasicType {
     }
 }
 
+impl From<WType> for PrimaryBasicType {
+    fn from(wtype: WType) -> Self {
+        PrimaryBasicType::Wildcard(wtype)
+    }
+}
+
 impl std::fmt::Display for PrimaryBasicType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -254,6 +287,7 @@ impl std::fmt::Display for PrimaryBasicType {
             PrimaryBasicType::Float(ftype) => write!(f, "{}", ftype),
             PrimaryBasicType::Ext(exttype) => write!(f, "{}", exttype),
             PrimaryBasicType::Ptr(ptrtype) => write!(f, "{}", ptrtype),
+            PrimaryBasicType::Wildcard(wtype) => write!(f, "{}", wtype),
         }
     }
 }
@@ -303,6 +337,12 @@ impl std::fmt::Display for VcType {
     }
 }
 
+impl From<usize> for VcSize {
+    fn from(num: usize) -> Self {
+        VcSize::Fixed(num as u16)
+    }
+}
+
 /// The label type represents code labels.
 ///
 /// Labels are used as targets for control flow instructions like branches and jumps.
@@ -323,7 +363,7 @@ impl std::fmt::Display for LblType {
 ///
 /// This sum type wraps concrete primary kinds like integers, floats, opaque
 /// extension types, pointers, vectors and labels.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PrimaryType {
     /// Integer type
@@ -345,6 +385,11 @@ pub enum PrimaryType {
     ///
     /// See [`PtrType`] for details.
     Ptr(PtrType),
+
+    /// Wildcard type
+    ///
+    /// See [`WType`] for details.
+    Wildcard(WType),
 
     /// Vector type
     ///
@@ -371,6 +416,7 @@ primary_type_from! { IType, Int }
 primary_type_from! { FType, Float }
 primary_type_from! { ExtType, Ext }
 primary_type_from! { PtrType, Ptr }
+primary_type_from! { WType, Wildcard }
 primary_type_from! { VcType, Vc }
 primary_type_from! { LblType, Lbl }
 
@@ -381,6 +427,7 @@ impl std::fmt::Display for PrimaryType {
             PrimaryType::Float(ftype) => ftype.fmt(f),
             PrimaryType::Ext(ext_type) => ext_type.fmt(f),
             PrimaryType::Ptr(ptr_type) => ptr_type.fmt(f),
+            PrimaryType::Wildcard(w_type) => w_type.fmt(f),
             PrimaryType::Vc(vc_type) => vc_type.fmt(f),
             PrimaryType::Lbl(lbl_type) => lbl_type.fmt(f),
         }

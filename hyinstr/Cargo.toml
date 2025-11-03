@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2024"
 
 [dependencies]
-uuid = { workspace = true, features = ["v6"] }
+uuid = { workspace = true, features = ["v6", "v8"] }
 strum = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"], optional = true }
 bigdecimal.workspace = true

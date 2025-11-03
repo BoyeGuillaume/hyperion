@@ -116,6 +116,7 @@ fn main() {
             .map(|bb| (bb.uuid, bb))
             .collect(),
         visibility: Some(hyinstr::modules::Visibility::Default),
+        wildcard_types: Default::default(),
     };
 
     factorial_function.normalize_ssa();

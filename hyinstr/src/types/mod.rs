@@ -22,6 +22,7 @@ use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
+use strum::{EnumIs, EnumTryAs};
 use uuid::{Timestamp, Uuid};
 
 use crate::types::{
@@ -36,12 +37,54 @@ pub mod primary;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Typeref(Uuid);
 
+impl Typeref {
+    fn internal_is_wildcard(uuid: &Uuid) -> bool {
+        // A wildcard type is identified as a custom version 8 UUID
+        if uuid.get_version() == Some(uuid::Version::Custom) {
+            // If fed with the following bytes, XX marks overridden bits:
+            // 0xf, 0xe, 0xd, 0xc, 0xb, 0xa, XX, 0x8, XX, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0,
+            // By convention, we put the wildcard ID in the last two bytes (bytes 14 and 15) and everything else as 0xff
+            let bytes = uuid.as_bytes();
+            if bytes[0..6] == [0xff; 6] && bytes[7] == 0xff && bytes[9..13] == [0xff; 4] {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Check whether the current `Typeref` is a wildcard type.
+    pub fn is_wildcard(&self) -> bool {
+        Self::internal_is_wildcard(&self.0)
+    }
+
+    /// Create a new wildcard `Typeref` with the given `id`.
+    pub fn new_wildcard(id: u16) -> Self {
+        let bytes = id.to_le_bytes();
+
+        // Pad the remaining bytes with zeros
+        let mut buf = [0xffu8; 16];
+        buf[14..16].copy_from_slice(&bytes);
+        Self(Uuid::new_v8(buf))
+    }
+
+    /// Retrieve the wildcard ID if this is a wildcard type.
+    pub fn wildcard_id(&self) -> Option<u16> {
+        if self.is_wildcard() {
+            let bytes = self.0.as_bytes();
+            Some(u16::from_le_bytes([bytes[14], bytes[15]]))
+        } else {
+            None
+        }
+    }
+}
+
 /// A sum-type representing any type that can be stored in the registry.
 ///
 /// This includes primary (primitive/vector) types, aggregate types like
 /// arrays and structures. [`AnyType`] implements `Hash`/`Eq` so it can be
 /// deduplicated by the [`TypeRegistry`].
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AnyType {
     /// Primary types
@@ -160,7 +203,9 @@ impl TypeRegistry {
 
     fn next_uuid(&self) -> Uuid {
         let ts = Timestamp::now(&self.context);
-        Uuid::new_v6(ts, &self.node_id)
+        let uuid = Uuid::new_v6(ts, &self.node_id);
+        debug_assert!(!Typeref::internal_is_wildcard(&uuid));
+        uuid
     }
 
     /// Create a new [`TypeRegistry`] instance.
@@ -177,6 +222,11 @@ impl TypeRegistry {
 
     /// Retrieve a borrowed [`AnyType`] for the given `typeref`. Returns
     /// [`None`] if the given `typeref` is not present in the registry.
+    ///
+    /// Notice that [`Typeref::is_wildcard`] types are not stored in the registry, and
+    /// should not be queried using this method. You can directly check for wildcard with
+    /// [`Typeref::is_wildcard`] without accessing the registry. This method will panic if
+    /// given a wildcard `Typeref`.
     ///
     /// # A note on concurrency
     /// This method internally acquires a read lock on the type storage. As a
@@ -197,6 +247,10 @@ impl TypeRegistry {
     /// assert_eq!(&*guard2, &IType::I32.into());
     /// ```
     pub fn get(&self, typeref: Typeref) -> Option<MappedRwLockReadGuard<'_, AnyType>> {
+        if typeref.is_wildcard() {
+            unreachable!()
+        }
+
         let array_lock = self.array.read_recursive();
 
         // Acquire the typeref
@@ -241,6 +295,10 @@ impl TypeRegistry {
     ///   In practice such collisions only impact performance downgrading it from O(log N) to O(N log N) in the worst case for lookups.
     ///
     pub fn search_or_insert(&self, ty: AnyType) -> Typeref {
+        if let AnyType::Primary(PrimaryType::Wildcard(wtype)) = ty {
+            return Typeref::new_wildcard(wtype.id);
+        }
+
         let h = Self::hash_ty(&ty);
 
         // Lock, notice that the order is critical, always lock first database first
@@ -314,5 +372,120 @@ impl TypeRegistry {
             registry: self,
             typeref,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::types::primary::IType;
+
+    use super::*;
+
+    #[test]
+    fn test_wildcard_typeref() {
+        for wildcard_id in [0u16, 1, 42, 65535, 12345, 0xFFFF, 0xABCD] {
+            let typeref = Typeref::new_wildcard(wildcard_id);
+            assert!(typeref.is_wildcard());
+            assert_eq!(typeref.wildcard_id(), Some(wildcard_id));
+            assert!(typeref.0.get_version() == Some(uuid::Version::Custom));
+        }
+    }
+
+    #[test]
+    fn test_non_wildcard_typeref() {
+        let reg = TypeRegistry::new([0u8; 6]);
+        let typeref = reg.search_or_insert(IType::I32.into());
+        assert!(!typeref.is_wildcard());
+        assert_eq!(typeref.wildcard_id(), None);
+
+        let another_typeref = reg.search_or_insert(IType::I64.into());
+        assert!(!another_typeref.is_wildcard());
+        assert_eq!(another_typeref.wildcard_id(), None);
+
+        let nil_test = Typeref(Uuid::nil());
+        assert!(!nil_test.is_wildcard());
+        assert_eq!(nil_test.wildcard_id(), None);
+    }
+
+    #[test]
+    fn test_registry_insert_and_get() {
+        let reg = TypeRegistry::new([0u8; 6]);
+        let typeref_i32 = reg.search_or_insert(IType::I32.into());
+        let typeref_i64 = reg.search_or_insert(IType::I64.into());
+
+        assert_eq!(reg.get(typeref_i32).as_deref(), Some(&IType::I32.into()));
+        assert_eq!(reg.get(typeref_i64).as_deref(), Some(&IType::I64.into()));
+
+        // Inserting again should return the same typeref
+        let typeref_i32_again = reg.search_or_insert(IType::I32.into());
+        assert_eq!(typeref_i32, typeref_i32_again);
+    }
+
+    #[test]
+    fn test_registry_wildcard_handling() {
+        let reg = TypeRegistry::new([0u8; 6]);
+        let wildcard_typeref = Typeref::new_wildcard(42);
+
+        // Inserting a wildcard type should return the same typeref
+        let returned_typeref = reg.search_or_insert(AnyType::from(PrimaryType::Wildcard(
+            crate::types::primary::WType { id: 42 },
+        )));
+        assert_eq!(wildcard_typeref, returned_typeref);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_registry_get_wildcard_panics() {
+        let reg = TypeRegistry::new([0u8; 6]);
+        let wildcard_typeref = Typeref::new_wildcard(42);
+        let _ = reg.get(wildcard_typeref);
+    }
+
+    #[test]
+    fn test_registry_on_complex_types() {
+        let reg = TypeRegistry::new([0u8; 6]);
+
+        // Test registry on type {i32, <4 x i8>}
+        let simd_vector_typeref = reg.search_or_insert(
+            crate::types::primary::VcType {
+                ty: IType::I8.into(),
+                size: 4.into(),
+            }
+            .into(),
+        );
+
+        let i32_typeref = reg.search_or_insert(IType::I32.into());
+
+        let struct_typeref = reg.search_or_insert(
+            StructType {
+                element_types: vec![i32_typeref, simd_vector_typeref],
+                packed: false,
+            }
+            .into(),
+        );
+
+        assert_ne!(struct_typeref, i32_typeref);
+        assert_ne!(struct_typeref, simd_vector_typeref);
+        assert_eq!(
+            reg.get(struct_typeref).as_deref(),
+            Some(
+                &StructType {
+                    element_types: vec![i32_typeref, simd_vector_typeref],
+                    packed: false,
+                }
+                .into()
+            )
+        );
+        assert_eq!(reg.get(i32_typeref).as_deref(), Some(&IType::I32.into()));
+        assert_eq!(
+            reg.get(simd_vector_typeref).as_deref(),
+            Some(
+                &crate::types::primary::VcType {
+                    ty: IType::I8.into(),
+                    size: 4.into(),
+                }
+                .into()
+            )
+        );
     }
 }
