@@ -15,6 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
+    consts::AnyConst,
     modules::{
         instructions::HyInstr,
         operand::{Label, Name, Operand},
@@ -387,4 +388,52 @@ impl Function {
 pub struct Module {
     pub functions: BTreeMap<Uuid, Function>,
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,
+}
+
+impl Module {
+    /// Check each function in the module for SSA validity.
+    pub fn check_ssa(&self) -> Result<(), Error> {
+        for function in self.functions.values() {
+            function.check_ssa()?;
+        }
+
+        // Ensure all external/internal function references are defined
+        for function in self.functions.values() {
+            for bb in function.body.values() {
+                for instr in &bb.instructions {
+                    // If operand is a external function ptr
+                    for op in instr.operands() {
+                        if let Operand::Imm(AnyConst::FuncPtr(func_ptr)) = op {
+                            match func_ptr {
+                                symbol::FunctionPointer::Internal(uuid) => {
+                                    if !self.functions.contains_key(uuid) {
+                                        return Err(Error::UndefinedInternalFunction {
+                                            function: function
+                                                .name
+                                                .clone()
+                                                .unwrap_or_else(|| function.uuid.to_string()),
+                                            undefined: *uuid,
+                                        });
+                                    }
+                                }
+                                symbol::FunctionPointer::External(uuid) => {
+                                    if !self.external_functions.contains_key(uuid) {
+                                        return Err(Error::UndefinedExternalFunction {
+                                            function: function
+                                                .name
+                                                .clone()
+                                                .unwrap_or_else(|| function.uuid.to_string()),
+                                            undefined: *uuid,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

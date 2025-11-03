@@ -1,5 +1,6 @@
 use strum::{EnumIs, EnumTryAs};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::modules::operand::Name;
 
@@ -22,4 +23,16 @@ pub enum Error {
         "A operand refers to an undefined name: `{undefined}`. This name was never defined in the module."
     )]
     UndefinedSSAName { undefined: Name },
+
+    /// Provided internal function is not defined within the module.
+    #[error(
+        "An instruction of function `{function}` refers to an internal function referenced by `{undefined}` that is not defined within the module."
+    )]
+    UndefinedInternalFunction { function: String, undefined: Uuid },
+
+    /// Provided external function is not defined within the module.
+    #[error(
+        "An instruction of function `{function}` refers to an external function referenced by `{undefined}` that is not defined within the module."
+    )]
+    UndefinedExternalFunction { function: String, undefined: Uuid },
 }
