@@ -3,9 +3,10 @@ use hyinstr::{
     modules::{
         BasicBlock, CallingConvention, Module,
         int::{ICmp, ICmpOp, IMul, ISub, IntegerSignedness, OverflowPolicy},
+        misc::Invoke,
         operand::Operand,
         symbol::FunctionPointer,
-        terminator::{Invoke, Ret},
+        terminator::Ret,
     },
     types::{TypeRegistry, primary::IType},
 };
@@ -46,25 +47,6 @@ fn main() {
         .into(),
     };
 
-    let block_recurse_b = BasicBlock {
-        uuid: Uuid::new_v4(),
-        instructions: vec![
-            IMul {
-                dest: 4,
-                ty: i32_ty,
-                lhs: Operand::Reg(0),
-                rhs: Operand::Reg(3),
-                overflow: OverflowPolicy::Panic,
-                signedness: IntegerSignedness::Unsigned,
-            }
-            .into(),
-        ],
-        terminator: Ret {
-            value: Some(Operand::Reg(4)),
-        }
-        .into(),
-    };
-
     let block_recurse_a = BasicBlock {
         uuid: Uuid::new_v4(),
         instructions: vec![
@@ -77,16 +59,28 @@ fn main() {
                 signedness: IntegerSignedness::Unsigned,
             }
             .into(),
+            Invoke {
+                function: Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(
+                    factorial_func_uuid,
+                ))),
+                args: vec![Operand::Reg(2)],
+                dest: Some(5),
+                ty: Some(i32_ty),
+                cconv: None,
+            }
+            .into(),
+            IMul {
+                dest: 8,
+                ty: i32_ty,
+                lhs: Operand::Reg(0),
+                rhs: Operand::Reg(5),
+                overflow: OverflowPolicy::Panic,
+                signedness: IntegerSignedness::Unsigned,
+            }
+            .into(),
         ],
-        terminator: Invoke {
-            function: Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(
-                factorial_func_uuid,
-            ))),
-            args: vec![Operand::Reg(2)],
-            dest: Some(3),
-            ty: Some(i32_ty),
-            exit_label: block_recurse_b.label(),
-            cconv: None,
+        terminator: Ret {
+            value: Some(Operand::Reg(8)),
         }
         .into(),
     };
@@ -111,23 +105,20 @@ fn main() {
         .into(),
     };
 
-    let factorial_function = hyinstr::modules::Function {
+    let mut factorial_function = hyinstr::modules::Function {
         uuid: factorial_func_uuid,
         name: Some("factorial".to_string()),
         cconv: Some(CallingConvention::C),
         params: vec![(0, i32_ty)],
         return_type: Some(i32_ty),
-        body: vec![
-            block_entry,
-            block_base_case,
-            block_recurse_a,
-            block_recurse_b,
-        ]
-        .into_iter()
-        .map(|bb| (bb.uuid, bb))
-        .collect(),
+        body: vec![block_entry, block_base_case, block_recurse_a]
+            .into_iter()
+            .map(|bb| (bb.uuid, bb))
+            .collect(),
         visibility: Some(hyinstr::modules::Visibility::Default),
     };
+
+    factorial_function.normalize_ssa();
 
     // Create a module to hold the function
     let mod_a = Module {
@@ -137,6 +128,12 @@ fn main() {
             .collect(),
         external_functions: Default::default(),
     };
+
+    // Validate the module
+    match mod_a.check_ssa() {
+        Ok(_) => println!("Module is valid SSA."),
+        Err(e) => eprintln!("Module SSA validation error: {}", e),
+    }
 
     // Display each block
     for function in mod_a.functions.values() {
@@ -169,7 +166,7 @@ fn main() {
                         .join("\n")
                 );
             }
-            println!("   {}", block.terminator.fmt(&type_registry, Some(&mod_a)));
+            println!("   {}", block.terminator.fmt(Some(&mod_a)));
         }
     }
 }

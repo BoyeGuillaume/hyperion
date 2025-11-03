@@ -3,15 +3,13 @@
 //! Branching and flow control operations, including conditional
 //! branches, jumps, and function calls. Each instruction specifies its
 //! target labels and input operands as needed.
+use auto_enums::auto_enum;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    modules::{
-        CallingConvention, Module,
-        operand::{Label, Name, Operand},
-    },
-    types::{TypeRegistry, Typeref},
+use crate::modules::{
+    Module,
+    operand::{Label, Name, Operand},
 };
 
 /// Conditional branch instruction
@@ -41,36 +39,6 @@ pub struct Jump {
     pub target: Label,
 }
 
-/// Function call instruction
-///
-/// In hyperion, function cannot raise exceptions; thus, it will always jump to
-/// the specified `exit_label` after the call completes. In case of errors, either use
-/// a return code or never return from the function (e.g., abort).
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Invoke {
-    /// Should be a reference to a function pointer (either internal or external). We
-    /// describe it as an `Operand` to allow dynamic function calls to achieve virtualization
-    /// or function pointer tables.
-    pub function: Operand,
-
-    /// The argument operands to pass to the function.
-    pub args: Vec<Operand>,
-
-    /// The destination SSA name for the return value, if any.
-    pub dest: Option<Name>,
-
-    /// The return type of the function being called. `None` for `void` functions.
-    pub ty: Option<Typeref>,
-
-    /// The label to jump to after the call completes.
-    pub exit_label: Label,
-
-    /// This should only be `Some` for calls to external functions (i.e., not
-    /// defined within the current module)
-    pub cconv: Option<CallingConvention>,
-}
-
 /// Return from function instruction. Optionally returns a value.
 ///
 /// If `value` is `None`, it indicates a `void` return.
@@ -86,19 +54,13 @@ pub struct Ret {
 pub enum Terminator {
     CBranch(CBranch),
     Jump(Jump),
-    Invoke(Invoke),
     Ret(Ret),
 }
 
 impl Terminator {
-    pub fn fmt<'a>(
-        &'a self,
-        registry: &'a TypeRegistry,
-        module: Option<&'a Module>,
-    ) -> impl std::fmt::Display + 'a {
+    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
             terminator: &'a Terminator,
-            registry: &'a TypeRegistry,
             module: Option<&'a Module>,
         }
 
@@ -107,41 +69,13 @@ impl Terminator {
                 match self.terminator {
                     Terminator::CBranch(cbranch) => write!(
                         f,
-                        "cbranch {} , %{} , %{}",
+                        "cbranch {}, {}, {}",
                         cbranch.cond.fmt(self.module),
                         cbranch.target_true.0,
                         cbranch.target_false.0
                     ),
                     Terminator::Jump(jump) => {
-                        write!(f, "jump %{}", jump.target.0)
-                    }
-                    Terminator::Invoke(invoke) => {
-                        let args_str = invoke
-                            .args
-                            .iter()
-                            .map(|arg| arg.fmt(self.module).to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-
-                        let name_str = invoke.function.fmt(self.module).to_string();
-
-                        if let Some(dest) = invoke.dest {
-                            if let Some(ret_ty) = &invoke.ty {
-                                write!(
-                                    f,
-                                    "%{} = invoke {} {} ({}) -> {}",
-                                    dest,
-                                    self.registry.fmt(*ret_ty),
-                                    name_str,
-                                    args_str,
-                                    invoke.exit_label.0
-                                )
-                            } else {
-                                write!(f, "invoke void({}) -> %{}", args_str, invoke.exit_label.0)
-                            }
-                        } else {
-                            write!(f, "invoke void({}) -> %{}", args_str, invoke.exit_label.0)
-                        }
+                        write!(f, "jump {}", jump.target.0)
                     }
                     Terminator::Ret(ret) => {
                         if let Some(value) = &ret.value {
@@ -156,9 +90,46 @@ impl Terminator {
 
         Fmt {
             terminator: self,
-            registry,
             module,
         }
+    }
+
+    #[auto_enum(Iterator)]
+    pub fn operands(&self) -> impl Iterator<Item = &Operand> {
+        match self {
+            Terminator::CBranch(cbranch) => std::iter::once(&cbranch.cond),
+            Terminator::Jump(_) => std::iter::empty(),
+            Terminator::Ret(ret) => ret.value.iter(),
+        }
+    }
+
+    pub fn dependencies(&self) -> impl Iterator<Item = Name> {
+        self.operands().filter_map(|op| {
+            if let Operand::Reg(name) = op {
+                Some(*name)
+            } else {
+                None
+            }
+        })
+    }
+
+    #[auto_enum(Iterator)]
+    pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        match self {
+            Terminator::CBranch(cbranch) => std::iter::once(&mut cbranch.cond),
+            Terminator::Jump(_) => std::iter::empty(),
+            Terminator::Ret(ret) => ret.value.iter_mut(),
+        }
+    }
+
+    pub fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| {
+            if let Operand::Reg(name) = op {
+                Some(name)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -174,5 +145,4 @@ macro_rules! define_terminator_from {
 
 define_terminator_from!(CBranch, CBranch);
 define_terminator_from!(Jump, Jump);
-define_terminator_from!(Invoke, Invoke);
 define_terminator_from!(Ret, Ret);

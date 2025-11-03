@@ -32,6 +32,7 @@ pub mod fp;
 pub mod instructions;
 pub mod int;
 pub mod mem;
+pub mod misc;
 pub mod operand;
 pub mod symbol;
 pub mod terminator;
@@ -59,9 +60,16 @@ pub trait Instruction {
 
     /// Convenience iterator over referenced SSA names (i.e., register
     /// operands). Immediates and labels are ignored.
-    fn name_dependencies(&self) -> impl Iterator<Item = Name> {
+    fn dependencies(&self) -> impl Iterator<Item = Name> {
         self.operands().filter_map(|op| match op {
             Operand::Reg(reg) => Some(*reg),
+            _ => None,
+        })
+    }
+
+    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(reg),
             _ => None,
         })
     }
@@ -280,10 +288,8 @@ impl Function {
 
         for bb in self.body.values() {
             for instr in &bb.instructions {
-                for op in instr.operands() {
-                    if let Operand::Reg(name) = op {
-                        max_index = max_index.max(*name);
-                    }
+                if let Some(dest) = instr.destination() {
+                    max_index = max_index.max(dest);
                 }
             }
         }
@@ -323,10 +329,16 @@ impl Function {
         // Now ensure all operands refer to defined names
         for bb in self.body.values() {
             for instr in &bb.instructions {
-                for name in instr.name_dependencies() {
+                for name in instr.dependencies() {
                     if !defined_names.contains(&name) {
                         return Err(Error::UndefinedSSAName { undefined: name });
                     }
+                }
+            }
+
+            for name in bb.terminator.dependencies() {
+                if !defined_names.contains(&name) {
+                    return Err(Error::UndefinedSSAName { undefined: name });
                 }
             }
         }
@@ -352,11 +364,12 @@ impl Function {
         }
 
         // For each instruction destination, allocate a new name if needed
-        for bb in self.body.values() {
-            for instr in &bb.instructions {
+        for bb in self.body.values_mut() {
+            for instr in bb.instructions.iter_mut() {
                 if let Some(dest) = instr.destination() {
                     let _output = name_mapping.insert(dest, next_name);
                     debug_assert!(_output.is_none());
+                    instr.set_destination(next_name);
                     next_name += 1;
                 }
             }
@@ -365,15 +378,13 @@ impl Function {
         // Now remap all operands according to the mapping
         for bb in self.body.values_mut() {
             for instr in &mut bb.instructions {
-                for op in instr.operands_mut() {
-                    if let Operand::Reg(name) = op {
-                        if let Some(new_name) = name_mapping.get(name) {
-                            *name = *new_name;
-                        } else {
-                            unreachable!();
-                        }
-                    }
+                for op in instr.dependencies_mut() {
+                    *op = name_mapping[op];
                 }
+            }
+
+            for op in bb.terminator.dependencies_mut() {
+                *op = name_mapping[op];
             }
         }
     }

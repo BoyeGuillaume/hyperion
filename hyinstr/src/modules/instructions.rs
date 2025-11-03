@@ -7,7 +7,7 @@ use crate::{
     modules::{
         Instruction, Module, fp,
         int::{self, IntegerSignedness, OverflowPolicy},
-        mem,
+        mem, misc,
         operand::Operand,
     },
     types::TypeRegistry,
@@ -52,6 +52,9 @@ pub enum HyInstr {
     MStore(mem::MStore),
     MAlloca(mem::MAlloca),
     MGetElementPtr(mem::MGetElementPtr),
+
+    // Misc instructions
+    Invoke(misc::Invoke),
 }
 
 impl HyInstr {
@@ -440,6 +443,33 @@ impl HyInstr {
 
                         Ok(())
                     }
+                    HyInstr::Invoke(invoke) => {
+                        let args_str = invoke
+                            .args
+                            .iter()
+                            .map(|arg| arg.fmt(self.module).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ");
+
+                        let name_str = invoke.function.fmt(self.module).to_string();
+
+                        if let Some(dest) = invoke.dest {
+                            if let Some(ret_ty) = &invoke.ty {
+                                write!(
+                                    f,
+                                    "%{} = invoke {} {} ({})",
+                                    dest,
+                                    self.registry.fmt(*ret_ty),
+                                    name_str,
+                                    args_str,
+                                )
+                            } else {
+                                write!(f, "invoke void({})", args_str)
+                            }
+                        } else {
+                            write!(f, "invoke void({})", args_str)
+                        }
+                    }
                 }
             }
         }
@@ -517,7 +547,8 @@ define_instr_any_instr! {
     MLoad,
     MStore,
     MAlloca,
-    MGetElementPtr
+    MGetElementPtr,
+    Invoke
 }
 
 macro_rules! define_hyinstr_from {
@@ -553,3 +584,7 @@ define_hyinstr_from!(fp::FNeg, FNeg);
 
 define_hyinstr_from!(mem::MLoad, MLoad);
 define_hyinstr_from!(mem::MStore, MStore);
+define_hyinstr_from!(mem::MAlloca, MAlloca);
+define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
+
+define_hyinstr_from!(misc::Invoke, Invoke);
