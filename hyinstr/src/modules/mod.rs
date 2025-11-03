@@ -28,13 +28,13 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub mod control_flow;
 pub mod fp;
 pub mod instructions;
 pub mod int;
 pub mod mem;
 pub mod operand;
 pub mod symbol;
+pub mod terminator;
 
 /// Common interface implemented by every instruction node.
 ///
@@ -242,7 +242,7 @@ pub enum CallingConvention {
 pub struct BasicBlock {
     pub uuid: Uuid,
     pub instructions: Vec<HyInstr>,
-    pub terminator: control_flow::Terminator,
+    pub terminator: terminator::Terminator,
 }
 
 impl BasicBlock {

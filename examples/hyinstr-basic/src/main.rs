@@ -2,10 +2,10 @@ use hyinstr::{
     consts::AnyConst,
     modules::{
         BasicBlock, CallingConvention, Module,
-        control_flow::{Invoke, Ret},
         int::{ICmp, ICmpOp, IMul, ISub, IntegerSignedness, OverflowPolicy},
         operand::Operand,
         symbol::FunctionPointer,
+        terminator::{Invoke, Ret},
     },
     types::{TypeRegistry, primary::IType},
 };
@@ -103,7 +103,7 @@ fn main() {
             }
             .into(),
         ],
-        terminator: hyinstr::modules::control_flow::CBranch {
+        terminator: hyinstr::modules::terminator::CBranch {
             cond: Operand::Reg(1),
             target_true: block_base_case.label(),
             target_false: block_recurse_a.label(),
