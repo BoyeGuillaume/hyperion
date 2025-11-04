@@ -45,4 +45,10 @@ pub enum Error {
         expected: Vec<String>,
         found: Vec<String>,
     },
+
+    /// Meta operands are not allowed in this context.
+    #[error(
+        "Meta operands are only available internally for properties and attributes constructions. They SHOULD NOT appear in regular instructions."
+    )]
+    MetaOperandNotAllowed,
 }

@@ -334,6 +334,19 @@ impl Function {
         Ok(())
     }
 
+    fn no_meta_operands(&self) -> Result<(), Error> {
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                for operand in instr.operands() {
+                    if let Operand::Meta(_) = operand {
+                        return Err(Error::MetaOperandNotAllowed);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Generate wildcard types from parameters and instructions.
     pub fn generate_wildcards(&mut self) {
         let mut placeholder = BTreeSet::new(); // Doesn't allocate anything on its own
@@ -371,6 +384,7 @@ impl Function {
     pub fn check_ssa(&self) -> Result<(), Error> {
         let mut defined_names = BTreeSet::new();
         self.verify_wildcards_soundness()?;
+        self.no_meta_operands()?;
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Uuid::nil()) {

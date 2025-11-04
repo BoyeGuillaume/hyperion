@@ -55,6 +55,7 @@ pub enum HyInstr {
 
     // Misc instructions
     Invoke(misc::Invoke),
+    Assert(misc::Assert),
 }
 
 impl HyInstr {
@@ -470,6 +471,9 @@ impl HyInstr {
                             write!(f, "invoke void({})", args_str)
                         }
                     }
+                    HyInstr::Assert(assert) => {
+                        write!(f, "assert {}", assert.condition.fmt(self.module))
+                    }
                 }
             }
         }
@@ -565,7 +569,8 @@ define_instr_any_instr! {
     MStore,
     MAlloca,
     MGetElementPtr,
-    Invoke
+    Invoke,
+    Assert
 }
 
 macro_rules! define_hyinstr_from {
@@ -605,3 +610,4 @@ define_hyinstr_from!(mem::MAlloca, MAlloca);
 define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
 
 define_hyinstr_from!(misc::Invoke, Invoke);
+define_hyinstr_from!(misc::Assert, Assert);

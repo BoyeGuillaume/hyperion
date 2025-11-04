@@ -5,11 +5,14 @@
 use crate::{consts::AnyConst, modules::Module};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::EnumIs;
 use uuid::Uuid;
 
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
 pub type Name = u32;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MetaName(pub u32);
 
 /// Represents a code label used as a target for control‑flow instructions (besides invokes).
 ///
@@ -20,7 +23,7 @@ pub type Name = u32;
 pub struct Label(pub(super) Uuid);
 
 /// Instruction operand.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Operand {
     /// Reference to a previously defined SSA value.
@@ -29,6 +32,8 @@ pub enum Operand {
     Imm(AnyConst),
     /// Code label (used for control‑flow).
     Lbl(Label),
+    /// Meta operand (only used internally in attributes/properties)
+    Meta(MetaName),
 }
 
 impl Operand {
@@ -44,6 +49,7 @@ impl Operand {
                     Operand::Reg(name) => write!(f, "%{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
                     Operand::Lbl(label) => write!(f, "label_%{}", label.0),
+                    Operand::Meta(meta) => write!(f, "P{}", meta.0),
                 }
             }
         }
