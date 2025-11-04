@@ -35,4 +35,14 @@ pub enum Error {
         "An instruction of function `{function}` refers to an external function referenced by `{undefined}` that is not defined within the module."
     )]
     UndefinedExternalFunction { function: String, undefined: Uuid },
+
+    /// Unsound wildcard type usage.
+    #[error(
+        "Unsound wildcard type usage in function `{function}`: expected wildcard types `{expected:?}`, but found `{found:?}`."
+    )]
+    UnsoundWildcardTypes {
+        function: String,
+        expected: Vec<String>,
+        found: Vec<String>,
+    },
 }

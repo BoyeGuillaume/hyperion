@@ -72,6 +72,14 @@ impl Instruction for FAdd {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Floating-point subtraction instruction
@@ -99,6 +107,14 @@ impl Instruction for FSub {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -128,6 +144,14 @@ impl Instruction for FMul {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Floating-point division instruction
@@ -155,6 +179,14 @@ impl Instruction for FDiv {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -184,6 +216,14 @@ impl Instruction for FRem {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Floating-point negation instruction
@@ -211,6 +251,14 @@ impl Instruction for FNeg {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Floating-point comparison instruction
@@ -218,6 +266,8 @@ impl Instruction for FNeg {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FCmp {
     pub dest: Name,
+    /// Must be [`crate::types::primary::IType::I1`] if operands are fp, otherwise if operands
+    /// are vector of fp(s), must be vector of [`crate::types::primary::IType::I1`] of same length.
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
@@ -239,5 +289,13 @@ impl Instruction for FCmp {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }

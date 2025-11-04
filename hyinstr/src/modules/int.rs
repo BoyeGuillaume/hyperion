@@ -124,6 +124,14 @@ impl Instruction for IAdd {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer substraction instruction
@@ -153,6 +161,14 @@ impl Instruction for ISub {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -184,6 +200,14 @@ impl Instruction for IMul {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer division instruction
@@ -212,6 +236,14 @@ impl Instruction for IDiv {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -242,6 +274,14 @@ impl Instruction for IRem {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer comparison instruction
@@ -249,6 +289,9 @@ impl Instruction for IRem {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ICmp {
     pub dest: Name,
+
+    /// Must be [`crate::types::primary::IType::I1`] if operands are fp, otherwise if operands
+    /// are vector of fp(s), must be vector of [`crate::types::primary::IType::I1`] of same length.
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
@@ -270,6 +313,14 @@ impl Instruction for ICmp {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -300,6 +351,14 @@ impl Instruction for ISht {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer negation instruction
@@ -327,6 +386,14 @@ impl Instruction for INeg {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -356,6 +423,14 @@ impl Instruction for INot {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer AND instruction (bitwise AND, logical is equivalent when working on type i1)
@@ -383,6 +458,14 @@ impl Instruction for IAnd {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
 
@@ -412,6 +495,14 @@ impl Instruction for IOr {
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
 }
 
 /// Integer XOR instruction (bitwise XOR, logical is equivalent when working on type i1)
@@ -439,5 +530,13 @@ impl Instruction for IXor {
 
     fn set_destination(&mut self, name: Name) {
         self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }

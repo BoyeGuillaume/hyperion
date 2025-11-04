@@ -520,6 +520,23 @@ macro_rules! define_instr_any_instr {
                     )*
                 }
             }
+
+            #[auto_enum(Iterator)]
+            fn referenced_types(&self) -> impl Iterator<Item = crate::types::Typeref> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.referenced_types(),
+                    )*
+                }
+            }
+
+            fn destination_type(&self) -> Option<crate::types::Typeref> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.destination_type(),
+                    )*
+                }
+            }
         }
     };
 }

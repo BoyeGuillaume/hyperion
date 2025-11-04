@@ -27,7 +27,7 @@ use uuid::{Timestamp, Uuid};
 
 use crate::types::{
     aggregate::{ArrayType, StructType},
-    primary::PrimaryType,
+    primary::{PrimaryType, WType},
 };
 pub mod aggregate;
 pub mod primary;
@@ -69,13 +69,26 @@ impl Typeref {
     }
 
     /// Retrieve the wildcard ID if this is a wildcard type.
-    pub fn wildcard_id(&self) -> Option<u16> {
+    pub(crate) fn wildcard_id(&self) -> Option<u16> {
         if self.is_wildcard() {
             let bytes = self.0.as_bytes();
             Some(u16::from_le_bytes([bytes[14], bytes[15]]))
         } else {
             None
         }
+    }
+
+    /// Try to retrieve the wildcard from the current `Typeref`. Returns `None` if
+    /// this is not a wildcard type.
+    pub fn try_as_wildcard(&self) -> Option<WType> {
+        self.wildcard_id().map(|id| WType { id })
+    }
+
+    /// Retrieve the wildcard from the current `Typeref`. Panics if this is not
+    /// a wildcard type.
+    pub fn as_wildcard(&self) -> WType {
+        self.try_as_wildcard()
+            .expect("Typeref is not a wildcard type")
     }
 }
 

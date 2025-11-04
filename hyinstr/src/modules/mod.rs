@@ -51,6 +51,14 @@ pub trait Instruction {
         None
     }
 
+    /// Type of the destination SSA name if the instruction produces a result.
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+
+    /// Any types referenced by this instruction.
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref>;
+
     /// Update the destination SSA name for this instruction. No-op if the
     /// instruction does not produce a result.
     fn set_destination(&mut self, _name: Name) {}
@@ -280,8 +288,58 @@ pub struct Function {
 }
 
 impl Function {
+    fn generate_wildcard_types(&self, wildcards: &mut BTreeSet<WType>) {
+        // Scan parameters and instructions for wildcard types
+        wildcards.clear();
+
+        // Verify parameters
+        for (_, typeref) in &self.params {
+            if let Some(wt) = typeref.try_as_wildcard() {
+                wildcards.insert(wt);
+            }
+        }
+
+        // Iterate over all instructions to find all types referenced
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                for typeref in instr.referenced_types() {
+                    if let Some(wt) = typeref.try_as_wildcard() {
+                        wildcards.insert(wt);
+                    }
+                }
+            }
+
+            // Terminator do not reference any types (technically condition are always i1)
+        }
+    }
+
     fn verify_wildcards_soundness(&self) -> Result<(), Error> {
-        todo!()
+        // Verify that all wildcard types used in parameters and instructions
+        // are declared in `wildcard_types`.
+        let mut generated = BTreeSet::new();
+        self.generate_wildcard_types(&mut generated);
+
+        if generated != self.wildcard_types {
+            return Err(Error::UnsoundWildcardTypes {
+                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                expected: self
+                    .wildcard_types
+                    .iter()
+                    .map(|wt| wt.to_string())
+                    .collect(),
+                found: generated.iter().map(|wt| wt.to_string()).collect(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Generate wildcard types from parameters and instructions.
+    pub fn generate_wildcards(&mut self) {
+        let mut placeholder = BTreeSet::new(); // Doesn't allocate anything on its own
+        std::mem::swap(&mut self.wildcard_types, &mut placeholder);
+        self.generate_wildcard_types(&mut placeholder);
+        std::mem::swap(&mut self.wildcard_types, &mut placeholder);
     }
 
     /// Returns whether the function is incomplete (i.e., has unresolved wildcard types).

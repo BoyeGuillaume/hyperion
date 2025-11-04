@@ -52,4 +52,12 @@ impl Instruction for Invoke {
             self.dest = Some(name);
         }
     }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        self.ty.into_iter()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        self.ty
+    }
 }
