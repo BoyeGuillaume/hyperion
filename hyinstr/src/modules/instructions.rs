@@ -56,6 +56,8 @@ pub enum HyInstr {
     // Misc instructions
     Invoke(misc::Invoke),
     Assert(misc::Assert),
+    Phi(misc::Phi),
+    Select(misc::Select),
 }
 
 impl HyInstr {
@@ -474,6 +476,31 @@ impl HyInstr {
                     HyInstr::Assert(assert) => {
                         write!(f, "assert {}", assert.condition.fmt(self.module))
                     }
+                    HyInstr::Phi(phi) => {
+                        write!(f, "%{} = phi {} ", phi.dest, self.registry.fmt(phi.ty))?;
+
+                        let incoming_str = phi
+                            .values
+                            .iter()
+                            .map(|(label, value)| {
+                                format!("[ {}, label_%{} ]", value.fmt(self.module), label.0)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+
+                        write!(f, "{}", incoming_str)
+                    }
+                    HyInstr::Select(select) => {
+                        write!(f, "%{} = select ", select.dest)?;
+                        write!(
+                            f,
+                            "{} {}, {}, {}",
+                            self.registry.fmt(select.ty),
+                            select.condition.fmt(self.module),
+                            select.true_value.fmt(self.module),
+                            select.false_value.fmt(self.module)
+                        )
+                    }
                 }
             }
         }
@@ -488,7 +515,7 @@ impl HyInstr {
 
 macro_rules! define_instr_any_instr {
     (
-        $($variant:ident),*
+        $($variant:ident),* $(,)?
     ) => {
         impl Instruction for HyInstr {
             #[auto_enum(Iterator)]
@@ -570,7 +597,9 @@ define_instr_any_instr! {
     MAlloca,
     MGetElementPtr,
     Invoke,
-    Assert
+    Assert,
+    Phi,
+    Select,
 }
 
 macro_rules! define_hyinstr_from {
@@ -611,3 +640,5 @@ define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
 
 define_hyinstr_from!(misc::Invoke, Invoke);
 define_hyinstr_from!(misc::Assert, Assert);
+define_hyinstr_from!(misc::Phi, Phi);
+define_hyinstr_from!(misc::Select, Select);

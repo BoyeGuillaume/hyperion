@@ -1,7 +1,7 @@
 use crate::{
     modules::{
         CallingConvention, Instruction,
-        operand::{Name, Operand},
+        operand::{Label, Name, Operand},
     },
     types::Typeref,
 };
@@ -97,5 +97,97 @@ impl Instruction for Invoke {
 
     fn destination_type(&self) -> Option<Typeref> {
         self.ty
+    }
+}
+
+/// Phi instruction
+///
+/// This instruction selects a value based on control flow. It is used to merge
+/// values coming from different basic blocks. It should always be placed at the
+/// beginning of a basic block.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Phi {
+    /// The destination SSA name for the result of the phi instruction.
+    pub dest: Name,
+
+    /// The type of the value being selected.
+    pub ty: Typeref,
+
+    /// The incoming values and their corresponding predecessor basic blocks.
+    pub values: Vec<(Label, Operand)>, // (predecessor block label, value name)
+}
+
+impl Instruction for Phi {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        self.values.iter().map(|(_, op)| op)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        self.values.iter_mut().map(|(_, op)| op)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Select instruction
+///
+/// This instruction selects one of two values based on a condition.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Select {
+    /// The destination SSA name for the result of the select instruction.
+    pub dest: Name,
+    /// The condition operand. Should evaluate to a boolean value.
+    pub condition: Operand,
+    /// The operand to select if the condition is true.
+    pub true_value: Operand,
+    /// The operand to select if the condition is false.
+    pub false_value: Operand,
+    /// The type of the values being selected.
+    pub ty: Typeref,
+}
+
+impl Instruction for Select {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.condition)
+            .chain(std::iter::once(&self.true_value))
+            .chain(std::iter::once(&self.false_value))
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.condition)
+            .chain(std::iter::once(&mut self.true_value))
+            .chain(std::iter::once(&mut self.false_value))
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
     }
 }
