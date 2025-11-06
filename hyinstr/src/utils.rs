@@ -51,4 +51,10 @@ pub enum Error {
         "Meta operands are only available internally for properties and attributes constructions. They SHOULD NOT appear in regular instructions."
     )]
     MetaOperandNotAllowed,
+
+    /// Phi instructions must be the first instructions or following other phi instructions in a basic block.
+    #[error(
+        "Phi instructions must be the first instructions in a basic block or follow other phi instructions. The basic block with UUID `{block}` contains a phi instruction that is not the first instruction."
+    )]
+    PhiNotFirstInstruction { block: Uuid },
 }

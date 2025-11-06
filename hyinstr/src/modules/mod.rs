@@ -347,6 +347,22 @@ impl Function {
         Ok(())
     }
 
+    fn phi_are_first_instructions(&self) -> Result<(), Error> {
+        for bb in self.body.values() {
+            let mut found_non_phi = false;
+            for instr in &bb.instructions {
+                if instr.is_phi() {
+                    if found_non_phi {
+                        return Err(Error::PhiNotFirstInstruction { block: bb.uuid });
+                    }
+                } else {
+                    found_non_phi = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Generate wildcard types from parameters and instructions.
     pub fn generate_wildcards(&mut self) {
         let mut placeholder = BTreeSet::new(); // Doesn't allocate anything on its own
@@ -385,6 +401,7 @@ impl Function {
         let mut defined_names = BTreeSet::new();
         self.verify_wildcards_soundness()?;
         self.no_meta_operands()?;
+        self.phi_are_first_instructions()?;
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Uuid::nil()) {

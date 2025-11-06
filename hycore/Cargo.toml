@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 hyinstr.workspace = true
 uuid.workspace = true
+strum = { workspace = true, features = ["derive"] }

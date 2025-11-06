@@ -8,8 +8,13 @@ pub struct SufficientEquivalencePostcondition {
     pub postconditions: Vec<Assert>,
 }
 
+/// A collection of properties associated with a function.
 #[derive(Debug, Clone, Default)]
-pub struct FunctionProperties {
+pub struct FunctionProps {
+    /// Internal instructions associated with this function property.
+    ///
+    /// A note on loops and branches: Certain destination resulting from `phi` or `memory`
+    /// can have side effects that CANNOT be represented in preconditions or postconditions.
     pub internals: Vec<HyInstr>,
 
     /// Preconditions associated with this function property.
@@ -28,7 +33,7 @@ pub struct FunctionProperties {
     pub sufficient_equivalence_postconditions: Vec<SufficientEquivalencePostcondition>,
 }
 
-impl FunctionProperties {
+impl FunctionProps {
     fn check_condition(&self) -> bool {
         self.internals
             .iter()
@@ -73,5 +78,5 @@ impl FunctionProperties {
 #[derive(Debug, Clone)]
 pub struct FunctionMetadata {
     /// A list of function properties maps associated with this function.
-    pub properties: Vec<FunctionProperties>,
+    pub properties: Vec<FunctionProps>,
 }
