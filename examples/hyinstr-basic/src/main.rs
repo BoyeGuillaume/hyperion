@@ -4,7 +4,7 @@ use hyinstr::{
         BasicBlock, CallingConvention, Module,
         int::{ICmp, ICmpOp, IMul, ISub, IntegerSignedness, OverflowPolicy},
         misc::Invoke,
-        operand::Operand,
+        operand::{Label, Operand},
         symbol::FunctionPointer,
         terminator::Ret,
     },
@@ -39,7 +39,7 @@ fn main() {
     let factorial_func_uuid = Uuid::new_v4();
 
     let block_base_case = BasicBlock {
-        uuid: Uuid::new_v4(),
+        label: Label(1),
         instructions: vec![],
         terminator: Ret {
             value: Some(Operand::Imm(1u32.into())),
@@ -48,7 +48,7 @@ fn main() {
     };
 
     let block_recurse_a = BasicBlock {
-        uuid: Uuid::new_v4(),
+        label: Label(2),
         instructions: vec![
             ISub {
                 dest: 2,
@@ -86,7 +86,7 @@ fn main() {
     };
 
     let block_entry = BasicBlock {
-        uuid: Uuid::nil(),
+        label: Label(0),
         instructions: vec![
             ICmp {
                 dest: 1,
@@ -113,7 +113,7 @@ fn main() {
         return_type: Some(i32_ty),
         body: vec![block_entry, block_base_case, block_recurse_a]
             .into_iter()
-            .map(|bb| (bb.uuid, bb))
+            .map(|bb| (bb.label, bb))
             .collect(),
         visibility: Some(hyinstr::modules::Visibility::Default),
         wildcard_types: Default::default(),
@@ -134,6 +134,16 @@ fn main() {
     match mod_a.check_ssa() {
         Ok(_) => println!("Module is valid SSA."),
         Err(e) => eprintln!("Module SSA validation error: {}", e),
+    }
+
+    // Display the control flow of the function
+    let cfg = factorial_function.derive_function_flow();
+    println!("Control Flow Graph of factorial function:");
+    for edge in cfg.all_edges() {
+        match edge.2 {
+            Some(op) => println!("  {:?} --[{:?}]-> {:?}", edge.0, op, edge.1),
+            None => println!("  {:?} --> {:?}", edge.0, edge.1),
+        }
     }
 
     // Display each block

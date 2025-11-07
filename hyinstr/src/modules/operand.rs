@@ -6,7 +6,6 @@ use crate::{consts::AnyConst, modules::Module};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::EnumIs;
-use uuid::Uuid;
 
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
@@ -18,9 +17,19 @@ pub struct MetaName(pub u32);
 ///
 /// Notice that in hyperion, labels and control-flow may not cross function boundaries. Thus,
 /// labels are only valid within the function they are defined in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Label(pub(super) Uuid);
+pub struct Label(pub u32);
+
+impl std::fmt::Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if f.alternate() {
+            write!(f, "label %block_{}", self.0)
+        } else {
+            write!(f, "%block_{}", self.0)
+        }
+    }
+}
 
 /// Instruction operand.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs)]
@@ -48,7 +57,7 @@ impl Operand {
                 match self.operand {
                     Operand::Reg(name) => write!(f, "%{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
-                    Operand::Lbl(label) => write!(f, "label_%{}", label.0),
+                    Operand::Lbl(label) => write!(f, "{:#}", label),
                     Operand::Meta(meta) => write!(f, "P{}", meta.0),
                 }
             }

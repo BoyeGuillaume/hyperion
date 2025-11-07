@@ -483,7 +483,7 @@ impl HyInstr {
                             .values
                             .iter()
                             .map(|(label, value)| {
-                                format!("[ {}, label_%{} ]", value.fmt(self.module), label.0)
+                                format!("[ {}, {} ]", value.fmt(self.module), label)
                             })
                             .collect::<Vec<_>>()
                             .join(", ");

@@ -48,6 +48,11 @@ pub struct Ret {
     pub value: Option<Operand>,
 }
 
+/// Trap instruction to indicate an unrecoverable error or exceptional condition.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Trap;
+
 /// Control flow terminator instructions
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -55,6 +60,7 @@ pub enum Terminator {
     CBranch(CBranch),
     Jump(Jump),
     Ret(Ret),
+    Trap(Trap),
 }
 
 impl Terminator {
@@ -69,20 +75,23 @@ impl Terminator {
                 match self.terminator {
                     Terminator::CBranch(cbranch) => write!(
                         f,
-                        "cbranch {}, {}, {}",
+                        "cbranch {}, {:#}, {:#}",
                         cbranch.cond.fmt(self.module),
-                        cbranch.target_true.0,
-                        cbranch.target_false.0
+                        cbranch.target_true,
+                        cbranch.target_false
                     ),
                     Terminator::Jump(jump) => {
-                        write!(f, "jump {}", jump.target.0)
+                        write!(f, "jump {}", jump.target)
                     }
                     Terminator::Ret(ret) => {
                         if let Some(value) = &ret.value {
-                            write!(f, "ret {}", value.fmt(self.module))
+                            write!(f, "ret {:#}", value.fmt(self.module))
                         } else {
                             write!(f, "ret void")
                         }
+                    }
+                    Terminator::Trap(_) => {
+                        write!(f, "trap")
                     }
                 }
             }
@@ -100,6 +109,7 @@ impl Terminator {
             Terminator::CBranch(cbranch) => std::iter::once(&cbranch.cond),
             Terminator::Jump(_) => std::iter::empty(),
             Terminator::Ret(ret) => ret.value.iter(),
+            Terminator::Trap(_) => std::iter::empty(),
         }
     }
 
@@ -119,6 +129,7 @@ impl Terminator {
             Terminator::CBranch(cbranch) => std::iter::once(&mut cbranch.cond),
             Terminator::Jump(_) => std::iter::empty(),
             Terminator::Ret(ret) => ret.value.iter_mut(),
+            Terminator::Trap(_) => std::iter::empty(),
         }
     }
 
@@ -130,6 +141,20 @@ impl Terminator {
                 None
             }
         })
+    }
+
+    #[auto_enum(Iterator)]
+    pub fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&'_ Operand>)> + '_ {
+        match self {
+            Terminator::CBranch(cbranch) => [
+                (cbranch.target_true, Some(&cbranch.cond)),
+                (cbranch.target_false, None),
+            ]
+            .into_iter(),
+            Terminator::Jump(jump) => [(jump.target, None)].into_iter(),
+            Terminator::Ret(_) => std::iter::empty(),
+            Terminator::Trap(_) => std::iter::empty(),
+        }
     }
 }
 

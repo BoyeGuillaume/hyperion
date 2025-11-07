@@ -2,7 +2,7 @@ use strum::{EnumIs, EnumTryAs};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::modules::operand::Name;
+use crate::modules::operand::{Label, Name};
 
 #[derive(Debug, PartialEq, Eq, Hash, EnumIs, EnumTryAs, Error)]
 pub enum Error {
@@ -12,9 +12,9 @@ pub enum Error {
     )]
     DuplicateSSAName { duplicate: Name },
 
-    /// No basic block with the entrypoint UUID was found.
+    /// No basic block with the entrypoint label was found.
     #[error(
-        "By convention, the entrypoint basic block must have the nil UUID (all zeros), but no such block was found."
+        "By convention, the entrypoint basic block of a function must have label `label_0`. No such basic block was found."
     )]
     MissingEntryBlock,
 
@@ -54,7 +54,13 @@ pub enum Error {
 
     /// Phi instructions must be the first instructions or following other phi instructions in a basic block.
     #[error(
-        "Phi instructions must be the first instructions in a basic block or follow other phi instructions. The basic block with UUID `{block}` contains a phi instruction that is not the first instruction."
+        "Phi instructions must be the first instructions in a basic block or follow other phi instructions. The basic block `{block}` contains a phi instruction that is not the first instruction."
     )]
-    PhiNotFirstInstruction { block: Uuid },
+    PhiNotFirstInstruction { block: Label },
+
+    /// The basic block referenced cannot be found within the function.
+    #[error(
+        "The basic block `{label}` referenced in function `{function}` is not defined within the function."
+    )]
+    UndefinedBasicBlock { function: String, label: Label },
 }

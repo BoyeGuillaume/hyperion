@@ -24,6 +24,7 @@ use crate::{
     types::{Typeref, primary::WType},
     utils::Error,
 };
+use petgraph::prelude::DiGraphMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -256,7 +257,7 @@ pub enum CallingConvention {
 /// of complex control flow within functions.
 #[derive(Debug, Clone, Hash)]
 pub struct BasicBlock {
-    pub uuid: Uuid,
+    pub label: Label,
     pub instructions: Vec<HyInstr>,
     pub terminator: terminator::Terminator,
 }
@@ -264,7 +265,7 @@ pub struct BasicBlock {
 impl BasicBlock {
     /// Get the label of the basic block.
     pub fn label(&self) -> Label {
-        Label(self.uuid)
+        self.label
     }
 }
 
@@ -281,7 +282,7 @@ pub struct Function {
     pub name: Option<String>,
     pub params: Vec<(Name, Typeref)>,
     pub return_type: Option<Typeref>,
-    pub body: BTreeMap<Uuid, BasicBlock>,
+    pub body: BTreeMap<Label, BasicBlock>,
     pub visibility: Option<Visibility>,
     pub cconv: Option<CallingConvention>,
     pub wildcard_types: BTreeSet<WType>,
@@ -353,10 +354,25 @@ impl Function {
             for instr in &bb.instructions {
                 if instr.is_phi() {
                     if found_non_phi {
-                        return Err(Error::PhiNotFirstInstruction { block: bb.uuid });
+                        return Err(Error::PhiNotFirstInstruction { block: bb.label });
                     }
                 } else {
                     found_non_phi = true;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_target_soundness(&self) -> Result<(), Error> {
+        for bb in self.body.values() {
+            // Check terminator does not refer to non-existing basic blocks
+            for (target_label, _) in bb.terminator.iter_targets() {
+                if !self.body.contains_key(&target_label) {
+                    return Err(Error::UndefinedBasicBlock {
+                        function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                        label: target_label,
+                    });
                 }
             }
         }
@@ -394,6 +410,15 @@ impl Function {
         max_index + 1
     }
 
+    /// Find next available [`Label`] for a basic block.
+    pub fn next_available_label(&self) -> Label {
+        let mut max_index = 0;
+        for label in self.body.keys() {
+            max_index = max_index.max(label.0);
+        }
+        Label(max_index + 1)
+    }
+
     /// Verify SSA form:
     /// 1) Each operand refers to a defined name.
     /// 2) Each name is defined exactly once.
@@ -402,9 +427,10 @@ impl Function {
         self.verify_wildcards_soundness()?;
         self.no_meta_operands()?;
         self.phi_are_first_instructions()?;
+        self.verify_target_soundness()?;
 
         // Ensure existence of entry block
-        if !self.body.contains_key(&Uuid::nil()) {
+        if !self.body.contains_key(&Label(0)) {
             return Err(Error::MissingEntryBlock);
         }
 
@@ -487,6 +513,28 @@ impl Function {
                 *op = name_mapping[op];
             }
         }
+    }
+
+    /// Analyzes the control flow of a function and constructs its control flow graph (CFG).
+    pub fn derive_function_flow(&self) -> DiGraphMap<Label, Option<Operand>> {
+        let mut graph = DiGraphMap::with_capacity(self.body.len(), self.body.len() * 3);
+
+        // Pass 1: Add all nodes
+        for block_label in self.body.keys().copied() {
+            graph.add_node(block_label);
+        }
+
+        // Pass 2: Add edges based on terminators
+        for (block_label, block) in &self.body {
+            block
+                .terminator
+                .iter_targets()
+                .for_each(|(target_label, condition)| {
+                    graph.add_edge(*block_label, target_label, condition.cloned());
+                });
+        }
+
+        graph
     }
 }
 

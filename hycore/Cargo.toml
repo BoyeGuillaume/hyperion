@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 hyinstr.workspace = true
 uuid.workspace = true
+petgraph.workspace = true
 strum = { workspace = true, features = ["derive"] }
