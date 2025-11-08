@@ -21,6 +21,19 @@ pub struct MetaName(pub u32);
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Label(pub u32);
 
+impl Label {
+    pub const NIL: Label = Label(0);
+
+    /// Returns true if this is the "nil" label (i.e., label 0).
+    ///
+    /// This label is reserved as the 'function entry' label. It should always be present.
+    /// Returns true if this is the "nil" label (i.e., label 0).
+    ///
+    pub fn is_nil(&self) -> bool {
+        self == &Label::NIL
+    }
+}
+
 impl std::fmt::Display for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
@@ -42,6 +55,10 @@ pub enum Operand {
     /// Code label (used for control‑flow).
     Lbl(Label),
     /// Meta operand (only used internally in attributes/properties)
+    ///
+    /// Notice: Meta operands should not appear in regular instructions and
+    /// is prohibeted to appear in well-formed modules. Should only be used
+    /// in attributes/properties.
     Meta(MetaName),
 }
 

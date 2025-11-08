@@ -246,6 +246,28 @@ pub enum CallingConvention {
     Numbered(u32),
 }
 
+/// Reference to a specific instruction within a function.
+///
+/// This structure identifies an instruction by the basic block label it resides in
+/// and the index of the instruction within that block.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub struct FunctionInstructionReference {
+    pub block: Label,
+    pub index: usize,
+}
+
+impl From<(Label, usize)> for FunctionInstructionReference {
+    fn from((block, index): (Label, usize)) -> Self {
+        Self { block, index }
+    }
+}
+
+impl From<FunctionInstructionReference> for (Label, usize) {
+    fn from(reference: FunctionInstructionReference) -> Self {
+        (reference.block, reference.index)
+    }
+}
+
 /// A basic block within a function, containing a sequence of instructions
 /// and ending with a control flow terminator.
 ///
@@ -266,6 +288,14 @@ impl BasicBlock {
     /// Get the label of the basic block.
     pub fn label(&self) -> Label {
         self.label
+    }
+
+    /// Create a [`FunctionInstructionReference`] for the instruction at the given index.
+    pub fn instruction_reference(&self, index: usize) -> FunctionInstructionReference {
+        FunctionInstructionReference {
+            block: self.label,
+            index,
+        }
     }
 }
 
@@ -335,7 +365,7 @@ impl Function {
         Ok(())
     }
 
-    fn no_meta_operands(&self) -> Result<(), Error> {
+    fn verify_no_meta_operands(&self) -> Result<(), Error> {
         for bb in self.body.values() {
             for instr in &bb.instructions {
                 for operand in instr.operands() {
@@ -348,7 +378,7 @@ impl Function {
         Ok(())
     }
 
-    fn phi_are_first_instructions(&self) -> Result<(), Error> {
+    fn verify_phi_first_instr_of_block(&self) -> Result<(), Error> {
         for bb in self.body.values() {
             let mut found_non_phi = false;
             for instr in &bb.instructions {
@@ -376,6 +406,46 @@ impl Function {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn verify_ssa_soundness(&self) -> Result<(), Error> {
+        let mut defined_names = BTreeSet::new();
+
+        // 1. Construct defined_names
+        for (name, _) in self.params.iter() {
+            if !defined_names.insert(*name) {
+                return Err(Error::DuplicateSSAName { duplicate: *name });
+            }
+        }
+
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                if let Some(dest) = instr.destination() {
+                    if !defined_names.insert(dest) {
+                        return Err(Error::DuplicateSSAName { duplicate: dest });
+                    }
+                }
+            }
+        }
+
+        // 2. Ensure all operands refer to defined names
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                for name in instr.dependencies() {
+                    if !defined_names.contains(&name) {
+                        return Err(Error::UndefinedSSAName { undefined: name });
+                    }
+                }
+            }
+
+            for name in bb.terminator.dependencies() {
+                if !defined_names.contains(&name) {
+                    return Err(Error::UndefinedSSAName { undefined: name });
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -423,54 +493,18 @@ impl Function {
     /// 1) Each operand refers to a defined name.
     /// 2) Each name is defined exactly once.
     pub fn check_ssa(&self) -> Result<(), Error> {
-        let mut defined_names = BTreeSet::new();
         self.verify_wildcards_soundness()?;
-        self.no_meta_operands()?;
-        self.phi_are_first_instructions()?;
+        self.verify_no_meta_operands()?;
+        self.verify_phi_first_instr_of_block()?;
         self.verify_target_soundness()?;
+        self.verify_ssa_soundness()?;
 
         // Ensure existence of entry block
-        if !self.body.contains_key(&Label(0)) {
+        if !self.body.contains_key(&Label::NIL) {
             return Err(Error::MissingEntryBlock);
         }
 
-        // Construct a set of defined names from parameters
-        for (name, _) in self.params.iter() {
-            if !defined_names.insert(*name) {
-                return Err(Error::DuplicateSSAName { duplicate: *name });
-            }
-        }
-
-        // Same for each instruction destination of each basic block
-        for bb in self.body.values() {
-            for instr in &bb.instructions {
-                if let Some(dest) = instr.destination() {
-                    if !defined_names.insert(dest) {
-                        return Err(Error::DuplicateSSAName { duplicate: dest });
-                    }
-                }
-            }
-        }
-
-        // Now ensure all operands refer to defined names
-        for bb in self.body.values() {
-            for instr in &bb.instructions {
-                for name in instr.dependencies() {
-                    if !defined_names.contains(&name) {
-                        return Err(Error::UndefinedSSAName { undefined: name });
-                    }
-                }
-            }
-
-            for name in bb.terminator.dependencies() {
-                if !defined_names.contains(&name) {
-                    return Err(Error::UndefinedSSAName { undefined: name });
-                }
-            }
-        }
-
         // TODO: Verify that all SSA names are defined before use (topological order)
-
         Ok(())
     }
 
@@ -515,6 +549,13 @@ impl Function {
         }
     }
 
+    /// Retrieve instruction from a [`FunctionInstructionReference`].
+    pub fn get(&self, reference: FunctionInstructionReference) -> Option<&HyInstr> {
+        self.body
+            .get(&reference.block)
+            .and_then(|bb| bb.instructions.get(reference.index))
+    }
+
     /// Analyzes the control flow of a function and constructs its control flow graph (CFG).
     pub fn derive_function_flow(&self) -> DiGraphMap<Label, Option<Operand>> {
         let mut graph = DiGraphMap::with_capacity(self.body.len(), self.body.len() * 3);
@@ -535,6 +576,35 @@ impl Function {
         }
 
         graph
+    }
+
+    /// Derive the dest-map, for each SSA name associate 1) the defining block label and 2) the instruction index within the block.
+    pub fn derive_dest_map(&self) -> BTreeMap<Name, (Label, usize)> {
+        let mut dest_map = BTreeMap::new();
+
+        for (block_label, block) in &self.body {
+            for (instr_index, instr) in block.instructions.iter().enumerate() {
+                if let Some(dest) = instr.destination() {
+                    dest_map.insert(dest, (*block_label, instr_index));
+                }
+            }
+        }
+
+        dest_map
+    }
+
+    /// Retrieve an instruction from its SSA destination name.
+    pub fn get_instruction_by_dest(&self, name: Name) -> Option<&HyInstr> {
+        for block in self.body.values() {
+            for instr in &block.instructions {
+                if let Some(dest) = instr.destination() {
+                    if dest == name {
+                        return Some(instr);
+                    }
+                }
+            }
+        }
+        None
     }
 }
 
