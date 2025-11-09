@@ -63,3 +63,36 @@ $$
     \implies& f \leftrightsquigarrow_{\{C\}} g
 \end{aligned}
 $$
+
+## A note on proof and axiomatic reasoning.
+
+In the *hyperion* framework, we write all proof as program that check the validity of certain conditions. For instance, if we want to make
+an argument about a function $f = \{ \mathcal{B}_1, \mathcal{B}_2, \ldots, \mathcal{B}_n \}$, we write a series of *meta-instructions* that 
+add assertions about `f`'s behavior at various points in its execution.
+
+- We introduce an `Assert` meta-instruction which is a `no-op` at runtime, but is used to ensure that a `i1` value is **ALWAYS** true. We then allow
+to add new condition and checks at different points. For instance loop-invariants can be seen as a condition `assert %cond` in the body of a loop.
+- We also introduce the notion of `free-variable` for reasoning about preconditions/postconditions. For instance, a precondition that check a list is sorted
+```ll
+; Defined above %list_ptr, %n: i32
+
+%i = free_variable i32
+%ii = add i32 %i, 1
+%cond = icmp slt i32 %ii, %n
+assume %cond
+%index = getelementptr i32, i32* %list_ptr, i32 %i
+%val1 = load i32, i32* %index ; Only load if %cond is true
+%val2 = load i32, i32* %index ; Only load if %cond is true
+%is_sorted = icmp sle i32 %val1, %val2
+assert i1 %is_sorted
+``` 
+
+The difference between `assume` and `assert` is that `assume` tells the proof engine to only consider paths where the condition is true. It should in theory not be used
+directly when doing axiom derivation unless for free-variables. Can be used to "hide" complex proofs. If $A$ is true due to proof $P$, then `assume A` can be used for compression.
+
+## A note on genericity and abstractions.
+
+When optimizing code and proving equivalence, it is often useful to `abstract` away other functions. For instance, consider a hashmap implementation that uses
+a hash function `hash_func`. When reasoning about the hashmap operations, we may not care about the actual implementation of `hash_func`, but only about its
+properties. 
+The property of a hash function is VERY hard to prove. Furthermore, in many cases it is possible to construct hash collisions.

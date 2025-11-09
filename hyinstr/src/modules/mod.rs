@@ -44,6 +44,13 @@ pub mod terminator;
 /// instruction's input operands and exposes its optional destination SSA
 /// name when present.
 pub trait Instruction {
+    /// Returns true if this is a meta-instruction (i.e., used for verification or analysis purposes).
+    ///
+    /// Meta-instructions should never appear in executable code.
+    fn is_meta_instruction(&self) -> bool {
+        false
+    }
+
     /// Iterate over all input operands for this instruction.
     fn operands(&self) -> impl Iterator<Item = &Operand>;
 
@@ -251,19 +258,19 @@ pub enum CallingConvention {
 /// This structure identifies an instruction by the basic block label it resides in
 /// and the index of the instruction within that block.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub struct FunctionInstructionReference {
+pub struct InstructionRef {
     pub block: Label,
     pub index: usize,
 }
 
-impl From<(Label, usize)> for FunctionInstructionReference {
+impl From<(Label, usize)> for InstructionRef {
     fn from((block, index): (Label, usize)) -> Self {
         Self { block, index }
     }
 }
 
-impl From<FunctionInstructionReference> for (Label, usize) {
-    fn from(reference: FunctionInstructionReference) -> Self {
+impl From<InstructionRef> for (Label, usize) {
+    fn from(reference: InstructionRef) -> Self {
         (reference.block, reference.index)
     }
 }
@@ -291,8 +298,8 @@ impl BasicBlock {
     }
 
     /// Create a [`FunctionInstructionReference`] for the instruction at the given index.
-    pub fn instruction_reference(&self, index: usize) -> FunctionInstructionReference {
-        FunctionInstructionReference {
+    pub fn instruction_reference(&self, index: usize) -> InstructionRef {
+        InstructionRef {
             block: self.label,
             index,
         }
@@ -409,6 +416,20 @@ impl Function {
         Ok(())
     }
 
+    fn verify_no_meta_instruction(&self) -> Result<(), Error> {
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                if instr.is_meta_instruction() {
+                    return Err(Error::MetaInstructionNotAllowed {
+                        function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                        instruction: format!("{:?}", instr),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn verify_ssa_soundness(&self) -> Result<(), Error> {
         let mut defined_names = BTreeSet::new();
 
@@ -498,6 +519,7 @@ impl Function {
         self.verify_phi_first_instr_of_block()?;
         self.verify_target_soundness()?;
         self.verify_ssa_soundness()?;
+        self.verify_no_meta_instruction()?;
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Label::NIL) {
@@ -550,7 +572,7 @@ impl Function {
     }
 
     /// Retrieve instruction from a [`FunctionInstructionReference`].
-    pub fn get(&self, reference: FunctionInstructionReference) -> Option<&HyInstr> {
+    pub fn get(&self, reference: InstructionRef) -> Option<&HyInstr> {
         self.body
             .get(&reference.block)
             .and_then(|bb| bb.instructions.get(reference.index))
@@ -579,13 +601,13 @@ impl Function {
     }
 
     /// Derive the dest-map, for each SSA name associate 1) the defining block label and 2) the instruction index within the block.
-    pub fn derive_dest_map(&self) -> BTreeMap<Name, (Label, usize)> {
+    pub fn derive_dest_map(&self) -> BTreeMap<Name, InstructionRef> {
         let mut dest_map = BTreeMap::new();
 
         for (block_label, block) in &self.body {
             for (instr_index, instr) in block.instructions.iter().enumerate() {
                 if let Some(dest) = instr.destination() {
-                    dest_map.insert(dest, (*block_label, instr_index));
+                    dest_map.insert(dest, InstructionRef::from((*block_label, instr_index)));
                 }
             }
         }
@@ -606,6 +628,29 @@ impl Function {
         }
         None
     }
+
+    /// Get analysis context for the function.
+    pub fn generate_analysis_context(&'_ self) -> FunctionAnalysisContext<'_> {
+        FunctionAnalysisContext {
+            function: self,
+            cfg: self.derive_function_flow(),
+            dest_map: self.derive_dest_map(),
+        }
+    }
+}
+
+/// Analyze context for a function.
+///
+/// This contains a list of acceleration structures to speed up analysis and
+/// ease lookups when dealing with functions.
+#[derive(Debug, Clone)]
+pub struct FunctionAnalysisContext<'a> {
+    /// The function being analyzed.
+    pub function: &'a Function,
+    /// The control flow graph of the function.
+    pub cfg: DiGraphMap<Label, Option<Operand>>,
+    /// The destination map of the function.
+    pub dest_map: BTreeMap<Name, InstructionRef>,
 }
 
 /// A module containing defined functions and references to external ones.

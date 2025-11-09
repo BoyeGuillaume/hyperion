@@ -141,8 +141,8 @@ fn main() {
     println!("Control Flow Graph of factorial function:");
     for edge in cfg.all_edges() {
         match edge.2 {
-            Some(op) => println!("  {:?} --[{:?}]-> {:?}", edge.0, op, edge.1),
-            None => println!("  {:?} --> {:?}", edge.0, edge.1),
+            Some(op) => println!("  {} --[{:?}]-> {}", edge.0, op, edge.1),
+            None => println!("  {} --> {}", edge.0, edge.1),
         }
     }
 

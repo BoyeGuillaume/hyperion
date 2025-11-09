@@ -540,3 +540,75 @@ impl Instruction for IXor {
         Some(self.ty)
     }
 }
+
+/// Implies instruction (logical implication, works on type i1)
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct IImplies {
+    pub dest: Name,
+    pub ty: Typeref,
+    pub premise: Operand,
+    pub conclusion: Operand,
+}
+
+impl Instruction for IImplies {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        [&self.premise, &self.conclusion].into_iter()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.premise, &mut self.conclusion].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Equivalence instruction (logical equivalence, works on type i1)
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct IEquiv {
+    pub dest: Name,
+    pub ty: Typeref,
+    pub lhs: Operand,
+    pub rhs: Operand,
+}
+
+impl Instruction for IEquiv {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        [&self.lhs, &self.rhs].into_iter()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        [&mut self.lhs, &mut self.rhs].into_iter()
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}

@@ -37,6 +37,8 @@ pub enum HyInstr {
     IOr(int::IOr),
     IXor(int::IXor),
     INot(int::INot),
+    IImplies(int::IImplies),
+    IEquiv(int::IEquiv),
 
     // Floating-point instructions
     FAdd(fp::FAdd),
@@ -56,6 +58,8 @@ pub enum HyInstr {
     // Misc instructions
     Invoke(misc::Invoke),
     Assert(misc::Assert),
+    Assume(misc::Assume),
+    FreeVar(misc::FreeVar),
     Phi(misc::Phi),
     Select(misc::Select),
 }
@@ -272,7 +276,26 @@ impl HyInstr {
                             inot.value.fmt(self.module)
                         )
                     }
-
+                    HyInstr::IImplies(iimplies) => {
+                        write!(
+                            f,
+                            "%{} = implies {} {}, {}",
+                            iimplies.dest,
+                            self.registry.fmt(iimplies.ty),
+                            iimplies.premise.fmt(self.module),
+                            iimplies.conclusion.fmt(self.module)
+                        )
+                    }
+                    HyInstr::IEquiv(iequiv) => {
+                        write!(
+                            f,
+                            "%{} = equiv {} {}, {}",
+                            iequiv.dest,
+                            self.registry.fmt(iequiv.ty),
+                            iequiv.lhs.fmt(self.module),
+                            iequiv.rhs.fmt(self.module)
+                        )
+                    }
                     HyInstr::FAdd(fadd) => {
                         write!(f, "%{} = fadd ", fadd.dest)?;
 
@@ -476,6 +499,17 @@ impl HyInstr {
                     HyInstr::Assert(assert) => {
                         write!(f, "assert {}", assert.condition.fmt(self.module))
                     }
+                    HyInstr::Assume(assume) => {
+                        write!(f, "assume {}", assume.condition.fmt(self.module))
+                    }
+                    HyInstr::FreeVar(freevar) => {
+                        write!(
+                            f,
+                            "%{} = freevar {}",
+                            freevar.dest,
+                            self.registry.fmt(freevar.ty)
+                        )
+                    }
                     HyInstr::Phi(phi) => {
                         write!(f, "%{} = phi {} ", phi.dest, self.registry.fmt(phi.ty))?;
 
@@ -518,6 +552,14 @@ macro_rules! define_instr_any_instr {
         $($variant:ident),* $(,)?
     ) => {
         impl Instruction for HyInstr {
+            fn is_meta_instruction(&self) -> bool {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.is_meta_instruction(),
+                    )*
+                }
+            }
+
             #[auto_enum(Iterator)]
             fn operands(&self) -> impl Iterator<Item = &Operand> {
                 match self {
@@ -585,6 +627,8 @@ define_instr_any_instr! {
     IOr,
     IXor,
     INot,
+    IImplies,
+    IEquiv,
     FAdd,
     FSub,
     FMul,
@@ -598,6 +642,8 @@ define_instr_any_instr! {
     MGetElementPtr,
     Invoke,
     Assert,
+    Assume,
+    FreeVar,
     Phi,
     Select,
 }
@@ -624,6 +670,8 @@ define_hyinstr_from!(int::IAnd, IAnd);
 define_hyinstr_from!(int::IOr, IOr);
 define_hyinstr_from!(int::IXor, IXor);
 define_hyinstr_from!(int::INot, INot);
+define_hyinstr_from!(int::IImplies, IImplies);
+define_hyinstr_from!(int::IEquiv, IEquiv);
 
 define_hyinstr_from!(fp::FAdd, FAdd);
 define_hyinstr_from!(fp::FSub, FSub);
@@ -640,5 +688,7 @@ define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
 
 define_hyinstr_from!(misc::Invoke, Invoke);
 define_hyinstr_from!(misc::Assert, Assert);
+define_hyinstr_from!(misc::Assume, Assume);
+define_hyinstr_from!(misc::FreeVar, FreeVar);
 define_hyinstr_from!(misc::Phi, Phi);
 define_hyinstr_from!(misc::Select, Select);

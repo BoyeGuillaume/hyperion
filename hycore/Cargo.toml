@@ -7,4 +7,5 @@ edition = "2024"
 hyinstr.workspace = true
 uuid.workspace = true
 petgraph.workspace = true
+smallvec.workspace = true
 strum = { workspace = true, features = ["derive"] }

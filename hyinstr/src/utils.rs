@@ -63,4 +63,13 @@ pub enum Error {
         "The basic block `{label}` referenced in function `{function}` is not defined within the function."
     )]
     UndefinedBasicBlock { function: String, label: Label },
+
+    /// Meta instructions are not allowed in this context.
+    #[error(
+        "Meta instructions are only available internally for properties and attributes constructions. They SHOULD NOT appear in regular instructions. Function `{function}` contains a meta-instruction `{instruction}`."
+    )]
+    MetaInstructionNotAllowed {
+        function: String,
+        instruction: String,
+    },
 }

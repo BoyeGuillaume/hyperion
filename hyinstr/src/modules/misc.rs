@@ -8,9 +8,11 @@ use crate::{
 
 /// Assertion instruction
 ///
-/// This is (mostly) used for properties derivation and verification. An assertion
-/// instruction checks that a given condition holds at runtime; if not, the program
-/// should abort or raise an error.
+/// This is a meta-instruction used for verification purposes. It should never
+/// appear in executable code. It should point to a condition that must hold at
+/// this program point. Therefore `assert %cond` signifies that `%cond` IS true
+/// and is similar to the statement `%cond == true`. Proof for assertions can
+/// be provided by the derivation engine or external tools.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Assert {
@@ -19,6 +21,97 @@ pub struct Assert {
 }
 
 impl Instruction for Assert {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.condition)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.condition)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn set_destination(&mut self, _name: Name) {
+        // No destination to set
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+}
+
+/// Free variable instruction
+///
+/// A special instruction used to declare free variables within a function. This is a
+/// meta-instruction and should NEVER appear in executable code. Free variables are
+/// symbolic placeholders that are used for proof generation and verification purposes.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FreeVar {
+    /// The destination SSA name for the free variable.
+    pub dest: Name,
+    /// The type of the free variable.
+    pub ty: Typeref,
+}
+
+impl Instruction for FreeVar {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Assumption instruction
+///
+/// Assumptions are similar to assertions, but they indicate conditions that are
+/// expected to hold true at a specific program point.
+/// They are mostly use in cunjunction with [`FreeVar`] instructions to
+/// introduce constraints on free variables.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Assume {
+    /// The condition to assume. This should evaluate to a boolean value.
+    pub condition: Operand,
+}
+
+impl Instruction for Assume {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.condition)
     }
