@@ -2,6 +2,18 @@
 #import "@preview/thmbox:0.3.0": *
 #import "@preview/rustycure:0.2.0": qr-code
 #import "@preview/diagraph:0.3.6": raw-render
+#import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node
+
+#let blob(pos, label, tint: white, ..args) = node(
+  pos,
+  align(center, label),
+  width: 28mm,
+  fill: tint.lighten(60%),
+  stroke: 1pt + tint.darken(20%),
+  corner-radius: 5pt,
+  ..args,
+)
+
 
 #show: thmbox-init()
 #show: slides.with(
@@ -199,18 +211,6 @@ We define the *state of optimization* as follow~:
   Given a function $f in bb(F)$, made of basic blocks $B = {b_1, ..., b_m}$, we say that a basic block $b_j$ is *reachable* from a basic block $b_i$ if there exists a path from $b_i$ to $b_j$ in the control flow graph $"CFG"(f)$.
 ]
 
-// #pagebreak()
-// We attach to each function a series of `assertions`. Those assertions can be understand as formal theorems about the function. Those
-// assertions linked with a series of *meta-instructions* that do not contribute to the actual execution of the function.
-
-// _Meta-instructions_ can be understand as *hints* given to the optimizer about potential transformations that can be applied to the function.
-// Those assertions are always either
-// 1. Attached at the *beginning* of the function, in which case they are called *pre-conditions*, unlike standard assertions they provide conditions
-//   for which the proof is valid.
-// 2. Attached at the *end* of the function, in which case they are called *post-conditions*, unlike standard assertions they provide guarantees about the function output.
-// 3. Internal to the function, in which case they are always attached to a certain *block* and are called *invariants*, those provide guarantees
-//   about the state of the function at a certain point.
-
 == State of optimization -- A Simple Example
 Suppose we have the following function
 
@@ -241,19 +241,34 @@ We perform the following analysis:
 
 We perform a *simple-disjunction* to determine based on the follow CFG~:
 #align(center, {
-  raw-render(
-    ```dot
-    digraph {
-      node [shape=circle, style=filled, fillcolor=lightgrey];
-      rankdir="LR";
+  diagram(
+    cell-size: (50mm, 9mm),
+    spacing: (24pt, 5pt),
+    // spacing: (8pt, 1pt),
+    mark-scale: 70%,
 
-      entry -> loop;
-      loop -> loop;
-      loop -> output;
-      entry -> output;
-    }
-    ```,
+    blob((0, 0), [Entry], tint: yellow, shape: fletcher.shapes.hexagon),
+    blob((1, 0), [Loop], tint: orange),
+    blob((2, 0), [Output], tint: green, shape: fletcher.shapes.hexagon),
+
+    edge((0, 0), (1, 0), text($"%exp" != 0$), "-|>"),
+    edge((1, 0), (2, 0), text($"%next_exp" = 0$), "-|>"),
+    edge((1, 0), (1, 0), text($"%next_exp" != 0$), "-|>", bend: 135deg),
+    edge((0, 0), (2, 0), text($"%exp" = 0$), "-|>", bend: -13deg),
   )
+  // raw-render(
+  //   ```dot
+  //   digraph {
+  //     node [shape=circle, style=filled, fillcolor=lightgrey];
+  //     rankdir="LR";
+
+  //     entry -> loop;
+  //     loop -> loop;
+  //     loop -> output;
+  //     entry -> output;
+  //   }
+  //   ```,
+  // )
 })
 
 We split the function into two possible paths~:
@@ -271,9 +286,9 @@ Path 1 is trivial, as such we will only analyse path 2.
 - Arithmetic progression, we relize that `is_done` is reachable when `%exp >= 1`
 Conclusion of *step 1*:
 1. $1 <= %"current_exp" <= %"exp"$
-2. `is_done` is *always* reachable when `%exp >= 1`
-3. Number of loop iteration is exactly `%exp`
-4. At loop exit, we have that `%next_exp == 0`
+2. `is_done` is *always* reachable when $%"exp" >= 1$
+3. Number of loop iteration is exactly $%"exp"$
+4. At loop exit, we have that $%"next_exp" == 0$
 
 #pagebreak()
 *Step 2*: Determine value of `%current` at loop exit:
@@ -342,7 +357,12 @@ As such, we have seen what constraints and conditions we should expect for a goo
 2. Should allow precondition to capture complex condition for flow disjunction.
 3. Should allow for post-condition to capture complex behavior of many-functions.
 4. Should account for *non-determinism* and *probabilistic algorithms*.
+  - Use of $PP: cal(B) -> RR_[0,1]$ and other statistics such as $EE, "Var"$. This will become the base for statistical modeling during optimisation.
 5. Should account for *memory side-effects* and *concurrency* by providing ordering constraints.
+  - Memory locations should *always* be tracked, notably assertions should be made about
+    *non-interfering* per-location as well as the equivalent for `__restrict__` pointers.
+  - Typing inferred from memory _(if possible)_.
+  - Keep track of addressing by nested function call (notably for data-structure substitution candidacy).
 
 #pagebreak()
 Here is a list of elements to consider
@@ -359,6 +379,23 @@ Here is a list of elements to consider
   $forall k_1, k_2 in T. space k_1 != k_2 => P(h(k_1) = h(k_2)) <= (1 + epsilon) dot 1/(2^64 - 1)$
 ]
 
+#pagebreak()
+
+
+#align(center, {
+  diagram(
+    cell-size: (50mm, 9mm),
+    spacing: (24pt, 5pt),
+    // spacing: (8pt, 1pt),
+    mark-scale: 70%,
+
+    blob((0, 0), [Module $m$], tint: purple.darken(20%)),
+    blob((0, 1), [Function $f$], tint: blue.darken(20%)),
+
+    // edge((0, 0), (1, 1), text("Requires"), "-|>"),
+    // edge((0, 0), (1, -1), text("Ensures"), "-|>"),
+  )
+})
 
 
 = Conclusion
