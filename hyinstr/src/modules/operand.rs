@@ -10,8 +10,11 @@ use strum::EnumIs;
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
 pub type Name = u32;
+
+/// Represents a meta‑operand used internally in attributes/properties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MetaName(pub u32);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaLabel(pub u32);
 
 /// Represents a code label used as a target for control‑flow instructions (besides invokes).
 ///
@@ -59,7 +62,7 @@ pub enum Operand {
     /// Notice: Meta operands should not appear in regular instructions and
     /// is prohibeted to appear in well-formed modules. Should only be used
     /// in attributes/properties.
-    Meta(MetaName),
+    Meta(MetaLabel),
 }
 
 impl Operand {
@@ -75,7 +78,7 @@ impl Operand {
                     Operand::Reg(name) => write!(f, "%{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
                     Operand::Lbl(label) => write!(f, "{:#}", label),
-                    Operand::Meta(meta) => write!(f, "P{}", meta.0),
+                    Operand::Meta(meta) => write!(f, "M{}", meta.0),
                 }
             }
         }

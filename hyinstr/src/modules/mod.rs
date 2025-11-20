@@ -33,6 +33,7 @@ pub mod fp;
 pub mod instructions;
 pub mod int;
 pub mod mem;
+pub mod meta;
 pub mod misc;
 pub mod operand;
 pub mod symbol;
@@ -442,10 +443,10 @@ impl Function {
 
         for bb in self.body.values() {
             for instr in &bb.instructions {
-                if let Some(dest) = instr.destination() {
-                    if !defined_names.insert(dest) {
-                        return Err(Error::DuplicateSSAName { duplicate: dest });
-                    }
+                if let Some(dest) = instr.destination()
+                    && !defined_names.insert(dest)
+                {
+                    return Err(Error::DuplicateSSAName { duplicate: dest });
                 }
             }
         }
@@ -619,10 +620,10 @@ impl Function {
     pub fn get_instruction_by_dest(&self, name: Name) -> Option<&HyInstr> {
         for block in self.body.values() {
             for instr in &block.instructions {
-                if let Some(dest) = instr.destination() {
-                    if dest == name {
-                        return Some(instr);
-                    }
+                if let Some(dest) = instr.destination()
+                    && dest == name
+                {
+                    return Some(instr);
                 }
             }
         }

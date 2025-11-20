@@ -83,7 +83,7 @@ impl<T: Into<IConst>> From<T> for AnyConst {
 
 impl From<FConst> for AnyConst {
     fn from(value: FConst) -> Self {
-        AnyConst::Float(value.into())
+        AnyConst::Float(value)
     }
 }
 

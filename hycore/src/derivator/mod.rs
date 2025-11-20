@@ -54,8 +54,6 @@
 //! ## Object safety
 //! The blanket impl for `DynPropDerivator` enables storing heterogeneous derivators
 //! behind trait objects while still supporting resumable contexts via `Box<dyn Any>`.
-use std::usize;
-
 use hyinstr::modules::FunctionAnalysisContext;
 use strum::{EnumIs, EnumTryAs};
 
@@ -156,10 +154,10 @@ pub trait PropDerivator {
                 time_elapsed: start_time.elapsed(),
             };
 
-            if let Some(time_budget) = argument.time_budget {
-                if run_info.time_elapsed >= time_budget {
-                    break (PropDerivatorStatus::Continue, run_info);
-                }
+            if let Some(time_budget) = argument.time_budget
+                && run_info.time_elapsed >= time_budget
+            {
+                break (PropDerivatorStatus::Continue, run_info);
             }
 
             if budget == 0 {

@@ -15,6 +15,7 @@ log.workspace = true
 auto_enums.workspace = true
 thiserror.workspace = true
 petgraph.workspace = true
+either.workspace = true
 
 [features]
 default = []

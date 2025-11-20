@@ -7,7 +7,7 @@ use crate::{
     modules::{
         Instruction, Module, fp,
         int::{self, IntegerSignedness, OverflowPolicy},
-        mem, misc,
+        mem, meta, misc,
         operand::Operand,
     },
     types::TypeRegistry,
@@ -57,11 +57,12 @@ pub enum HyInstr {
 
     // Misc instructions
     Invoke(misc::Invoke),
-    Assert(misc::Assert),
-    Assume(misc::Assume),
-    FreeVar(misc::FreeVar),
     Phi(misc::Phi),
     Select(misc::Select),
+
+    // Meta instructions
+    MetaAssert(meta::MetaAssert),
+    MetaProb(meta::MetaProb),
 }
 
 impl HyInstr {
@@ -496,20 +497,6 @@ impl HyInstr {
                             write!(f, "invoke void({})", args_str)
                         }
                     }
-                    HyInstr::Assert(assert) => {
-                        write!(f, "assert {}", assert.condition.fmt(self.module))
-                    }
-                    HyInstr::Assume(assume) => {
-                        write!(f, "assume {}", assume.condition.fmt(self.module))
-                    }
-                    HyInstr::FreeVar(freevar) => {
-                        write!(
-                            f,
-                            "%{} = freevar {}",
-                            freevar.dest,
-                            self.registry.fmt(freevar.ty)
-                        )
-                    }
                     HyInstr::Phi(phi) => {
                         write!(f, "%{} = phi {} ", phi.dest, self.registry.fmt(phi.ty))?;
 
@@ -534,6 +521,32 @@ impl HyInstr {
                             select.true_value.fmt(self.module),
                             select.false_value.fmt(self.module)
                         )
+                    }
+                    HyInstr::MetaAssert(assert) => {
+                        write!(f, "@assert {}", assert.condition.fmt(self.module))
+                    }
+                    HyInstr::MetaProb(prob) => {
+                        write!(f, "%{} = @prob ", prob.dest)?;
+
+                        write!(f, "{} ", self.registry.fmt(prob.ty))?;
+
+                        match &prob.operand {
+                            meta::ProbOperand::Probability(op) => {
+                                write!(f, "probability {}", op.fmt(self.module))
+                            }
+                            meta::ProbOperand::ExpectedValue(op) => {
+                                write!(f, "expected_value {}", op.fmt(self.module))
+                            }
+                            meta::ProbOperand::Variance(operand) => {
+                                write!(f, "variance {}", operand.fmt(self.module))
+                            }
+                            meta::ProbOperand::ProbabilityReachability => {
+                                write!(f, "probability_reachability")
+                            }
+                            meta::ProbOperand::ExpectedIterations => {
+                                write!(f, "expected_iterations")
+                            }
+                        }
                     }
                 }
             }
@@ -641,11 +654,10 @@ define_instr_any_instr! {
     MAlloca,
     MGetElementPtr,
     Invoke,
-    Assert,
-    Assume,
-    FreeVar,
     Phi,
     Select,
+    MetaAssert,
+    MetaProb,
 }
 
 macro_rules! define_hyinstr_from {
@@ -687,8 +699,8 @@ define_hyinstr_from!(mem::MAlloca, MAlloca);
 define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
 
 define_hyinstr_from!(misc::Invoke, Invoke);
-define_hyinstr_from!(misc::Assert, Assert);
-define_hyinstr_from!(misc::Assume, Assume);
-define_hyinstr_from!(misc::FreeVar, FreeVar);
 define_hyinstr_from!(misc::Phi, Phi);
 define_hyinstr_from!(misc::Select, Select);
+
+define_hyinstr_from!(meta::MetaAssert, MetaAssert);
+define_hyinstr_from!(meta::MetaProb, MetaProb);

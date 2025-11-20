@@ -1,0 +1,162 @@
+use crate::{
+    modules::{
+        Instruction,
+        operand::{Name, Operand},
+    },
+    types::Typeref,
+};
+use either::Either;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+/// Assertion instruction
+///
+/// This is a meta-instruction used for verification purposes. It should never
+/// appear in executable code. It should point to a condition that must hold at
+/// this program point. Therefore `assert %cond` signifies that `%cond` IS true
+/// and is similar to the statement `%cond == true`. Proof for assertions can
+/// be provided by the derivation engine or external tools.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaAssert {
+    /// The condition to assert. This should evaluate to a boolean value.
+    pub condition: Operand,
+}
+
+impl Instruction for MetaAssert {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.condition)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.condition)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+
+    fn dependencies(&self) -> impl Iterator<Item = Name> {
+        self.operands().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(*reg),
+            _ => None,
+        })
+    }
+
+    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(reg),
+            _ => None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ProbOperand {
+    /// Operand (boolean) value, this is the probability that the given operand is true. Input
+    /// should be a boolean value.
+    Probability(Operand),
+
+    /// Expected value of an operand
+    ///
+    /// Operand should be a numeric value (integer or floating-point), this represents the expected
+    /// value of that operand in average defined as E[X] = Σ [ x * P(X=x) ] over all possible values x.
+    ExpectedValue(Operand),
+
+    /// Variance of an operand
+    ///
+    /// Operand should be a numeric value (integer or floating-point), this represents the variance
+    /// of that operand defined as Var(X) = E[(X - E[X])^2].
+    Variance(Operand),
+
+    /// Probability of reachability
+    ///
+    /// If this meta-instruction is used within a certain control-flow path, then this indicates
+    /// the probability of reaching this point in the program.
+    ///
+    /// *Note*: The assumption that whenever a block is reached all instructions within it are
+    /// also reached is false due to crashes. Imagine a %load instruction that may fail due to
+    /// an invalid pointer dereference. *This function does not check that all instructions are
+    /// reached but only that the block containing them is reached.*
+    ProbabilityReachability,
+
+    /// Expected number of iterations for loops
+    ExpectedIterations,
+}
+
+/// Probability function instruction
+///
+/// This operation represents a probability function used in probabilistic programming.
+/// It is a meta-instruction and should not appear in executable code. It is used
+/// for modeling and reasoning about probabilistic computations.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaProb {
+    /// The destination SSA name for the result of the probability function.
+    pub dest: Name,
+
+    /// The output type of the probability function.
+    ///
+    /// This should always be a floating-point type representing a probability value
+    pub ty: Typeref,
+
+    /// The operand representing the probability input.
+    pub operand: ProbOperand,
+}
+
+impl Instruction for MetaProb {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        match &self.operand {
+            ProbOperand::Probability(op)
+            | ProbOperand::ExpectedValue(op)
+            | ProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
+            ProbOperand::ProbabilityReachability | ProbOperand::ExpectedIterations => {
+                Either::Right(std::iter::empty())
+            }
+        }
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        match &mut self.operand {
+            ProbOperand::Probability(op)
+            | ProbOperand::ExpectedValue(op)
+            | ProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
+            ProbOperand::ProbabilityReachability | ProbOperand::ExpectedIterations => {
+                Either::Right(std::iter::empty())
+            }
+        }
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
