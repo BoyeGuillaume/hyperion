@@ -117,7 +117,7 @@ Let us then add output memory state to the definition.
 We therefore attempt another definition that account for non-termination and crashes.
 
 #definition(title: "Proposal 3")[
-  A function $f in bb(F)$ is defined as a mapping $f in (A_1, ..., A_n, Gamma) -> (O union {lozenge.filled, lozenge} times Gamma)$
+  A function $f in bb(F)$ is defined as a mapping $f in (A_1, ..., A_n, Gamma) -> (O union {lozenge.filled, lozenge}) times Gamma$
 
   Where:
   - $A_i$ are the argument types.
@@ -135,9 +135,9 @@ We therefore attempt another definition that account for non-termination and cra
 Let us define a new notion called temporally-dependent function
 
 #definition(title: "Proposal 4")[
-  A function $f in FF$ defined as an arbitrary object. Let us define the transition function $tau_f(a_1, ..., a_n) : Gamma -> Gamma union \{ lozenge.filled, lozenge \}$. We can then define the
+  A function $f in FF$ defined as an arbitrary object. Let us define the transition function $tau_f(a_1, ..., a_n) : Gamma times Theta -> Gamma times (Theta union \{ lozenge.filled, lozenge \})$. We can then define the
   following series~:
-  - $(theta_i, Gamma^f_0) = (emptyset, gamma)$
+  - $(theta_i, Gamma^f_0) = ({a_1, ..., a_n}, gamma)$
   - $(theta_(i+1), Gamma^f_(i+1)) = tau_f(a_1, ..., a_n)(theta_i, Gamma^f_i)$
   We call $Gamma$ the *memory trace* of $f$ on inputs $a_1, ..., a_n$ and initial memory state $gamma$. Concurrency can be introduce in which case the value of $Gamma^f_i$ depend on the interleaving of memory operations between multiple functions.
 ]
@@ -328,14 +328,15 @@ Conclusion of *step 1*:
 Conclusion of *step 2*:
 1. At loop exit, we have that `%current == %base * %base * ... * %base` (`%exp` times)
 
-#todo[
-  Currently we cannot express the conclusion as a post-condition directly as we don't have a `pow` operator in the framework.
-]
-
 *Step 3*: Additional properties derivation (*WIP*):
 - We can derive that `%pow(%base, %a + %b) == %pow(%base, %a) * %pow(%base, %b)`
 - We can derive that `%pow(%a * %b, %exp) == %pow(%a, %exp) * %pow(%b, %exp)`
 - We can derive that `%pow(%base, %0) == 1`
+
+#todo[
+  How can we automate the derivation of such properties ?
+  - Invariant and properties also need to track timing (for instance for container get/set properties)
+]
 
 == State of optimization -- Determinism
 
@@ -343,15 +344,18 @@ What could be the post-condition for non-deterministic functions ?
 ```ll
 declare i32 @nondet random();
 ```
-1. We have that `random` is `non-deterministic`
-2. Condition: every possibility is reached after finite times
-```
-random() == 0
-```
 
-#todo[
-  Need to formalize non-determinism in the framework (with probability ?)
-]
+Many algorithm relies on non-determinism to provide better average-case performance. This underline the
+need to model non-determinism in our framework. To do so we have a simple approach
+- Define the *probability* function $P : cal(B) -> RR_[0,1]$ where $cal(B)$ is the set of booleans.
+- Define the *expected value* function $EE : O -> RR$ where $O$ is the set of integers/reals.
+- Define the *variance* function $"Var" : O -> RR_+$ where $O$ is the set of integers/reals.
+
+Introduce a special label `#L` that represent number of times a label is reached during execution. For instance~:
+$
+  P("reachable"(L)) = P("#"L >= 1) \
+  epsilon(f) = sum_i EE("#" B_i) dot "size"(B_i) " for deterministic function"
+$
 
 == State of optimization -- Memory side-effects
 What could be the post-condition for memory-side effect functions ?
@@ -450,6 +454,7 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
     // spacing: (8pt, 1pt),
     mark-scale: 150%,
 
+    // Descriptive level
     blob((0, 0), [Module $m$], tint: purple.darken(20%)),
     blob((0, 1), [Function $f$], tint: blue.darken(20%)),
     blob((0, 2), [Basic Bloc $B_i$], tint: gray.darken(60%)),
@@ -457,7 +462,7 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
     blob((0.6, 3), [Terminator $T_i$], tint: gray.darken(60%)),
 
     node(
-      enclose: ((-1.2, -1), (1.2, 4)),
+      enclose: ((-1.5, -1), (1.1, 4)),
       stroke: teal,
       fill: with_alpha(teal, 10%),
       inset: 8pt,
@@ -476,25 +481,89 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
     edge((0, 2), (-0.6, 3), "-<>"),
     edge((0, 2), (0.6, 3), "-|>"),
 
+    // Meta-analysis blobs
     blob((2, 0), [ModuleSpec], tint: green.lighten(20%)),
     blob((2, 1), [Specification], tint: green.lighten(21%)),
     blob((3, 1), [FuncAnalysis], tint: red.lighten(21%)),
+    blob((4, 1), [Abstraction], tint: orange.lighten(21%)),
 
+    blob((2, 2), [Pre/Post-condition], tint: yellow),
+    blob((3, 2), [State Based Analysis], tint: aqua),
+    blob((4, 2), [Internals], tint: yellow),
 
-    blob((2, 2), [Postcondition]),
-    blob((3, 2), [Internals]),
-    blob((4, 2), [MemAliasing/Typer]),
+    blob((2, 3), [TBehavior], tint: yellow),
+    blob((3, 3), [MemAliasing], tint: yellow),
 
-    blob((2, 3), [Precondition]),
-    blob((3, 3), [FuncAnalysis]),
-    blob((4, 3), [MultiFuncCond]),
+    edge((2, 0), (2, 1), "-|>"),
+    edge((2, 0), (3, 1), "-<>"),
 
-    blob((2, 4), [Assertion]),
-    blob((3, 4), [Abstraction]),
-    blob((4, 4), [TermBehavior], tint: blue.lighten(60%)),
+    edge((2, 1), (2, 2), "-<>"),
+    edge((2, 1), (3, 2), "-<>"),
+    edge((2, 2), (2, 3), "-|>"),
+    edge((3, 2), (2, 3), "-|>"),
+    edge((2, 2), (3, 3), "-|>"),
+    edge((3, 2), (3, 3), "-|>"),
+
+    edge((3, 1), (4, 2), "-<>"),
+    edge((3, 1), (3, 2), "-<>"),
+
+    // blob((2, 2), [Postcondition]),
+    // blob((3, 2), [Internals]),
+    // blob((4, 2), [MemAliasing/Typer]),
+
+    // blob((2, 3), [Precondition]),
+    // blob((3, 3), [FuncAnalysis]),
+    // blob((4, 3), [MultiFuncCond]),
+
+    // blob((2, 4), [Assertion]),
+    // blob((3, 4), [Abstraction]),
+    // blob((4, 4), [TermBehavior], tint: blue.lighten(60%)),
   )
 })
 
+== Specification
+*Specification* provides post-conditions and behavior about a certain function or set of functions. It is used to guide the analysis and abstraction phases.
+- Provides information about behavior to expect from a function ($lozenge.filled, lozenge, "completion"$)
+  ```ll
+  @myhashmap.set terminate/crash on always;
+  ```
+- Supports multi-function modeling for instance~:
+  ```ll
+  %p = @myhashmap.get(%hashmap, %index_1);
+  %b = @myhashmap.set(%hashmap, %index, %value);
+  %a = @myhashmap.get(%hashmap, %index_1);
+  assert((%a == %p) and (%index != %index_1) or (%index == %index_1 and %a == %value));
+  ```
+*NOTE*: _We could also provide a *many* function spec. for multithreading_
+
+#pagebreak()
+
+- Supports abstract properties definition such as *commutativity*, *associativity*, *idempotence*, etc.
+  ```ll
+  behavior commutative<op, A>(@op, %a, %b) {
+    assert(@op(%a, %b) == @op(%b, %a));
+  }
+  ```
+- Supports *constant* function (functions that have non-modifying side-effects in a given argument) + memory aliasing information.
+- Memory aliasing should track region or memory read/write (that *could* be).
+
+  #todo[
+    Figure it out
+  ]
+
+== Finite State Analysis
+The *Finite State Analysis* provides a basic framework to analyze concurrent algorithms and functions with complex dependencies.
+
+#definition(title: "FSA")[
+  Suppose we have a set of functions $F = {f_1, ..., f_n}$ with interfering memory side-effects. We first define *atoms of a function* as the biggest sequence of operation that are one of the following~:
+  - *Rule of exclusion*: Provably non-interfering with any other function in $F$.
+  - *Interleaving point*: Point where memory side-effects could interfere with another function in $F$.
+]
+
+#todo[
+  - Define a framework to analyze such functions based on their atoms.
+  - Define a way to extract such atoms from functions.
+]
 
 = Conclusion
 == Thanks for your attention!
@@ -506,10 +575,9 @@ Thank you for your attention! Any questions?
     "https://github.com/BoyeGuillaume/hyperion",
     width: 60mm,
     height: 60mm,
-    alt: "QR Code",
-    fit: "contain",
+    quiet-zone: true,
   )
 
-  #set text(size: 0.8em)
+  #set text(size: 0.9em)
   Visit the Hyperion GitHub Repository at https://github.com/BoyeGuillaume/hyperion
 ])
