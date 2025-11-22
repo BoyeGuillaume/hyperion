@@ -535,12 +535,16 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
   assert((%a == %p) and (%index != %index_1) or (%index == %index_1 and %a == %value));
   ```
 *NOTE*: _We could also provide a *many* function spec. for multithreading_
+#linebreak()
+*NOTE*: _Should also consider *parameters grouping* (for structural precondition, ex.: commutative on complex)_
+#linebreak()
+
 
 #pagebreak()
 
 - Supports abstract properties definition such as *commutativity*, *associativity*, *idempotence*, etc.
   ```ll
-  behavior commutative<op, A>(@op, %a, %b) {
+  define behavior commutative<A>[@op: fn, @z: A](%a, %b) {
     assert(@op(%a, %b) == @op(%b, %a));
   }
   ```
@@ -548,7 +552,7 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
 - Memory aliasing should track region or memory read/write (that *could* be).
 
   #todo[
-    Figure it out
+    Figure out _concurrency_ modeling in specification.
   ]
 
 == Finite State Analysis
@@ -564,6 +568,55 @@ The *Finite State Analysis* provides a basic framework to analyze concurrent alg
   - Define a framework to analyze such functions based on their atoms.
   - Define a way to extract such atoms from functions.
 ]
+
+== Abstraction
+The *Abstraction* phase provides a way to create higher-level representation of functions based on their behavior and properties.
+- Create *generic* representation of functions/data-structures based on their behavior.
+  ```ll
+  define behavior container<T, U>[op_get, op_set, op_size](%a) {
+    assert(@op_size(%a) >= 0);
+    forall i in [0, @op_size(%a) - 1] {
+      %v = @op_get(%a, i);
+      @op_set(%a, i, %v); // idempotent get/set
+    }
+  }
+  ```
+- Provide a way to *abstract* function into higher-level generic functions (for instance for automated data-structure substitution).
+- _Probably would be beneficial if one could construct *abstracing* abstraction for instance for automatic strategic optimisation. Such an example is the `divide_and_conquer` strategy which dependends on properties of a certain behavior._
+
+== Memory Aliasing & Typing
+The *Memory Aliasing & Typing* phase provides a way to track memory locations and their types through function execution.
+- For each function track and categorize *memory regions* read/written. Often dependent on the input arguments (notably `ptr` arguments), can also be _indirect access_ (`ptr to ptr`), or even random access (hardcoded addresses).
+- Memory is a *complex topic* and it is extremely hard to make proof upon it. Consider things like `volatile`, `atomic`, `cache`, `memory_map`, etc.
+- Provide a way to encode thos _regions_ in a specification mapping. Often precondition are provided on non-interfering between memory regions (or *ownership* in concurrent context).
+- Region should have a `start` and `end` address, and probably a `type` associated to it (if possible).
+- Non coherent typing should provide *UB* (IE. a `i32` read from a region that was written as `f32` is *UB*).
+
+#pagebreak()
+Here is a possible representation of a memory region and its aliasing information~:
+```rust
+struct MemoryRegion {
+  start: Operand,
+  size: Option<Operand>, /* if known */
+  access_flags: usize, /* Read/Write/Mmap (ie. file)/Shared/Private, etc. */
+  ty: Option<Typeref>, /* if known */
+  alignment: u32, /* alignment in bytes (required for correctness) */
+  additional_constraints: Vec<Operand>, /* things like only write %index % 4 == 0, etc. */
+}
+
+struct MemoryAliasing {
+  regions: Vec<MemoryRegion>,
+  exclusions: SparseMatrix<bool>, /* exclusion matrix between regions */
+  /* reserved: allocation_sites */
+}
+```
+
+== Performance & Behavior
+The *Performance & Behavior* phase provides a way to analyze and optimize functions based on their performance characteristics.
+- Track performance metrics such as *time complexity*, *space complexity*, *cache usage*, etc.
+- Provide a way to encode those metrics in the specification mapping.
+- Use those metrics to guide the optimization phase.
+- _Could also provide a way to model *probabilistic performance* for non-deterministic algorithms._
 
 = Conclusion
 == Thanks for your attention!
