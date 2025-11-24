@@ -117,6 +117,7 @@ fn main() {
             .collect(),
         visibility: Some(hyinstr::modules::Visibility::Default),
         wildcard_types: Default::default(),
+        meta_function: false,
     };
 
     factorial_function.normalize_ssa();

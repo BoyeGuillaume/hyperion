@@ -62,6 +62,7 @@ pub enum HyInstr {
 
     // Meta instructions
     MetaAssert(meta::MetaAssert),
+    MetaAssume(meta::MetaAssume),
     MetaProb(meta::MetaProb),
 }
 
@@ -523,28 +524,31 @@ impl HyInstr {
                         )
                     }
                     HyInstr::MetaAssert(assert) => {
-                        write!(f, "@assert {}", assert.condition.fmt(self.module))
+                        write!(f, "meta-assert {}", assert.condition.fmt(self.module))
+                    }
+                    HyInstr::MetaAssume(assume) => {
+                        write!(f, "meta-assume {}", assume.condition.fmt(self.module))
                     }
                     HyInstr::MetaProb(prob) => {
-                        write!(f, "%{} = @prob ", prob.dest)?;
+                        write!(f, "%{} = meta-prob ", prob.dest)?;
 
                         write!(f, "{} ", self.registry.fmt(prob.ty))?;
 
                         match &prob.operand {
                             meta::ProbOperand::Probability(op) => {
-                                write!(f, "probability {}", op.fmt(self.module))
+                                write!(f, "P({})", op.fmt(self.module))
                             }
                             meta::ProbOperand::ExpectedValue(op) => {
-                                write!(f, "expected_value {}", op.fmt(self.module))
+                                write!(f, "E({})", op.fmt(self.module))
                             }
                             meta::ProbOperand::Variance(operand) => {
-                                write!(f, "variance {}", operand.fmt(self.module))
+                                write!(f, "Var({})", operand.fmt(self.module))
                             }
                             meta::ProbOperand::ProbabilityReachability => {
-                                write!(f, "probability_reachability")
+                                write!(f, "P(#L >= 1)")
                             }
                             meta::ProbOperand::ExpectedIterations => {
-                                write!(f, "expected_iterations")
+                                write!(f, "E(#L)")
                             }
                         }
                     }
@@ -657,6 +661,7 @@ define_instr_any_instr! {
     Phi,
     Select,
     MetaAssert,
+    MetaAssume,
     MetaProb,
 }
 
@@ -703,4 +708,5 @@ define_hyinstr_from!(misc::Phi, Phi);
 define_hyinstr_from!(misc::Select, Select);
 
 define_hyinstr_from!(meta::MetaAssert, MetaAssert);
+define_hyinstr_from!(meta::MetaAssume, MetaAssume);
 define_hyinstr_from!(meta::MetaProb, MetaProb);

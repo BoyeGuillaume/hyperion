@@ -9,3 +9,8 @@ uuid.workspace = true
 petgraph.workspace = true
 smallvec.workspace = true
 strum = { workspace = true, features = ["derive"] }
+bitflags = { workspace = true }
+nalgebra = { workspace = true, features = ["sparse"] }
+enum-map = { workspace = true }
+log = { workspace = true }
+either.workspace = true

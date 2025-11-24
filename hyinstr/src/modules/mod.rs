@@ -314,16 +314,30 @@ impl BasicBlock {
 /// Parameters are represented as a list of `(Name, Typeref)` pairs.
 ///
 /// By convention the entrypoint is the basic block with the [`Uuid::nil()`] UUID.
+///
+/// We distinguish between "meta-functions" and regular functions. Meta-functions are used
+/// for verification or analysis purposes and may contain meta-instructions and operands.
+/// They cannot be executed directly but serve as specifications or annotations for other functions.
 #[derive(Debug, Clone, Hash)]
 pub struct Function {
+    /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
+    /// The display name of the function, if any (debugging purposes).
     pub name: Option<String>,
+    /// The list of parameters for the function (as `(Name, Typeref)` pairs).
     pub params: Vec<(Name, Typeref)>,
+    /// The return type of the function. `None` indicates `void` return type.
     pub return_type: Option<Typeref>,
+    /// The body of the function, represented as a mapping from basic block labels to basic blocks.
     pub body: BTreeMap<Label, BasicBlock>,
+    /// The visibility of the function (ignored for meta-functions).
     pub visibility: Option<Visibility>,
+    /// The linkage of the function (ignored for meta-functions).
     pub cconv: Option<CallingConvention>,
+    /// The set of wildcard types used in the function.
     pub wildcard_types: BTreeSet<WType>,
+    /// Indicates whether this function is a meta-function (i.e., used for verification or analysis purposes).
+    pub meta_function: bool,
 }
 
 impl Function {
@@ -516,7 +530,9 @@ impl Function {
     /// 2) Each name is defined exactly once.
     pub fn check_ssa(&self) -> Result<(), Error> {
         self.verify_wildcards_soundness()?;
-        self.verify_no_meta_operands()?;
+        if !self.meta_function {
+            self.verify_no_meta_operands()?;
+        }
         self.verify_phi_first_instr_of_block()?;
         self.verify_target_soundness()?;
         self.verify_ssa_soundness()?;
@@ -614,6 +630,37 @@ impl Function {
         }
 
         dest_map
+    }
+
+    /// Derive a list of all [`InstructionRef`]s based on a predicate
+    pub fn gather_instructions_by_predicate<F>(&self, predicate: F) -> Vec<InstructionRef>
+    where
+        F: Fn(&HyInstr) -> bool,
+    {
+        let mut references = Vec::new();
+
+        for (block_label, block) in &self.body {
+            for (instr_index, instr) in block.instructions.iter().enumerate() {
+                if predicate(instr) {
+                    references.push(InstructionRef::from((*block_label, instr_index)));
+                }
+            }
+        }
+
+        references
+    }
+
+    /// Iterate over all instructions in the function.
+    pub fn iter(&self) -> impl Iterator<Item = (&HyInstr, InstructionRef)> {
+        self.body.iter().flat_map(|(block_label, block)| {
+            block
+                .instructions
+                .iter()
+                .enumerate()
+                .map(move |(instr_index, instr)| {
+                    (instr, InstructionRef::from((*block_label, instr_index)))
+                })
+        })
     }
 
     /// Retrieve an instruction from its SSA destination name.

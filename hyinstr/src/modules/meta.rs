@@ -63,6 +63,67 @@ impl Instruction for MetaAssert {
     }
 }
 
+/// Assumption instruction
+///
+/// This is a meta-instruction used to indicate that a certain condition is assumed
+/// to hold at this program point. Unlike assertions, assumptions do not require proof
+/// and are used to guide optimizations or analyses.
+///
+/// This is used in specifications as a 'precondition' check.
+///
+/// Basically, `assume %cond` signifies that all paths where `%cond` is false are impossible
+/// while `assert %cond` signifies that ∵ `%cond` is true.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaAssume {
+    /// The condition to assume. This should evaluate to a boolean value.
+    pub condition: Operand,
+}
+
+impl Instruction for MetaAssume {
+    fn is_meta_instruction(&self) -> bool {
+        true
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.condition)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.condition)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+
+    fn dependencies(&self) -> impl Iterator<Item = Name> {
+        self.operands().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(*reg),
+            _ => None,
+        })
+    }
+
+    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(reg),
+            _ => None,
+        })
+    }
+}
+
+/// Probability operand types
+///
+/// Models different kinds of probability-related operands that can be used in
+/// probabilistic programming constructs.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ProbOperand {
