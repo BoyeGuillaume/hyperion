@@ -90,6 +90,17 @@ pub trait Instruction {
             _ => None,
         })
     }
+
+    // Remap operands according to a mapping
+    fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
+        for operand in self.operands_mut() {
+            if let Operand::Reg(name) = operand {
+                if let Some(new_name) = mapping(*name) {
+                    *name = new_name;
+                }
+            }
+        }
+    }
 }
 
 /// All Global Variables and Functions have one of the following types of linkage:
@@ -341,6 +352,21 @@ pub struct Function {
 }
 
 impl Function {
+    /// Maximum allowed size for a basic block (number of instructions).
+    pub const MAX_INSTR_PER_BLOCK: usize = 65536;
+
+    /// Maximum allowed number of basic blocks in a function.
+    pub const MAX_BLOCK_PER_FUNC: usize = 65536;
+
+    /// Maximum allowed number of instructions in a function.
+    pub const MAX_INSTR_PER_FUNC: usize = 1_000_000;
+
+    /// Maximum allowed number of parameters in a function.
+    pub const MAX_PARAMS_PER_FUNC: usize = 1024;
+
+    /// Maximum allowed number of wildcard types in a function.
+    pub const MAX_WILDCARD_TYPES_PER_FUNC: usize = 256;
+
     fn generate_wildcard_types(&self, wildcards: &mut BTreeSet<WType>) {
         // Scan parameters and instructions for wildcard types
         wildcards.clear();
@@ -445,6 +471,56 @@ impl Function {
         Ok(())
     }
 
+    fn verify_size_constraints(&self) -> Result<(), Error> {
+        if self.body.len() > Self::MAX_BLOCK_PER_FUNC {
+            return Err(Error::FunctionTooManyBlocks {
+                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                count: self.body.len(),
+                max: Self::MAX_BLOCK_PER_FUNC,
+            });
+        }
+
+        let mut instr_count = 0usize;
+        for (label, bb) in &self.body {
+            if bb.instructions.len() > Self::MAX_INSTR_PER_BLOCK {
+                return Err(Error::BasicBlockTooLarge {
+                    function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                    block: *label,
+                    count: bb.instructions.len(),
+                    max: Self::MAX_INSTR_PER_BLOCK,
+                });
+            }
+
+            instr_count += bb.instructions.len();
+        }
+
+        if instr_count > Self::MAX_INSTR_PER_FUNC {
+            return Err(Error::FunctionTooManyInstructions {
+                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                count: instr_count,
+                max: Self::MAX_INSTR_PER_FUNC,
+            });
+        }
+
+        if self.params.len() > Self::MAX_PARAMS_PER_FUNC {
+            return Err(Error::FunctionTooManyArguments {
+                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                count: self.params.len(),
+                max: Self::MAX_PARAMS_PER_FUNC,
+            });
+        }
+
+        if self.wildcard_types.len() > Self::MAX_WILDCARD_TYPES_PER_FUNC {
+            return Err(Error::FunctionTooManyWildcardTypes {
+                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                count: self.wildcard_types.len(),
+                max: Self::MAX_WILDCARD_TYPES_PER_FUNC,
+            });
+        }
+
+        Ok(())
+    }
+
     fn verify_ssa_soundness(&self) -> Result<(), Error> {
         let mut defined_names = BTreeSet::new();
 
@@ -517,8 +593,10 @@ impl Function {
     }
 
     /// Find next available [`Label`] for a basic block.
+    ///
+    /// Notice that for entry block you should use [`Label::NIL`].
     pub fn next_available_label(&self) -> Label {
-        let mut max_index = 0;
+        let mut max_index = 1;
         for label in self.body.keys() {
             max_index = max_index.max(label.0);
         }
@@ -528,7 +606,7 @@ impl Function {
     /// Verify SSA form:
     /// 1) Each operand refers to a defined name.
     /// 2) Each name is defined exactly once.
-    pub fn check_ssa(&self) -> Result<(), Error> {
+    pub fn verify(&self) -> Result<(), Error> {
         self.verify_wildcards_soundness()?;
         if !self.meta_function {
             self.verify_no_meta_operands()?;
@@ -537,6 +615,7 @@ impl Function {
         self.verify_target_soundness()?;
         self.verify_ssa_soundness()?;
         self.verify_no_meta_instruction()?;
+        self.verify_size_constraints()?;
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Label::NIL) {
@@ -663,6 +742,19 @@ impl Function {
         })
     }
 
+    /// Iterate mutably over all instructions in the function.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&mut HyInstr, InstructionRef)> {
+        self.body.iter_mut().flat_map(|(block_label, block)| {
+            block
+                .instructions
+                .iter_mut()
+                .enumerate()
+                .map(move |(instr_index, instr)| {
+                    (instr, InstructionRef::from((*block_label, instr_index)))
+                })
+        })
+    }
+
     /// Retrieve an instruction from its SSA destination name.
     pub fn get_instruction_by_dest(&self, name: Name) -> Option<&HyInstr> {
         for block in self.body.values() {
@@ -716,7 +808,7 @@ impl Module {
     /// Check each function in the module for SSA validity.
     pub fn check_ssa(&self) -> Result<(), Error> {
         for function in self.functions.values() {
-            function.check_ssa()?;
+            function.verify()?;
         }
 
         // Ensure all external/internal function references are defined

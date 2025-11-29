@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["hyinstr", "hycore", "examples/hyinstr-basic"]
+members = [
+    "hyinstr",
+    "hycore",
+    "examples/hyinstr-basic",
+    "examples/hycore-examples",
+]
 
 [workspace.dependencies]
 smallvec = ">=0.6.10, <=1.15.1"
@@ -24,6 +29,8 @@ thiserror = "^2"
 bitflags = "^2"
 nalgebra = "^0.34"
 enum-map = ">=2.4"
+anyhow = ">=1.0.71"
+bit-set = ">=0.5"
 
 criterion = "0.5"
 rand = "0.9.2"

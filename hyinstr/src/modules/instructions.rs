@@ -19,7 +19,7 @@ use crate::{
 /// on specific operations. The generated `HyInstrKind` discriminant (via
 /// `strum`) can be helpful for fast classification.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
-#[strum_discriminants(name(HyInstrKind))]
+#[strum_discriminants(name(HyInstrOp))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HyInstr {
     // Integer instructions
@@ -66,6 +66,32 @@ pub enum HyInstr {
     MetaProb(meta::MetaProb),
 }
 
+impl HyInstrOp {
+    /// Returns true if this instruction is "simple", weaker that has side-effects.
+    ///
+    /// A simple instruction is one that does not have side-effects except for potential
+    /// trap due to overflow or invalid operations (e.g., division by zero).
+    ///
+    /// The intuition behind is that it could be freely duplicated (e.g., inlining) and
+    /// that removing duplicated simple instructions would not change the program semantics.
+    /// It cannot be fully removed as trapping behavior must be preserved.
+    ///
+    /// 1. Memory instructions are *never* "simple" even if technically non-volatile loads
+    ///    could be considered as such.
+    /// 2. meta assert/assume/prob are considered simple as they can be duplicated without
+    ///    changing semantics.
+    /// 3. Invoke instructions are not simple as they may have side-effects.
+    /// 4. Phi instructions are considered simple as they are just SSA value selectors.
+    /// 5. All arithmetic and logical instructions are considered simple.
+    /// 6. Select instructions are considered simple as they are just SSA value selectors.
+    pub fn is_simple(&self) -> bool {
+        match self {
+            HyInstrOp::MLoad | HyInstrOp::MStore | HyInstrOp::MAlloca | HyInstrOp::Invoke => false,
+            _ => true,
+        }
+    }
+}
+
 impl HyInstr {
     fn fmt_arith_iop(
         opname: &'static str,
@@ -85,9 +111,34 @@ impl HyInstr {
             }
             (Wrap, _) => write!(f, "{} ", opname),
             (Saturate, _) => {
-                todo!()
+                write!(f, "{} nsat ", opname)
             }
         }
+    }
+
+    pub fn op(&self) -> HyInstrOp {
+        self.into()
+    }
+
+    /// Returns true if this instruction is "simple", weaker that has side-effects.
+    ///
+    /// A simple instruction is one that does not have side-effects except for potential
+    /// trap due to overflow or invalid operations (e.g., division by zero).
+    ///
+    /// The intuition behind is that it could be freely duplicated (e.g., inlining) and
+    /// that removing duplicated simple instructions would not change the program semantics.
+    /// It cannot be fully removed as trapping behavior must be preserved.
+    ///
+    /// 1. Memory instructions are *never* "simple" even if technically non-volatile loads
+    ///    could be considered as such.
+    /// 2. meta assert/assume/prob are considered simple as they can be duplicated without
+    ///    changing semantics.
+    /// 3. Invoke instructions are not simple as they may have side-effects.
+    /// 4. Phi instructions are considered simple as they are just SSA value selectors.
+    /// 5. All arithmetic and logical instructions are considered simple.
+    /// 6. Select instructions are considered simple as they are just SSA value selectors.
+    pub fn is_simple(&self) -> bool {
+        self.op().is_simple()
     }
 
     pub fn fmt<'a>(
@@ -504,7 +555,7 @@ impl HyInstr {
                         let incoming_str = phi
                             .values
                             .iter()
-                            .map(|(label, value)| {
+                            .map(|(value, label)| {
                                 format!("[ {}, {} ]", value.fmt(self.module), label)
                             })
                             .collect::<Vec<_>>()

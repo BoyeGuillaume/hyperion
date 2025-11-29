@@ -19,6 +19,10 @@ struct SpecificationKey {
     referenced_functions: SmallVec<[FunctionPointer; 2]>,
 }
 
+/// A library of function specifications indexed for efficient retrieval.
+///
+/// This structure allows storing and querying specifications based on
+/// the functions they reference.
 #[derive(Debug, Clone, Default)]
 pub struct SpecLibrary {
     specs: HashMap<SpecificationKey, Vec<Arc<Specification>>>,
@@ -27,6 +31,35 @@ pub struct SpecLibrary {
 }
 
 impl SpecLibrary {
+    fn iter_from_hashset<'a>(
+        hashset: HashSet<PtrArcId<'a, Specification>>,
+    ) -> impl Iterator<Item = &'a Specification> {
+        // Finally, return an iterator over the intersected specifications
+        struct MyIter<'a> {
+            inner: hash_set::IntoIter<PtrArcId<'a, Specification>>,
+            _marker: std::marker::PhantomData<&'a ()>,
+        }
+
+        impl<'a> Iterator for MyIter<'a> {
+            type Item = &'a Specification;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.inner
+                    .next()
+                    .map(|arc_ref_id| arc_ref_id.take().as_ref())
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                self.inner.size_hint()
+            }
+        }
+
+        MyIter {
+            inner: hashset.into_iter(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
     /// Retrieve a list of specifications (strongly) matching the given referenced function pointers.
     ///
     /// If no specifications match, an empty iterator is returned.
@@ -122,31 +155,30 @@ impl SpecLibrary {
             }
 
             // Finally, return an iterator over the intersected specifications
-            struct MyIter<'a> {
-                inner: hash_set::IntoIter<PtrArcId<'a, Specification>>,
-                _marker: std::marker::PhantomData<&'a ()>,
-            }
-
-            impl<'a> Iterator for MyIter<'a> {
-                type Item = &'a Specification;
-
-                fn next(&mut self) -> Option<Self::Item> {
-                    self.inner
-                        .next()
-                        .map(|arc_ref_id| arc_ref_id.take().as_ref())
-                }
-
-                fn size_hint(&self) -> (usize, Option<usize>) {
-                    self.inner.size_hint()
-                }
-            }
-
-            Either::Left(MyIter {
-                inner: intersected.into_iter(),
-                _marker: std::marker::PhantomData,
-            })
+            Either::Left(Self::iter_from_hashset(intersected))
         } else {
             Either::Right(std::iter::empty())
         }
+    }
+
+    /// Query specifications that reference any of the given function pointers.
+    ///
+    /// Query all specifications that reference at least one function pointer in `keys`.
+    /// If no specifications match, an empty iterator is returned.
+    pub fn query_union(
+        &self,
+        keys: impl IntoIterator<Item = FunctionPointer>,
+    ) -> impl Iterator<Item = &Specification> {
+        let mut unioned: HashSet<PtrArcId<'_, Specification>> = HashSet::new();
+
+        for key in keys {
+            if let Some(specs) = self.weak_index.get(&key) {
+                for spec in specs {
+                    unioned.insert(RefId::new(spec));
+                }
+            }
+        }
+
+        Self::iter_from_hashset(unioned)
     }
 }

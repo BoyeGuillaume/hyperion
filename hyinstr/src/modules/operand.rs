@@ -5,7 +5,7 @@
 use crate::{consts::AnyConst, modules::Module};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::EnumIs;
+use strum::{EnumIs, EnumTryAs};
 
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
@@ -48,7 +48,7 @@ impl std::fmt::Display for Label {
 }
 
 /// Instruction operand.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Operand {
     /// Reference to a previously defined SSA value.

@@ -79,16 +79,16 @@ pub struct Phi {
     pub ty: Typeref,
 
     /// The incoming values and their corresponding predecessor basic blocks.
-    pub values: Vec<(Label, Operand)>, // (predecessor block label, value name)
+    pub values: Vec<(Operand, Label)>, // (predecessor block label, value name)
 }
 
 impl Instruction for Phi {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
-        self.values.iter().map(|(_, op)| op)
+        self.values.iter().map(|(op, _)| op)
     }
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        self.values.iter_mut().map(|(_, op)| op)
+        self.values.iter_mut().map(|(op, _)| op)
     }
 
     fn destination(&self) -> Option<Name> {

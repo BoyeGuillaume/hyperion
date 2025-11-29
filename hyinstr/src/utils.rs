@@ -72,4 +72,55 @@ pub enum Error {
         function: String,
         instruction: String,
     },
+
+    /// Function exceeds maximum allowed number of basic blocks.
+    #[error(
+        "Function `{function}` contains {count} basic blocks, exceeding the maximum allowed of {max}."
+    )]
+    FunctionTooManyBlocks {
+        function: String,
+        count: usize,
+        max: usize,
+    },
+
+    /// Basic block exceeds maximum allowed number of instructions.
+    #[error(
+        "Basic block `{block}` in function `{function}` contains {count} instructions, exceeding the maximum allowed of {max}."
+    )]
+    BasicBlockTooLarge {
+        function: String,
+        block: Label,
+        count: usize,
+        max: usize,
+    },
+
+    /// Function exceeds maximum allowed number of instructions.
+    #[error(
+        "Function `{function}` contains {count} instructions, exceeding the maximum allowed of {max}."
+    )]
+    FunctionTooManyInstructions {
+        function: String,
+        count: usize,
+        max: usize,
+    },
+
+    /// Function exceeds maximum allowed number of parameters.
+    #[error(
+        "Function `{function}` contains {count} parameters, exceeding the maximum allowed of {max}."
+    )]
+    FunctionTooManyArguments {
+        function: String,
+        count: usize,
+        max: usize,
+    },
+
+    /// Function exceeds maximum allowed number of wildcard types.
+    #[error(
+        "Function `{function}` contains {count} wildcard types, exceeding the maximum allowed of {max}."
+    )]
+    FunctionTooManyWildcardTypes {
+        function: String,
+        count: usize,
+        max: usize,
+    },
 }

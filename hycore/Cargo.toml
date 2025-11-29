@@ -14,3 +14,9 @@ nalgebra = { workspace = true, features = ["sparse"] }
 enum-map = { workspace = true }
 log = { workspace = true }
 either.workspace = true
+anyhow = { workspace = true }
+bit-set = { workspace = true }
+
+[features]
+default = []
+test-utils = []

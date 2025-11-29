@@ -75,7 +75,7 @@ impl Terminator {
                 match self.terminator {
                     Terminator::CBranch(cbranch) => write!(
                         f,
-                        "cbranch {}, {:#}, {:#}",
+                        "branch {}, {:#}, {:#}",
                         cbranch.cond.fmt(self.module),
                         cbranch.target_true,
                         cbranch.target_false

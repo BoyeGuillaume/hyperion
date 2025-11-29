@@ -1,9 +1,10 @@
 [package]
-name = "basic-instr"
+name = "hycore-examples"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 hyinstr.workspace = true
+hycore = { workspace = true, features = ["test-utils"] }
 petgraph.workspace = true
 uuid = { workspace = true, features = ["v4"] }

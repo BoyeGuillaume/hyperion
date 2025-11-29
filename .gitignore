@@ -99,6 +99,8 @@ tags
 # Add build folder
 [bB]uild/
 
+# Remove pdfs
+*.pdf
 
 # Added by cargo
 
