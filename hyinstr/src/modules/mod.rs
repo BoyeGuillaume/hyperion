@@ -12,14 +12,17 @@
 //!
 //! You typically manipulate instructions via the `HyInstr` enum which is a
 //! tagged union of all concrete instruction forms.
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use crate::{
     consts::AnyConst,
     modules::{
         instructions::HyInstr,
         operand::{Label, Name, Operand},
-        symbol::ExternalFunction,
+        symbol::{ExternalFunction, FunctionPointer},
     },
     types::{Typeref, primary::WType},
     utils::Error,
@@ -29,6 +32,7 @@ use petgraph::prelude::DiGraphMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+pub mod fmt;
 pub mod fp;
 pub mod instructions;
 pub mod int;
@@ -36,6 +40,7 @@ pub mod mem;
 pub mod meta;
 pub mod misc;
 pub mod operand;
+pub mod parser;
 pub mod symbol;
 pub mod terminator;
 
@@ -265,6 +270,28 @@ pub enum CallingConvention {
     Numbered(u32),
 }
 
+impl CallingConvention {
+    pub fn to_string(&self) -> Cow<'static, str> {
+        match self {
+            CallingConvention::C => "C".into(),
+            CallingConvention::FastC => "fastcc".into(),
+            CallingConvention::ColdC => "coldcc".into(),
+            CallingConvention::GhcC => "ghccc".into(),
+            CallingConvention::HipeC => "hipecc".into(),
+            CallingConvention::AnyRegC => "anyregcc".into(),
+            CallingConvention::PreserveMostC => "preservemostcc".into(),
+            CallingConvention::PreserveAllC => "preserveallcc".into(),
+            CallingConvention::PreserveNoneC => "preservenonecc".into(),
+            CallingConvention::CxxFastTlsC => "cxx_fast_tlscc".into(),
+            CallingConvention::TailC => "tailcc".into(),
+            CallingConvention::SwiftC => "swiftcc".into(),
+            CallingConvention::SwiftTailC => "swifttailcc".into(),
+            CallingConvention::CfguardCheckC => "cfguard_checkcc".into(),
+            CallingConvention::Numbered(n) => format!("cc {}", n).into(),
+        }
+    }
+}
+
 /// Reference to a specific instruction within a function.
 ///
 /// This structure identifies an instruction by the basic block label it resides in
@@ -329,6 +356,12 @@ impl BasicBlock {
 /// We distinguish between "meta-functions" and regular functions. Meta-functions are used
 /// for verification or analysis purposes and may contain meta-instructions and operands.
 /// They cannot be executed directly but serve as specifications or annotations for other functions.
+///
+/// Meta-functions should never loop and always terminate, they may contain loop-like structures
+/// for the purpose of expressing invariants over iterations, but these loops must be bounded
+/// and analyzable. Regular functions, on the other hand, represent executable code and may
+/// contain arbitrary control flow, including loops and recursion.
+///
 #[derive(Debug, Clone, Hash)]
 pub struct Function {
     /// The unique identifier (UUID) of the function.
@@ -805,47 +838,57 @@ pub struct Module {
 }
 
 impl Module {
-    /// Check each function in the module for SSA validity.
-    pub fn check_ssa(&self) -> Result<(), Error> {
-        for function in self.functions.values() {
-            function.verify()?;
-        }
-
-        // Ensure all external/internal function references are defined
-        for function in self.functions.values() {
-            for bb in function.body.values() {
-                for instr in &bb.instructions {
-                    // If operand is a external function ptr
-                    for op in instr.operands() {
-                        if let Operand::Imm(AnyConst::FuncPtr(func_ptr)) = op {
-                            match func_ptr {
-                                symbol::FunctionPointer::Internal(uuid) => {
-                                    if !self.functions.contains_key(uuid) {
-                                        return Err(Error::UndefinedInternalFunction {
-                                            function: function
-                                                .name
-                                                .clone()
-                                                .unwrap_or_else(|| function.uuid.to_string()),
-                                            undefined: *uuid,
-                                        });
-                                    }
+    /// Check that a particular function validly references only defined functions.
+    ///
+    /// Notice that recursive calls are allowed, that is to say that function that self-references
+    /// are considered valid, even if the function is not defined in the module.
+    pub fn verify_func(&self, function: &Function) -> Result<(), Error> {
+        for bb in function.body.values() {
+            for instr in &bb.instructions {
+                // If operand is a external function ptr
+                for op in instr.operands() {
+                    if let Operand::Imm(AnyConst::FuncPtr(func_ptr)) = op {
+                        match func_ptr {
+                            FunctionPointer::Internal(uuid) => {
+                                if uuid == &function.uuid {
+                                    continue; // Recursive call are allowed, even if function not currently in the module
                                 }
-                                symbol::FunctionPointer::External(uuid) => {
-                                    if !self.external_functions.contains_key(uuid) {
-                                        return Err(Error::UndefinedExternalFunction {
-                                            function: function
-                                                .name
-                                                .clone()
-                                                .unwrap_or_else(|| function.uuid.to_string()),
-                                            undefined: *uuid,
-                                        });
-                                    }
+
+                                if !self.functions.contains_key(uuid) {
+                                    return Err(Error::UndefinedInternalFunction {
+                                        function: function
+                                            .name
+                                            .clone()
+                                            .unwrap_or_else(|| function.uuid.to_string()),
+                                        undefined: *uuid,
+                                    });
+                                }
+                            }
+                            FunctionPointer::External(uuid) => {
+                                if !self.external_functions.contains_key(uuid) {
+                                    return Err(Error::UndefinedExternalFunction {
+                                        function: function
+                                            .name
+                                            .clone()
+                                            .unwrap_or_else(|| function.uuid.to_string()),
+                                        undefined: *uuid,
+                                    });
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    /// Check each function in the module for SSA validity.
+    pub fn verify(&self) -> Result<(), Error> {
+        for function in self.functions.values() {
+            function.verify()?;
+            self.verify_func(function)?;
         }
 
         Ok(())

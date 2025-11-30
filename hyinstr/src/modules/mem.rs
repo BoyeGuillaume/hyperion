@@ -6,6 +6,7 @@
 //! specifications; only user‑visible controls are documented here.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     modules::{
@@ -23,7 +24,7 @@ use crate::{
 /// aren't precise enough, check those specs
 /// (see specs references on [cppreference](https://en.cppreference.com/w/cpp/atomic/memory_order)).
 /// You can also check LLVM's documentation on [Ordering](https://llvm.org/docs/LangRef.html#atomic-memory-ordering) for more details.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MemoryOrdering {
     Unordered,
@@ -35,7 +36,11 @@ pub enum MemoryOrdering {
 }
 
 impl MemoryOrdering {
-    pub fn to_string(&self) -> &'static str {
+    pub fn from_str(s: &str) -> Option<Self> {
+        MemoryOrdering::iter().find(|ord| ord.to_str() == s)
+    }
+
+    pub fn to_str(&self) -> &'static str {
         match self {
             MemoryOrdering::Unordered => "unordered",
             MemoryOrdering::Monotonic => "monotonic",

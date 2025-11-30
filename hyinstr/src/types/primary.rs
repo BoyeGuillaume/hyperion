@@ -15,6 +15,7 @@
 //!
 //! These types implement `Display` for readable formatting and can be
 //! serialized with the optional `serde` feature.
+use num_bigint::BigInt;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
@@ -50,11 +51,20 @@ impl IType {
 
     /// Creates a new `IntType` with the specified number of bits.
     #[inline]
-    pub const fn new(num_bits: u32) -> Option<Self> {
+    pub const fn try_new(num_bits: u32) -> Option<Self> {
         if Self::check_validity(num_bits) {
             Some(Self { num_bits })
         } else {
             None
+        }
+    }
+
+    /// Same as `try_new` but panics if the number of bits is invalid.
+    #[inline]
+    pub fn new(num_bits: u32) -> Self {
+        match Self::try_new(num_bits) {
+            Some(itype) => itype,
+            None => panic!("invalid integer type width: {}", num_bits),
         }
     }
 
@@ -89,6 +99,12 @@ impl IType {
         } else {
             Some((1u64 << self.num_bits) - 1)
         }
+    }
+
+    /// Check whether a given [`num_bigint::BigInt`] value fits in this integer type.
+    pub fn fits_value(&self, value: &BigInt) -> bool {
+        let bits = value.bits();
+        bits <= self.num_bits as u64
     }
 }
 
@@ -293,7 +309,7 @@ impl std::fmt::Display for PrimaryBasicType {
 }
 
 /// Size of a vector type, either fixed or scalable.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum VcSize {
     /// Fixed size vector with the given number of elements.
@@ -333,6 +349,16 @@ impl std::fmt::Display for VcType {
         match self.size {
             VcSize::Fixed(num) => write!(f, "<{} x {}>", num, self.ty),
             VcSize::Scalable(num) => write!(f, "<vscale {} x {}>", num, self.ty),
+        }
+    }
+}
+
+impl VcType {
+    /// Consutructs a new fixed-size vector type.
+    pub fn fixed(ty: impl Into<PrimaryBasicType>, num: u16) -> Self {
+        VcType {
+            ty: ty.into(),
+            size: VcSize::Fixed(num),
         }
     }
 }

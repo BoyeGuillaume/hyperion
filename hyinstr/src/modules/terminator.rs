@@ -7,10 +7,7 @@ use auto_enums::auto_enum;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::modules::{
-    Module,
-    operand::{Label, Name, Operand},
-};
+use crate::modules::operand::{Label, Name, Operand};
 
 /// Conditional branch instruction
 ///
@@ -64,45 +61,6 @@ pub enum Terminator {
 }
 
 impl Terminator {
-    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
-        struct Fmt<'a> {
-            terminator: &'a Terminator,
-            module: Option<&'a Module>,
-        }
-
-        impl std::fmt::Display for Fmt<'_> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self.terminator {
-                    Terminator::CBranch(cbranch) => write!(
-                        f,
-                        "branch {}, {:#}, {:#}",
-                        cbranch.cond.fmt(self.module),
-                        cbranch.target_true,
-                        cbranch.target_false
-                    ),
-                    Terminator::Jump(jump) => {
-                        write!(f, "jump {}", jump.target)
-                    }
-                    Terminator::Ret(ret) => {
-                        if let Some(value) = &ret.value {
-                            write!(f, "ret {:#}", value.fmt(self.module))
-                        } else {
-                            write!(f, "ret void")
-                        }
-                    }
-                    Terminator::Trap(_) => {
-                        write!(f, "trap")
-                    }
-                }
-            }
-        }
-
-        Fmt {
-            terminator: self,
-            module,
-        }
-    }
-
     #[auto_enum(Iterator)]
     pub fn operands(&self) -> impl Iterator<Item = &Operand> {
         match self {
@@ -171,3 +129,4 @@ macro_rules! define_terminator_from {
 define_terminator_from!(CBranch, CBranch);
 define_terminator_from!(Jump, Jump);
 define_terminator_from!(Ret, Ret);
+define_terminator_from!(Trap, Trap);

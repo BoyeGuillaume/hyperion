@@ -9,22 +9,22 @@ use hyinstr::modules::{
 };
 use petgraph::graph::DiGraph;
 
-/// Merge two meta functions into one
-pub fn merge_meta_functions(a: Function, b: Function) -> anyhow::Result<()> {
-    #[cfg(debug_assertions)]
-    {
-        a.verify().expect("Function must be valid before merging");
-        b.verify().expect("Function must be valid before merging");
-    }
+// /// Merge two meta functions into one
+// pub fn merge_meta_functions(a: Function, b: Function) -> anyhow::Result<()> {
+//     #[cfg(debug_assertions)]
+//     {
+//         a.verify().expect("Function must be valid before merging");
+//         b.verify().expect("Function must be valid before merging");
+//     }
 
-    if !a.meta_function || !b.meta_function {
-        bail!("Both functions must be meta functions to be merged");
-    }
+//     if !a.meta_function || !b.meta_function {
+//         bail!("Both functions must be meta functions to be merged");
+//     }
 
-    todo!();
+//     todo!();
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// Simplify a meta function by removing redundant instructions and merging similar patterns
 ///
@@ -130,7 +130,6 @@ pub fn remove_unused_op(func: &mut Function) -> anyhow::Result<()> {
                 | HyInstrOp::Invoke
                 | HyInstrOp::MetaAssert
                 | HyInstrOp::MetaAssume
-                | HyInstrOp::MetaProb
         ) {
             usage_graph.add_edge(node_index, source_node_index, ());
         }

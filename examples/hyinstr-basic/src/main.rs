@@ -132,7 +132,7 @@ fn main() {
     };
 
     // Validate the module
-    match mod_a.check_ssa() {
+    match mod_a.verify() {
         Ok(_) => println!("Module is valid SSA."),
         Err(e) => eprintln!("Module SSA validation error: {}", e),
     }
@@ -149,36 +149,37 @@ fn main() {
 
     // Display each block
     for function in mod_a.functions.values() {
-        println!(
-            "declare {} {} %{} ({})",
-            function
-                .return_type
-                .map(|ty| type_registry.fmt(ty).to_string())
-                .unwrap_or("void".to_string()),
-            function.uuid,
-            function.name.as_deref().unwrap_or("<unnamed>"),
-            function
-                .params
-                .iter()
-                .map(|(name, ty)| format!("%{}: {}", name, type_registry.fmt(*ty)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        println!("{}", function.fmt(&type_registry, Some(&mod_a)));
+        // println!(
+        //     "declare {} {} %{} ({})",
+        //     function
+        //         .return_type
+        //         .map(|ty| type_registry.fmt(ty).to_string())
+        //         .unwrap_or("void".to_string()),
+        //     function.uuid,
+        //     function.name.as_deref().unwrap_or("<unnamed>"),
+        //     function
+        //         .params
+        //         .iter()
+        //         .map(|(name, ty)| format!("%{}: {}", name, type_registry.fmt(*ty)))
+        //         .collect::<Vec<_>>()
+        //         .join(", ")
+        // );
 
-        for (uuid, block) in function.body.iter() {
-            println!("  {}: ", uuid);
-            if !block.instructions.is_empty() {
-                println!(
-                    "{}",
-                    block
-                        .instructions
-                        .iter()
-                        .map(|instr| format!("   {}", instr.fmt(&type_registry, Some(&mod_a))))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                );
-            }
-            println!("   {}", block.terminator.fmt(Some(&mod_a)));
-        }
+        // for (uuid, block) in function.body.iter() {
+        //     println!("  {}: ", uuid);
+        //     if !block.instructions.is_empty() {
+        //         println!(
+        //             "{}",
+        //             block
+        //                 .instructions
+        //                 .iter()
+        //                 .map(|instr| format!("   {}", instr.fmt(&type_registry, Some(&mod_a))))
+        //                 .collect::<Vec<_>>()
+        //                 .join("\n")
+        //         );
+        //     }
+        //     println!("   {}", block.terminator.fmt(Some(&mod_a)));
+        // }
     }
 }

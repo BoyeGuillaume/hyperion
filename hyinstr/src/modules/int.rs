@@ -6,6 +6,7 @@
 //! parameters of the instruction.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     modules::{
@@ -37,7 +38,7 @@ pub enum IntegerSignedness {
 }
 
 /// Integer comparison operations
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ICmpOp {
     /// Equal
@@ -63,6 +64,27 @@ pub enum ICmpOp {
 }
 
 impl ICmpOp {
+    /// Creates an [`ICmpOp`] from its string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        ICmpOp::iter().find(|op| op.to_str() == s)
+    }
+
+    /// Returns the string representation of the [`ICmpOp`].
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            ICmpOp::Eq => "eq",
+            ICmpOp::Ne => "ne",
+            ICmpOp::Ugt => "ugt",
+            ICmpOp::Uge => "uge",
+            ICmpOp::Ult => "ult",
+            ICmpOp::Ule => "ule",
+            ICmpOp::Sgt => "sgt",
+            ICmpOp::Sge => "sge",
+            ICmpOp::Slt => "slt",
+            ICmpOp::Sle => "sle",
+        }
+    }
+
     /// Returns true if the comparison is unsigned
     pub fn is_unsigned(&self) -> bool {
         matches!(
@@ -332,7 +354,7 @@ pub struct ISht {
     pub ty: Typeref,
     pub value: Operand,
     pub shift: Operand,
-    pub op: IShiftOp,
+    pub variant: IShiftOp,
 }
 
 impl Instruction for ISht {

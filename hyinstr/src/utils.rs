@@ -123,4 +123,8 @@ pub enum Error {
         count: usize,
         max: usize,
     },
+
+    /// A basic block with the given label already exists in the function.
+    #[error("A basic block with label `{0}` already exists in the function.")]
+    BlockLabelAlreadyExists(Label),
 }

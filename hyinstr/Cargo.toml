@@ -16,6 +16,7 @@ auto_enums.workspace = true
 thiserror.workspace = true
 petgraph.workspace = true
 either.workspace = true
+chumsky.workspace = true
 
 [features]
 default = []

@@ -1,16 +1,12 @@
 use auto_enums::auto_enum;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::{EnumDiscriminants, EnumIs, EnumTryAs};
+use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
-use crate::{
-    modules::{
-        Instruction, Module, fp,
-        int::{self, IntegerSignedness, OverflowPolicy},
-        mem, meta, misc,
-        operand::Operand,
-    },
-    types::TypeRegistry,
+use crate::modules::{
+    Instruction, Operand, fp,
+    int::{self},
+    mem, meta, misc,
 };
 
 /// Discriminated union covering all public instruction kinds.
@@ -19,7 +15,7 @@ use crate::{
 /// on specific operations. The generated `HyInstrKind` discriminant (via
 /// `strum`) can be helpful for fast classification.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
-#[strum_discriminants(name(HyInstrOp))]
+#[strum_discriminants(name(HyInstrOp), derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum HyInstr {
     // Integer instructions
@@ -90,32 +86,54 @@ impl HyInstrOp {
             _ => true,
         }
     }
-}
 
-impl HyInstr {
-    fn fmt_arith_iop(
-        opname: &'static str,
-        f: &mut std::fmt::Formatter<'_>,
-        signesness: IntegerSignedness,
-        overflow_policy: OverflowPolicy,
-    ) -> std::fmt::Result {
-        use IntegerSignedness::*;
-        use OverflowPolicy::*;
+    pub fn opname(&self) -> &'static str {
+        match self {
+            HyInstrOp::IAdd => "iadd",
+            HyInstrOp::ISub => "isub",
+            HyInstrOp::IMul => "imul",
+            HyInstrOp::IDiv => "idiv",
+            HyInstrOp::IRem => "irem",
+            HyInstrOp::ICmp => "icmp",
+            HyInstrOp::ISht => "isht",
+            HyInstrOp::INeg => "ineg",
 
-        match (overflow_policy, signesness) {
-            (Panic, Signed) => {
-                write!(f, "{} nsw ", opname)
-            }
-            (Panic, Unsigned) => {
-                write!(f, "{} nuw ", opname)
-            }
-            (Wrap, _) => write!(f, "{} ", opname),
-            (Saturate, _) => {
-                write!(f, "{} nsat ", opname)
-            }
+            HyInstrOp::IAnd => "and",
+            HyInstrOp::IOr => "or",
+            HyInstrOp::IXor => "xor",
+            HyInstrOp::INot => "not",
+            HyInstrOp::IImplies => "implies",
+            HyInstrOp::IEquiv => "equiv",
+
+            HyInstrOp::FAdd => "fadd",
+            HyInstrOp::FSub => "fsub",
+            HyInstrOp::FMul => "fmul",
+            HyInstrOp::FDiv => "fdiv",
+            HyInstrOp::FRem => "frem",
+            HyInstrOp::FCmp => "fcmp",
+            HyInstrOp::FNeg => "fneg",
+
+            HyInstrOp::MLoad => "load",
+            HyInstrOp::MStore => "store",
+            HyInstrOp::MAlloca => "alloca",
+            HyInstrOp::MGetElementPtr => "getelementptr",
+
+            HyInstrOp::Invoke => "invoke",
+            HyInstrOp::Phi => "phi",
+            HyInstrOp::Select => "select",
+
+            HyInstrOp::MetaAssert => "!assert",
+            HyInstrOp::MetaAssume => "!assume",
+            HyInstrOp::MetaProb => "!prob",
         }
     }
 
+    pub fn from_string(s: &str) -> Option<Self> {
+        HyInstrOp::iter().find(|op| op.opname() == s)
+    }
+}
+
+impl HyInstr {
     pub fn op(&self) -> HyInstrOp {
         self.into()
     }
@@ -139,479 +157,6 @@ impl HyInstr {
     /// 6. Select instructions are considered simple as they are just SSA value selectors.
     pub fn is_simple(&self) -> bool {
         self.op().is_simple()
-    }
-
-    pub fn fmt<'a>(
-        &'a self,
-        registry: &'a TypeRegistry,
-        module: Option<&'a Module>,
-    ) -> impl std::fmt::Display + 'a {
-        pub struct Fmt<'a> {
-            instr: &'a HyInstr,
-            registry: &'a TypeRegistry,
-            module: Option<&'a Module>,
-        }
-
-        impl<'a> std::fmt::Display for Fmt<'a> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self.instr {
-                    HyInstr::IAdd(iadd) => {
-                        write!(f, "%{} = ", iadd.dest)?;
-
-                        // overflow handling
-                        HyInstr::fmt_arith_iop("add", f, iadd.signedness, iadd.overflow)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(iadd.ty),
-                            iadd.lhs.fmt(self.module),
-                            iadd.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::ISub(isub) => {
-                        write!(f, "%{} = ", isub.dest)?;
-
-                        // overflow handling
-                        HyInstr::fmt_arith_iop("sub", f, isub.signedness, isub.overflow)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(isub.ty),
-                            isub.lhs.fmt(self.module),
-                            isub.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IMul(imul) => {
-                        write!(f, "%{} = ", imul.dest)?;
-
-                        // overflow handling
-                        HyInstr::fmt_arith_iop("mul", f, imul.signedness, imul.overflow)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(imul.ty),
-                            imul.lhs.fmt(self.module),
-                            imul.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IDiv(idiv) => {
-                        write!(f, "%{} = ", idiv.dest)?;
-
-                        // signedness
-                        match idiv.signedness {
-                            IntegerSignedness::Signed => write!(f, "sdiv")?,
-                            IntegerSignedness::Unsigned => write!(f, "udiv")?,
-                        }
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(idiv.ty),
-                            idiv.lhs.fmt(self.module),
-                            idiv.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IRem(irem) => {
-                        write!(f, "%{} = ", irem.dest)?;
-
-                        // signedness
-                        match irem.signedness {
-                            IntegerSignedness::Signed => write!(f, "srem")?,
-                            IntegerSignedness::Unsigned => write!(f, "urem")?,
-                        }
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(irem.ty),
-                            irem.lhs.fmt(self.module),
-                            irem.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::ICmp(icmp) => {
-                        write!(f, "%{} = ", icmp.dest)?;
-
-                        // comparison operation
-                        let op_str = match icmp.op {
-                            int::ICmpOp::Eq => "eq",
-                            int::ICmpOp::Ne => "ne",
-                            int::ICmpOp::Ugt => "ugt",
-                            int::ICmpOp::Uge => "uge",
-                            int::ICmpOp::Ult => "ult",
-                            int::ICmpOp::Ule => "ule",
-                            int::ICmpOp::Sgt => "sgt",
-                            int::ICmpOp::Sge => "sge",
-                            int::ICmpOp::Slt => "slt",
-                            int::ICmpOp::Sle => "sle",
-                        };
-                        write!(f, "icmp {} ", op_str)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(icmp.ty),
-                            icmp.lhs.fmt(self.module),
-                            icmp.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::ISht(isht) => {
-                        write!(f, "%{} = ", isht.dest)?;
-
-                        // shift operation
-                        let op_str = match isht.op {
-                            int::IShiftOp::Lsl => "shl",
-                            int::IShiftOp::Lsr => "lshr",
-                            int::IShiftOp::Asr => "ashr",
-                            int::IShiftOp::Rol => "rol",
-                            int::IShiftOp::Ror => "ror",
-                        };
-                        write!(f, "{} ", op_str)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(isht.ty),
-                            isht.value.fmt(self.module),
-                            isht.shift.fmt(self.module)
-                        )
-                    }
-                    HyInstr::INeg(ineg) => {
-                        write!(
-                            f,
-                            "%{} = neg {} {}",
-                            ineg.dest,
-                            self.registry.fmt(ineg.ty),
-                            ineg.value.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IAnd(iand) => {
-                        write!(f, "%{} = and ", iand.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(iand.ty),
-                            iand.lhs.fmt(self.module),
-                            iand.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IOr(ior) => {
-                        write!(f, "%{} = or ", ior.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(ior.ty),
-                            ior.lhs.fmt(self.module),
-                            ior.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IXor(ixor) => {
-                        write!(f, "%{} = xor ", ixor.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(ixor.ty),
-                            ixor.lhs.fmt(self.module),
-                            ixor.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::INot(inot) => {
-                        write!(
-                            f,
-                            "%{} = not {} {}",
-                            inot.dest,
-                            self.registry.fmt(inot.ty),
-                            inot.value.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IImplies(iimplies) => {
-                        write!(
-                            f,
-                            "%{} = implies {} {}, {}",
-                            iimplies.dest,
-                            self.registry.fmt(iimplies.ty),
-                            iimplies.premise.fmt(self.module),
-                            iimplies.conclusion.fmt(self.module)
-                        )
-                    }
-                    HyInstr::IEquiv(iequiv) => {
-                        write!(
-                            f,
-                            "%{} = equiv {} {}, {}",
-                            iequiv.dest,
-                            self.registry.fmt(iequiv.ty),
-                            iequiv.lhs.fmt(self.module),
-                            iequiv.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FAdd(fadd) => {
-                        write!(f, "%{} = fadd ", fadd.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(fadd.ty),
-                            fadd.lhs.fmt(self.module),
-                            fadd.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FSub(fsub) => {
-                        write!(f, "%{} = fsub ", fsub.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(fsub.ty),
-                            fsub.lhs.fmt(self.module),
-                            fsub.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FMul(fmul) => {
-                        write!(f, "%{} = fmul ", fmul.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(fmul.ty),
-                            fmul.lhs.fmt(self.module),
-                            fmul.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FDiv(fdiv) => {
-                        write!(f, "%{} = fdiv ", fdiv.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(fdiv.ty),
-                            fdiv.lhs.fmt(self.module),
-                            fdiv.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FRem(frem) => {
-                        write!(f, "%{} = frem ", frem.dest)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(frem.ty),
-                            frem.lhs.fmt(self.module),
-                            frem.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FCmp(fcmp) => {
-                        write!(f, "%{} = fcmp ", fcmp.dest)?;
-
-                        // comparison operation
-                        let op_str = match fcmp.op {
-                            fp::FCmpOp::Oeq => "oeq",
-                            fp::FCmpOp::Ogt => "ogt",
-                            fp::FCmpOp::Oge => "oge",
-                            fp::FCmpOp::Olt => "olt",
-                            fp::FCmpOp::Ole => "ole",
-                            fp::FCmpOp::One => "one",
-                            fp::FCmpOp::Ueq => "ueq",
-                            fp::FCmpOp::Ugt => "ugt",
-                            fp::FCmpOp::Uge => "uge",
-                            fp::FCmpOp::Ult => "ult",
-                            fp::FCmpOp::Ule => "ule",
-                            fp::FCmpOp::Une => "une",
-                            fp::FCmpOp::Ord => "ord",
-                        };
-                        write!(f, "{} ", op_str)?;
-
-                        write!(
-                            f,
-                            "{} {}, {}",
-                            self.registry.fmt(fcmp.ty),
-                            fcmp.lhs.fmt(self.module),
-                            fcmp.rhs.fmt(self.module)
-                        )
-                    }
-                    HyInstr::FNeg(fneg) => {
-                        write!(
-                            f,
-                            "%{} = fneg {} {}",
-                            fneg.dest,
-                            self.registry.fmt(fneg.ty),
-                            fneg.value.fmt(self.module)
-                        )
-                    }
-
-                    HyInstr::MLoad(mload) => {
-                        write!(f, "%{} = load ", mload.dest)?;
-                        if mload.ordering.is_some() {
-                            write!(f, "atomic ")?;
-                        }
-                        if mload.volatile {
-                            write!(f, "volatile ")?;
-                        }
-
-                        write!(
-                            f,
-                            "{}, ptr {}",
-                            self.registry.fmt(mload.ty),
-                            mload.addr.fmt(self.module)
-                        )?;
-
-                        if let Some(ordering) = &mload.ordering {
-                            write!(f, " {}", ordering.to_string())?;
-                        }
-
-                        if let Some(alignment) = mload.alignment {
-                            write!(f, ", align {}", alignment)?;
-                        }
-
-                        Ok(())
-                    }
-                    HyInstr::MStore(mstore) => {
-                        write!(f, "store ")?;
-                        if mstore.ordering.is_some() {
-                            write!(f, "atomic ")?;
-                        }
-                        if mstore.volatile {
-                            write!(f, "volatile ")?;
-                        }
-
-                        write!(
-                            f,
-                            "{}, ptr {}",
-                            mstore.value.fmt(self.module),
-                            mstore.addr.fmt(self.module)
-                        )?;
-
-                        if let Some(ordering) = &mstore.ordering {
-                            write!(f, " {}", ordering.to_string())?;
-                        }
-
-                        if let Some(alignment) = mstore.alignment {
-                            write!(f, ", align {}", alignment)?;
-                        }
-
-                        Ok(())
-                    }
-                    HyInstr::MAlloca(malloca) => {
-                        write!(f, "%{} = alloca ", malloca.dest)?;
-
-                        write!(
-                            f,
-                            "{}, {}",
-                            self.registry.fmt(malloca.ty),
-                            malloca.count.fmt(self.module)
-                        )?;
-
-                        if let Some(alignment) = malloca.alignment {
-                            write!(f, ", align {}", alignment)?;
-                        }
-
-                        Ok(())
-                    }
-                    HyInstr::MGetElementPtr(mgep) => {
-                        write!(f, "%{} = getelementptr ", mgep.dest)?;
-
-                        write!(f, "{}", self.registry.fmt(mgep.ty))?;
-
-                        for index in mgep.indices.iter() {
-                            write!(f, ", {}", index.fmt(self.module))?;
-                        }
-
-                        Ok(())
-                    }
-                    HyInstr::Invoke(invoke) => {
-                        let args_str = invoke
-                            .args
-                            .iter()
-                            .map(|arg| arg.fmt(self.module).to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-
-                        let name_str = invoke.function.fmt(self.module).to_string();
-
-                        if let Some(dest) = invoke.dest {
-                            if let Some(ret_ty) = &invoke.ty {
-                                write!(
-                                    f,
-                                    "%{} = invoke {} {} ({})",
-                                    dest,
-                                    self.registry.fmt(*ret_ty),
-                                    name_str,
-                                    args_str,
-                                )
-                            } else {
-                                write!(f, "invoke void({})", args_str)
-                            }
-                        } else {
-                            write!(f, "invoke void({})", args_str)
-                        }
-                    }
-                    HyInstr::Phi(phi) => {
-                        write!(f, "%{} = phi {} ", phi.dest, self.registry.fmt(phi.ty))?;
-
-                        let incoming_str = phi
-                            .values
-                            .iter()
-                            .map(|(value, label)| {
-                                format!("[ {}, {} ]", value.fmt(self.module), label)
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ");
-
-                        write!(f, "{}", incoming_str)
-                    }
-                    HyInstr::Select(select) => {
-                        write!(f, "%{} = select ", select.dest)?;
-                        write!(
-                            f,
-                            "{} {}, {}, {}",
-                            self.registry.fmt(select.ty),
-                            select.condition.fmt(self.module),
-                            select.true_value.fmt(self.module),
-                            select.false_value.fmt(self.module)
-                        )
-                    }
-                    HyInstr::MetaAssert(assert) => {
-                        write!(f, "meta-assert {}", assert.condition.fmt(self.module))
-                    }
-                    HyInstr::MetaAssume(assume) => {
-                        write!(f, "meta-assume {}", assume.condition.fmt(self.module))
-                    }
-                    HyInstr::MetaProb(prob) => {
-                        write!(f, "%{} = meta-prob ", prob.dest)?;
-
-                        write!(f, "{} ", self.registry.fmt(prob.ty))?;
-
-                        match &prob.operand {
-                            meta::ProbOperand::Probability(op) => {
-                                write!(f, "P({})", op.fmt(self.module))
-                            }
-                            meta::ProbOperand::ExpectedValue(op) => {
-                                write!(f, "E({})", op.fmt(self.module))
-                            }
-                            meta::ProbOperand::Variance(operand) => {
-                                write!(f, "Var({})", operand.fmt(self.module))
-                            }
-                            meta::ProbOperand::ProbabilityReachability => {
-                                write!(f, "P(#L >= 1)")
-                            }
-                            meta::ProbOperand::ExpectedIterations => {
-                                write!(f, "E(#L)")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Fmt {
-            instr: self,
-            registry,
-            module,
-        }
     }
 }
 

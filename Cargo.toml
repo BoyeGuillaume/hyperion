@@ -5,6 +5,7 @@ members = [
     "hycore",
     "examples/hyinstr-basic",
     "examples/hycore-examples",
+    "examples/hyinstr-parser",
 ]
 
 [workspace.dependencies]

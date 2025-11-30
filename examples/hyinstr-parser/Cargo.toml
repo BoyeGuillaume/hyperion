@@ -1,0 +1,11 @@
+[package]
+name = "hyinstr-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hyinstr.workspace = true
+petgraph.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+clap = { workspace = true, features = ["derive"] }
+chumsky.workspace = true

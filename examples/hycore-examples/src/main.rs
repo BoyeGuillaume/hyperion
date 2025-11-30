@@ -15,7 +15,7 @@ fn main() {
     };
 
     // Validate the module
-    match mod_a.check_ssa() {
+    match mod_a.verify() {
         Ok(_) => println!("Module is valid SSA."),
         Err(e) => eprintln!("Module SSA validation error: {}", e),
     }

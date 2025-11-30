@@ -2,7 +2,7 @@
 //!
 //! An instruction operand can be a reference to another SSA value (`Reg`),
 //! an immediate constant (`Imm`) or a code label (`Lbl`).
-use crate::{consts::AnyConst, modules::Module};
+use crate::consts::AnyConst;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
@@ -37,16 +37,6 @@ impl Label {
     }
 }
 
-impl std::fmt::Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() {
-            write!(f, "label %block_{}", self.0)
-        } else {
-            write!(f, "%block_{}", self.0)
-        }
-    }
-}
-
 /// Instruction operand.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -63,29 +53,4 @@ pub enum Operand {
     /// is prohibeted to appear in well-formed modules. Should only be used
     /// in attributes/properties.
     Meta(MetaLabel),
-}
-
-impl Operand {
-    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
-        pub struct Fmt<'a> {
-            operand: &'a Operand,
-            module: Option<&'a Module>,
-        }
-
-        impl<'a> std::fmt::Display for Fmt<'a> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                match self.operand {
-                    Operand::Reg(name) => write!(f, "%{}", name),
-                    Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
-                    Operand::Lbl(label) => write!(f, "{:#}", label),
-                    Operand::Meta(meta) => write!(f, "M{}", meta.0),
-                }
-            }
-        }
-
-        Fmt {
-            operand: self,
-            module,
-        }
-    }
 }

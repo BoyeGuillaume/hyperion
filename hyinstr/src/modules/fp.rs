@@ -5,6 +5,8 @@
 //! operands.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
+use strum::IntoEnumIterator;
 
 use crate::{
     modules::{
@@ -15,7 +17,7 @@ use crate::{
 };
 
 /// Floating-point comparison operations
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FCmpOp {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
@@ -44,6 +46,32 @@ pub enum FCmpOp {
     Une,
     /// Ordered (i.e., neither operand is NaN)
     Ord,
+}
+
+impl FCmpOp {
+    /// Creates an [`FCmpOp`] from its string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        FCmpOp::iter().find(|op| op.to_str() == s)
+    }
+
+    /// Returns the string representation of the [`FCmpOp`].
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            FCmpOp::Oeq => "oeq",
+            FCmpOp::Ogt => "ogt",
+            FCmpOp::Oge => "oge",
+            FCmpOp::Olt => "olt",
+            FCmpOp::Ole => "ole",
+            FCmpOp::One => "one",
+            FCmpOp::Ueq => "ueq",
+            FCmpOp::Ugt => "ugt",
+            FCmpOp::Uge => "uge",
+            FCmpOp::Ult => "ult",
+            FCmpOp::Ule => "ule",
+            FCmpOp::Une => "une",
+            FCmpOp::Ord => "ord",
+        }
+    }
 }
 
 /// Floating-point addition instruction
