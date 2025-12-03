@@ -33,7 +33,7 @@ impl Operand {
                     Operand::Reg(name) => write!(f, "%{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
                     Operand::Lbl(label) => write!(f, "{:#}", label),
-                    Operand::Meta(meta) => write!(f, "%m{}", meta.0),
+                    Operand::Meta(meta) => write!(f, "M_{}", meta.0),
                 }
             }
         }
@@ -70,7 +70,8 @@ impl HyInstr {
                 match (overflow_policy, signesness) {
                     (Panic, Signed) => write!(f, "nonwarp signed "),
                     (Panic, Unsigned) => write!(f, "nonwarp unsigned "),
-                    (Wrap, _) => write!(f, "warp "),
+                    (Wrap, Signed) => write!(f, "warp signed "),
+                    (Wrap, Unsigned) => write!(f, "warp unsigned "),
                     (Saturate, Signed) => write!(f, "saturate signed "),
                     (Saturate, Unsigned) => write!(f, "saturate unsigned "),
                 }
@@ -279,7 +280,7 @@ impl Terminator {
                         cbranch.target_false
                     ),
                     Terminator::Jump(jump) => {
-                        write!(f, "jump {}", jump.target)
+                        write!(f, "jump label {}", jump.target)
                     }
                     Terminator::Ret(ret) => {
                         if let Some(value) = &ret.value {
@@ -343,7 +344,12 @@ impl Function {
                     } else {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{} %{}", self.type_registry.fmt(*param_type), param_name)?;
+                    write!(
+                        f,
+                        "%{}: {}",
+                        param_name,
+                        self.type_registry.fmt(*param_type)
+                    )?;
                 }
                 writeln!(f, ") {{")?;
 

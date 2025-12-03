@@ -1,0 +1,11 @@
+define i32 %example_func(%a0: i32, %a1: i32) {
+entry:
+    %b = iadd saturate signed i32 %a0, %a1
+    %c = isub saturate signed i32 %a0, %a1
+    jump label another
+another:
+    ret %c
+yet_another:
+    ret %a
+}
+

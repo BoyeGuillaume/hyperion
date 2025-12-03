@@ -1,6 +1,8 @@
+use ariadne::{ColorGenerator, Label, Report, Source};
 use chumsky::Parser;
 use clap::Parser as ClapParser;
-use hyinstr::modules::{operand::Label, parser::parse_operand};
+use hyinstr::{modules::parser::function_parser, types::TypeRegistry};
+use uuid::Uuid;
 
 #[derive(ClapParser)]
 pub struct Arguments {
@@ -37,17 +39,47 @@ fn main() {
     };
 
     // Parse the input code into a module
-    let operand_parser = parse_operand(|_| 0, |_| Label::NIL);
-    match operand_parser.parse(input_code.as_str()).into_result() {
-        Ok(operand) => {
-            println!("Parsed operand: {:?}", operand);
+    let type_registry = TypeRegistry::new([0; 6]);
+    let uuid_generator = || Uuid::new_v4();
+    let function_parser = function_parser(|_, _| None, &type_registry, uuid_generator);
+    // let ty_parser = type_parser(&type_registry);
+    let mut colors = ColorGenerator::new();
+    let a = colors.next();
+
+    match function_parser.parse(input_code.as_str()).into_result() {
+        Ok(func) => {
+            println!("Parsed function: {}", func.fmt(&type_registry, None));
         }
         Err(errors) => {
-            eprintln!("Failed to parse operand:");
+            eprintln!("Failed to parse function:");
             for error in errors {
-                eprintln!("  {}", error);
+                let span = error.span();
+                Report::build(ariadne::ReportKind::Error, span.into_range())
+                    .with_message(format!("{}", error))
+                    .with_label(
+                        Label::new(span.into_range())
+                            .with_message("The error occurred here")
+                            .with_color(a),
+                    )
+                    .finish()
+                    .print(Source::from(input_code.as_str()))
+                    .unwrap();
             }
             std::process::exit(1);
         }
     }
+
+    // let operand_parser = parse_operand(|_, _| Some(Uuid::nil()), |_| 0, |_| Label::NIL);
+    // match operand_parser.parse(input_code.as_str()).into_result() {
+    //     Ok(operand) => {
+    //         println!("Parsed operand: {:?}", operand);
+    //     }
+    //     Err(errors) => {
+    //         eprintln!("Failed to parse operand:");
+    //         for error in errors {
+    //             eprintln!("  {}", error);
+    //         }
+    //         std::process::exit(1);
+    //     }
+    // }
 }

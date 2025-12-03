@@ -40,6 +40,7 @@ pub mod mem;
 pub mod meta;
 pub mod misc;
 pub mod operand;
+#[cfg(feature = "chumsky")]
 pub mod parser;
 pub mod symbol;
 pub mod terminator;
@@ -273,7 +274,7 @@ pub enum CallingConvention {
 impl CallingConvention {
     pub fn to_string(&self) -> Cow<'static, str> {
         match self {
-            CallingConvention::C => "C".into(),
+            CallingConvention::C => "cc".into(),
             CallingConvention::FastC => "fastcc".into(),
             CallingConvention::ColdC => "coldcc".into(),
             CallingConvention::GhcC => "ghccc".into(),
@@ -287,7 +288,7 @@ impl CallingConvention {
             CallingConvention::SwiftC => "swiftcc".into(),
             CallingConvention::SwiftTailC => "swifttailcc".into(),
             CallingConvention::CfguardCheckC => "cfguard_checkcc".into(),
-            CallingConvention::Numbered(n) => format!("cc {}", n).into(),
+            CallingConvention::Numbered(n) => format!("cc{}", n).into(),
         }
     }
 }

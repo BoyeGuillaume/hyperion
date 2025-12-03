@@ -202,7 +202,7 @@ impl AnyType {
 /// ```
 pub struct TypeRegistry {
     array: RwLock<BTreeMap<Uuid, AnyType>>,
-    inverse_lookup: RwLock<BTreeMap<u64, SmallVec<[Uuid; 1]>>>,
+    inverse_lookup: RwLock<BTreeMap<u64, SmallVec<Uuid, 1>>>,
     context: uuid::timestamp::context::Context,
     node_id: [u8; 6],
 }

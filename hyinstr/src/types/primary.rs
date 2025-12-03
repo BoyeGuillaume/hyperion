@@ -266,6 +266,18 @@ pub enum PrimaryBasicType {
     Wildcard(WType),
 }
 
+impl From<PrimaryBasicType> for PrimaryType {
+    fn from(pbt: PrimaryBasicType) -> Self {
+        match pbt {
+            PrimaryBasicType::Int(itype) => PrimaryType::Int(itype),
+            PrimaryBasicType::Float(ftype) => PrimaryType::Float(ftype),
+            PrimaryBasicType::Ext(exttype) => PrimaryType::Ext(exttype),
+            PrimaryBasicType::Ptr(ptrtype) => PrimaryType::Ptr(ptrtype),
+            PrimaryBasicType::Wildcard(wtype) => PrimaryType::Wildcard(wtype),
+        }
+    }
+}
+
 impl From<IType> for PrimaryBasicType {
     fn from(itype: IType) -> Self {
         PrimaryBasicType::Int(itype)

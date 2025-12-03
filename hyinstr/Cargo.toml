@@ -16,10 +16,10 @@ auto_enums.workspace = true
 thiserror.workspace = true
 petgraph.workspace = true
 either.workspace = true
-chumsky.workspace = true
+chumsky = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["chumsky", "chumsky/either"]
 serde = [
     "dep:serde",
     "serde/serde_derive",
@@ -28,3 +28,4 @@ serde = [
     "bigdecimal/serde",
     "petgraph/serde",
 ]
+chumsky = ["dep:chumsky"]

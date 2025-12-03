@@ -569,13 +569,13 @@ impl Instruction for IXor {
 pub struct IImplies {
     pub dest: Name,
     pub ty: Typeref,
-    pub premise: Operand,
-    pub conclusion: Operand,
+    pub lhs: Operand,
+    pub rhs: Operand,
 }
 
 impl Instruction for IImplies {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
-        [&self.premise, &self.conclusion].into_iter()
+        [&self.lhs, &self.rhs].into_iter()
     }
 
     fn destination(&self) -> Option<Name> {
@@ -583,7 +583,7 @@ impl Instruction for IImplies {
     }
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        [&mut self.premise, &mut self.conclusion].into_iter()
+        [&mut self.lhs, &mut self.rhs].into_iter()
     }
 
     fn set_destination(&mut self, name: Name) {

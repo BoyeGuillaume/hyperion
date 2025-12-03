@@ -9,3 +9,4 @@ petgraph.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 clap = { workspace = true, features = ["derive"] }
 chumsky.workspace = true
+ariadne.workspace = true

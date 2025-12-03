@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SpecificationKey {
-    referenced_functions: SmallVec<[FunctionPointer; 2]>,
+    referenced_functions: SmallVec<FunctionPointer, 2>,
 }
 
 /// A library of function specifications indexed for efficient retrieval.
@@ -92,7 +92,7 @@ impl SpecLibrary {
         spec.derive_meta_asserts();
         spec.derive_meta_assumptions();
         spec.derive_referenced_functions();
-        let mut elem: SmallVec<[FunctionPointer; 2]> =
+        let mut elem: SmallVec<FunctionPointer, 2> =
             spec.list_referenced_functions().iter().cloned().collect();
         elem.sort();
 

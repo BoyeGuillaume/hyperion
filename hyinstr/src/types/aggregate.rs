@@ -28,7 +28,7 @@ pub struct ArrayType {
     /// Element type of the array.
     pub ty: Typeref,
     /// Number of elements in the array.
-    pub num_elements: usize,
+    pub num_elements: u16,
 }
 
 impl ArrayType {
@@ -102,8 +102,14 @@ impl StructType {
                     write!(f, "{{")?;
                 }
 
+                let mut first = true;
                 for typeref in self.r#ref.element_types.iter() {
                     let elem = self.ref_object.deref().get(&typeref.0).unwrap();
+                    if !first {
+                        write!(f, ", ")?;
+                    } else {
+                        first = false;
+                    }
                     write!(f, "{}", elem.internal_fmt(self.ref_object.deref()))?;
                 }
 

@@ -41,26 +41,26 @@ impl AnyConst {
                             if let Some(module) = self.module {
                                 if let Some(func) = module.functions.get(uuid) {
                                     if let Some(name) = &func.name {
-                                        write!(f, "func_ptr %{}", name)
+                                        write!(f, "ptr %{}", name)
                                     } else {
-                                        write!(f, "func_ptr <unnamed@{:?}>", uuid)
+                                        write!(f, "ptr @{:?}", uuid)
                                     }
                                 } else {
-                                    write!(f, "func_ptr <invalid@{:?}>", uuid)
+                                    write!(f, "ptr <invalid@{:?}>", uuid)
                                 }
                             } else {
-                                write!(f, "func_ptr <unresolved@{:?}>", uuid)
+                                write!(f, "ptr <unresolved@{:?}>", uuid)
                             }
                         }
                         FunctionPointer::External(name) => {
                             if let Some(module) = self.module {
                                 if let Some(func) = module.external_functions.get(name) {
-                                    write!(f, "func_ptr external %{}", func.name)
+                                    write!(f, "ptr external %{}", func.name)
                                 } else {
-                                    write!(f, "func_ptr external <invalid@{}>", name)
+                                    write!(f, "ptr external <invalid@{}>", name)
                                 }
                             } else {
-                                write!(f, "func_ptr external <unresolved@{}>", name)
+                                write!(f, "ptr external <unresolved@{}>", name)
                             }
                         }
                     },

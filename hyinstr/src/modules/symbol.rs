@@ -6,6 +6,7 @@
 //! module or is an external reference.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 use uuid::Uuid;
 
 use crate::{modules::CallingConvention, types::Typeref};
@@ -37,7 +38,8 @@ pub struct ExternalFunction {
 ///
 /// Internal functions are defined within the current module, while external
 /// functions are declared but defined outside the module.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumDiscriminants)]
+#[strum_discriminants(name(FunctionPointerType))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FunctionPointer {
     /// Reference to a function defined within the current module

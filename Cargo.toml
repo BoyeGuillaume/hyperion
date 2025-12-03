@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.dependencies]
-smallvec = ">=0.6.10, <=1.15.1"
+smallvec = "2.0.0-alpha.12"
 strum = ">=0.25.0"
 either = "*"
 termcolor = "^1.1.1"
@@ -32,6 +32,7 @@ nalgebra = "^0.34"
 enum-map = ">=2.4"
 anyhow = ">=1.0.71"
 bit-set = ">=0.5"
+ariadne = "0.6"
 
 criterion = "0.5"
 rand = "0.9.2"
