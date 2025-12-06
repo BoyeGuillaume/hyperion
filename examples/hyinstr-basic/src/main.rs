@@ -66,7 +66,7 @@ fn main() {
                 args: vec![Operand::Reg(2)],
                 dest: Some(5),
                 ty: Some(i32_ty),
-                cconv: None,
+                cconv: Some(CallingConvention::C),
             }
             .into(),
             IMul {

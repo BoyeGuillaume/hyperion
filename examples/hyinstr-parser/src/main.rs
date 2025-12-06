@@ -40,8 +40,9 @@ fn main() {
 
     // Parse the input code into a module
     let type_registry = TypeRegistry::new([0; 6]);
-    let uuid_generator = || Uuid::new_v4();
-    let function_parser = function_parser(|_, _| None, &type_registry, uuid_generator);
+    let gamma = Uuid::new_v4();
+    let uuid_generator = || gamma;
+    let function_parser = function_parser(|_, _| Some(gamma), &type_registry, uuid_generator);
     // let ty_parser = type_parser(&type_registry);
     let mut colors = ColorGenerator::new();
     let a = colors.next();

@@ -112,7 +112,7 @@ impl HyInstr {
                     }
                     HyInstr::ISht(isht) => {
                         use crate::modules::int::IShiftOp::*;
-                        let op_variant = match isht.variant {
+                        let op_variant = match isht.op {
                             Lsl => "lsl",
                             Lsr => "lsr",
                             Asr => "asr",
@@ -213,6 +213,32 @@ impl HyInstr {
                             ProbOperand::ProbabilityReachability => write!(f, "rch")?,
                             ProbOperand::ExpectedIterations => write!(f, "eit")?,
                         };
+                        Ok(true)
+                    }
+                    HyInstr::Invoke(invoke) => {
+                        if let Some(cconv) = &invoke.cconv {
+                            write!(f, "{} ", cconv.to_string())?;
+                        }
+
+                        if let Some(ty) = invoke.ty {
+                            write!(f, "{} ", self.registry.fmt(ty))?;
+                        } else {
+                            debug_assert!(invoke.dest.is_none());
+                            write!(f, "void ")?;
+                        }
+
+                        write!(f, "{}(", invoke.function.fmt(self.module))?;
+
+                        let mut first = true;
+                        for arg in &invoke.args {
+                            if first {
+                                first = false;
+                            } else {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{}", arg.fmt(self.module))?;
+                        }
+                        write!(f, ")")?;
                         Ok(true)
                     }
                     _ => Ok(false),

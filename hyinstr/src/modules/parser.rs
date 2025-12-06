@@ -1,18 +1,24 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc, u16, u64};
 
 use bigdecimal::{BigDecimal, Num};
-use chumsky::{prelude::*, text::digits};
+use chumsky::{
+    prelude::*,
+    text::{ascii::ident, digits},
+};
 use either::Either;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
+use strum::IntoEnumIterator;
 use uuid::Uuid;
 
 use crate::{
     consts::{fp::FConst, int::IConst},
     modules::{
         BasicBlock, CallingConvention, Function,
+        fp::*,
         instructions::HyInstr,
         int::*,
+        misc::*,
         operand::{Label, Name, Operand},
         symbol::{FunctionPointer, FunctionPointerType},
         terminator::{CBranch, Jump, Ret, Terminator},
@@ -91,6 +97,75 @@ pub fn ftype_parser<'src>()
         just("ppc_fp128").to(FType::PPCFp128),
     ))
     .labelled("floating-point type")
+}
+
+pub fn icmp_op_parser<'src>()
+-> impl Parser<'src, &'src str, ICmpOp, extra::Err<Rich<'src, char>>> + Clone {
+    ident()
+        .validate(|s: &str, extra, emit| match ICmpOp::from_str(s) {
+            Some(op) => op,
+            None => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "unknown integer comparison operator: {} (expected one of: {})",
+                        s,
+                        ICmpOp::iter()
+                            .map(|x| x.to_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                ICmpOp::Eq
+            }
+        })
+        .labelled("integer comparison operator")
+}
+
+pub fn fcmp_op_parser<'src>()
+-> impl Parser<'src, &'src str, FCmpOp, extra::Err<Rich<'src, char>>> + Clone {
+    ident()
+        .validate(|s: &str, extra, emit| match FCmpOp::from_str(s) {
+            Some(op) => op,
+            None => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "unknown floating-point comparison operator: {} (expected one of: {})",
+                        s,
+                        FCmpOp::iter()
+                            .map(|x| x.to_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                FCmpOp::One
+            }
+        })
+        .labelled("floating-point comparison operator")
+}
+
+pub fn ishift_op_parser<'src>()
+-> impl Parser<'src, &'src str, IShiftOp, extra::Err<Rich<'src, char>>> + Clone {
+    ident()
+        .validate(|s: &str, extra, emit| match IShiftOp::from_str(s) {
+            Some(op) => op,
+            None => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "unknown integer shift operator: {} (expected one of: {})",
+                        s,
+                        IShiftOp::iter()
+                            .map(|x| x.to_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                IShiftOp::Lsl
+            }
+        })
+        .labelled("integer shift operator")
 }
 
 pub fn tptr_parser<'src>()
@@ -243,6 +318,15 @@ pub fn type_parser<'src>(
         ))
         .labelled("type")
     })
+}
+
+pub fn maybe_type_parser<'src>(
+    registry: &'src TypeRegistry,
+) -> impl Parser<'src, &'src str, Option<Typeref>, extra::Err<Rich<'src, char>>> {
+    choice((
+        type_parser(registry).map(Some),
+        just("void").to(None).labelled("void type"),
+    ))
 }
 
 pub fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Err<Rich<'src, char>>>
@@ -467,12 +551,29 @@ fn instruction_dest_parser<'src>(
         .labelled("instruction destination")
 }
 
+struct TplLabelOperand {
+    label: Label,
+    operand: Operand,
+}
+
 impl<const N: usize> chumsky::container::Container<Operand> for SmallVec<Operand, N> {
     fn with_capacity(n: usize) -> Self {
         SmallVec::with_capacity(n)
     }
 
     fn push(&mut self, item: Operand) {
+        SmallVec::push(self, item)
+    }
+}
+
+impl<const N: usize> chumsky::container::Container<TplLabelOperand>
+    for SmallVec<TplLabelOperand, N>
+{
+    fn with_capacity(n: usize) -> Self {
+        SmallVec::with_capacity(n)
+    }
+
+    fn push(&mut self, item: TplLabelOperand) {
         SmallVec::push(self, item)
     }
 }
@@ -490,7 +591,7 @@ where
     registry: &'src TypeRegistry,
 }
 
-fn parse_simple_arith<'src, U, F1, F2, F3>(
+fn parse_simple_instruction<'src, U, F1, F2, F3>(
     ctx: CtxA<'src, F1, F2, F3>,
     opname: &'static str,
     num_operand: usize,
@@ -503,7 +604,8 @@ where
 {
     instruction_dest_parser(ctx.named_name.clone())
         .padded()
-        .then_ignore(just(opname).padded())
+        .then_ignore(just(opname))
+        .then_ignore(whitespace())
         .then(parser.padded())
         .then(type_parser(ctx.registry).padded())
         .then(
@@ -541,12 +643,13 @@ where
     ))
     .labelled("integer signedness");
 
-    macro_rules! define_i_binop {
+    macro_rules! define_op {
         (
+            binary policy signedness,
             $opname:ident,
             $actual:ident
         ) => {
-            let $opname = parse_simple_arith(
+            let $opname = parse_simple_instruction(
                 ctx.clone(),
                 stringify!($opname),
                 2,
@@ -566,15 +669,15 @@ where
             });
         };
         (
-            nopolicy
+            binary signedness,
             $opname:ident,
             $actual:ident
         ) => {
-            let $opname = parse_simple_arith(
+            let $opname = parse_simple_instruction(
                 ctx.clone(),
                 stringify!($opname),
                 2,
-                integer_signedness_parser.padded(),
+                integer_signedness_parser,
             )
             .map(|(dest, ty, signedness, mut operands)| {
                 HyInstr::$actual($actual {
@@ -587,88 +690,179 @@ where
             });
         };
         (
-            simple
+            binary,
             $opname:ident,
             $actual:ident
         ) => {
-            let $opname = parse_simple_arith(ctx.clone(), stringify!($opname), 2, empty()).map(
-                |(dest, ty, _, mut operands)| {
+            let $opname = parse_simple_instruction(ctx.clone(), stringify!($opname), 2, empty())
+                .map(|(dest, ty, _, mut operands)| {
                     HyInstr::$actual($actual {
                         dest,
                         ty,
                         lhs: operands.remove(0),
                         rhs: operands.remove(0),
                     })
-                },
-            );
+                });
+        };
+        (
+            unary,
+            $opname:ident,
+            $actual:ident
+        ) => {
+            let $opname = parse_simple_instruction(ctx.clone(), stringify!($opname), 1, empty())
+                .map(|(dest, ty, _, mut operands)| {
+                    HyInstr::$actual($actual {
+                        dest,
+                        ty,
+                        value: operands.remove(0),
+                    })
+                });
         };
     }
 
-    define_i_binop!(iadd, IAdd);
-    define_i_binop!(isub, ISub);
-    define_i_binop!(imul, IMul);
-    define_i_binop!(nopolicy idiv, IDiv);
-    define_i_binop!(nopolicy irem, IRem);
-    define_i_binop!(simple iand, IAnd);
-    define_i_binop!(simple ior, IOr);
-    define_i_binop!(simple ixor, IXor);
-    define_i_binop!(simple iimplies, IImplies);
-    define_i_binop!(simple iequiv, IEquiv);
+    // == Integer operations ==
+    define_op!(binary policy signedness, iadd, IAdd);
+    define_op!(binary policy signedness, isub, ISub);
+    define_op!(binary policy signedness, imul, IMul);
+    define_op!(binary signedness, idiv, IDiv);
+    define_op!(binary signedness, irem, IRem);
+    define_op!(binary, iand, IAnd);
+    define_op!(binary, ior, IOr);
+    define_op!(binary, ixor, IXor);
+    define_op!(binary, iimplies, IImplies);
+    define_op!(binary, iequiv, IEquiv);
 
-    // let iadd = parse_simple_arith(ctx, "iadd", 2, integer_policy_parser.clone()).map(
-    //     |(dest, ty, (overflow_policy, signess), mut operands)| {
-    //         HyInstr::IAdd(IAdd {
-    //             dest,
-    //             ty,
-    //             lhs: operands.pop().unwrap(),
-    //             rhs: operands.pop().unwrap(),
-    //             overflow: overflow_policy,
-    //             signedness: signess,
-    //         })
-    //     },
-    // );
-    // // general format: (%<dest> = )?<opcode> <keywords> <ty> <operands>
-    // exceptions:
-    //  phi: %<dest> = phi <ty> [<value>, <label>], [<value>, <label>], ...
-    //  memory instructions: has suffixes like , align <num>, volatile, etc.
-    // let dest_parser = just("%")
-    //     .ignore_then(
-    //         any()
-    //             .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
-    //             .repeated()
-    //             .collect::<String>()
-    //             .labelled("destination register"),
-    //     )
-    //     .padded()
-    //     .then_ignore(just('='))
-    //     .padded()
-    //     .labelled("destination");
+    define_op!(unary, ineg, INeg);
+    define_op!(unary, inot, INot);
 
-    // let opcode = any()
-    //     .filter(|c: &char| c.is_ascii_alphabetic())
-    //     .repeated()
-    //     .to_slice()
-    //     .validate(|s: &str, extra, emit| match HyInstrOp::from_string(s) {
-    //         Some(op) => op,
-    //         None => {
-    //             emit.emit(Rich::custom(
-    //                 extra.span(),
-    //                 format!(
-    //                     "unknown opcode: {} (expected one of: {})",
-    //                     s,
-    //                     HyInstrOp::iter()
-    //                         .map(|x| x.opname())
-    //                         .collect::<Vec<_>>()
-    //                         .join(", ")
-    //                 ),
-    //             ));
-    //             HyInstrOp::IAdd
-    //         }
-    //     })
-    //     .labelled("opcode");
+    let icmp = parse_simple_instruction(ctx.clone(), "icmp", 2, icmp_op_parser()).map(
+        |(dest, ty, op, mut operands)| {
+            HyInstr::ICmp(ICmp {
+                dest,
+                ty,
+                lhs: operands.remove(0),
+                rhs: operands.remove(0),
+                op,
+            })
+        },
+    );
+
+    let isht = parse_simple_instruction(ctx.clone(), "ishift", 2, ishift_op_parser()).map(
+        |(dest, ty, op, mut operands)| {
+            HyInstr::ISht(ISht {
+                dest,
+                ty,
+                lhs: operands.remove(0),
+                rhs: operands.remove(0),
+                op,
+            })
+        },
+    );
+
+    // == Floating-point operations ==
+    let fcmp = parse_simple_instruction(ctx.clone(), "fcmp", 2, fcmp_op_parser()).map(
+        |(dest, ty, op, mut operands)| {
+            HyInstr::FCmp(FCmp {
+                dest,
+                ty,
+                lhs: operands.remove(0),
+                rhs: operands.remove(0),
+                op,
+            })
+        },
+    );
+
+    define_op!(binary, fadd, FAdd);
+    define_op!(binary, fsub, FSub);
+    define_op!(binary, fmul, FMul);
+    define_op!(binary, fdiv, FDiv);
+    define_op!(binary, frem, FRem);
+    define_op!(unary, fneg, FNeg);
+
+    let cloned_ctx = ctx.clone();
+    let phi = instruction_dest_parser(ctx.named_name.clone())
+        .padded()
+        .then_ignore(just("phi"))
+        .then_ignore(whitespace())
+        .then(type_parser(ctx.registry).padded())
+        .then(
+            text::ident()
+                .padded()
+                .map(move |s: &str| (cloned_ctx.label_namer)(s.to_string()))
+                .then_ignore(just(","))
+                .then(
+                    operand_parser(
+                        ctx.func_retriver.clone(),
+                        ctx.named_name.clone(),
+                        ctx.label_namer.clone(),
+                    )
+                    .padded(),
+                )
+                .padded()
+                .delimited_by(just("["), just("]"))
+                .map(|(label, operand)| TplLabelOperand { label, operand })
+                .separated_by(just(","))
+                .collect::<SmallVec<TplLabelOperand, 4>>(),
+        )
+        .map(|((dest, ty), operands)| {
+            HyInstr::Phi(Phi {
+                dest,
+                ty,
+                values: operands.into_iter().map(|x| (x.operand, x.label)).collect(),
+            })
+        });
+
+    let invoke = instruction_dest_parser(ctx.named_name.clone())
+        .or_not()
+        .padded()
+        .then_ignore(just("invoke"))
+        .then_ignore(whitespace())
+        .then(cconv_parser().then_ignore(whitespace()).or_not())
+        .then(maybe_type_parser(ctx.registry).then_ignore(whitespace()))
+        .then(
+            operand_parser(
+                ctx.func_retriver.clone(),
+                ctx.named_name.clone(),
+                ctx.label_namer.clone(),
+            )
+            .padded(),
+        )
+        .then(
+            operand_parser(
+                ctx.func_retriver.clone(),
+                ctx.named_name.clone(),
+                ctx.label_namer.clone(),
+            )
+            .padded()
+            .separated_by(just(","))
+            .collect::<Vec<_>>()
+            .delimited_by(just("("), just(")")),
+        )
+        .map(|((((dest, cconv), ty), function), operands)| {
+            HyInstr::Invoke(Invoke {
+                dest,
+                cconv,
+                ty,
+                function,
+                args: operands,
+            })
+        });
+
+    let select = parse_simple_instruction(ctx.clone(), "select", 3, empty()).map(
+        |(dest, ty, _, mut operands)| {
+            HyInstr::Select(Select {
+                dest,
+                ty,
+                condition: operands.remove(0),
+                true_value: operands.remove(0),
+                false_value: operands.remove(0),
+            })
+        },
+    );
 
     choice((
-        iadd, isub, imul, idiv, irem, iand, ior, ixor, iimplies, iequiv,
+        iadd, isub, imul, idiv, irem, iand, ior, ixor, iimplies, iequiv, ineg, inot, icmp, isht,
+        fcmp, fadd, fsub, fmul, fdiv, frem, fneg, phi, invoke, select,
     ))
 }
 
@@ -762,17 +956,6 @@ pub fn parse_block<'src>(
 
 pub fn cconv_parser<'src>()
 -> impl Parser<'src, &'src str, CallingConvention, extra::Err<Rich<'src, char>>> {
-    // CallingConvention::HipeC => "hipecc".into(),
-    // CallingConvention::AnyRegC => "anyregcc".into(),
-    // CallingConvention::PreserveMostC => "preservemostcc".into(),
-    // CallingConvention::PreserveAllC => "preserveallcc".into(),
-    // CallingConvention::PreserveNoneC => "preservenonecc".into(),
-    // CallingConvention::CxxFastTlsC => "cxx_fast_tlscc".into(),
-    // CallingConvention::TailC => "tailcc".into(),
-    // CallingConvention::SwiftC => "swiftcc".into(),
-    // CallingConvention::SwiftTailC => "swifttailcc".into(),
-    // CallingConvention::CfguardCheckC => "cfguard_checkcc".into(),
-    // CallingConvention::Numbered(n) => format!("cc{}", n).into(),
     choice((
         just("cc").to(CallingConvention::C),
         just("fastcc").to(CallingConvention::FastC),
@@ -823,12 +1006,6 @@ pub fn function_parser<'src>(
     registry: &'src TypeRegistry,
     next_func_uuid: impl Fn() -> Uuid + 'src,
 ) -> impl Parser<'src, &'src str, crate::modules::Function, extra::Err<Rich<'src, char>>> {
-    let maybe_type_parser = choice((
-        type_parser(registry).map(Option::Some),
-        just("void").to(None),
-    ))
-    .labelled("maybe type");
-
     let name_hashmap: Rc<RefCell<BTreeMap<String, Name>>> = Default::default();
     let named_name = move |string: String| {
         let hashmap = &mut *name_hashmap.borrow_mut();
@@ -855,10 +1032,10 @@ pub fn function_parser<'src>(
 
     just("define")
         .ignore_then(whitespace())
-        .ignore_then(maybe_type_parser)
-        .then_ignore(whitespace())
-        .then(cconv_parser().then_ignore(whitespace()).or_not())
+        .ignore_then(cconv_parser().then_ignore(whitespace()).or_not())
         .then(visibility_parser().then_ignore(whitespace()).or_not())
+        .then(maybe_type_parser(registry))
+        .then_ignore(whitespace())
         .then(percent_name_parser())
         .then(
             register_parser(named_name.clone())
@@ -885,7 +1062,7 @@ pub fn function_parser<'src>(
             .padded(),
         )
         .map(
-            move |(((((return_type, cconv), visibility), func_name), params), blocks)| Function {
+            move |(((((cconv, visibility), return_type), func_name), params), blocks)| Function {
                 uuid: next_func_uuid(),
                 name: Some(func_name.to_string()),
                 params,

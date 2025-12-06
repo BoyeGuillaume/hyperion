@@ -103,7 +103,7 @@ impl ICmpOp {
 }
 
 /// Integer shift operations disambiguation
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IShiftOp {
     /// Logical left shift
@@ -116,6 +116,24 @@ pub enum IShiftOp {
     Rol,
     /// Rotate right
     Ror,
+}
+
+impl IShiftOp {
+    /// Creates an [`IShiftOp`] from its string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        IShiftOp::iter().find(|op| op.to_str() == s)
+    }
+
+    /// Returns the string representation of the [`IShiftOp`].
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            IShiftOp::Lsl => "lsl",
+            IShiftOp::Lsr => "lsr",
+            IShiftOp::Asr => "asr",
+            IShiftOp::Rol => "rol",
+            IShiftOp::Ror => "ror",
+        }
+    }
 }
 
 /// Integer addition instruction
@@ -352,14 +370,14 @@ impl Instruction for ICmp {
 pub struct ISht {
     pub dest: Name,
     pub ty: Typeref,
-    pub value: Operand,
-    pub shift: Operand,
-    pub variant: IShiftOp,
+    pub lhs: Operand,
+    pub rhs: Operand,
+    pub op: IShiftOp,
 }
 
 impl Instruction for ISht {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
-        [&self.value, &self.shift].into_iter()
+        [&self.lhs, &self.rhs].into_iter()
     }
 
     fn destination(&self) -> Option<Name> {
@@ -367,7 +385,7 @@ impl Instruction for ISht {
     }
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        [&mut self.value, &mut self.shift].into_iter()
+        [&mut self.lhs, &mut self.rhs].into_iter()
     }
 
     fn set_destination(&mut self, name: Name) {

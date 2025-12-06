@@ -129,15 +129,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
-name = "basic-instr"
-version = "0.1.0"
-dependencies = [
- "hyinstr",
- "petgraph",
- "uuid",
-]
-
-[[package]]
 name = "bigdecimal"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -497,6 +488,15 @@ dependencies = [
  "smallvec 2.0.0-alpha.12",
  "strum",
  "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "hyinstr-basic"
+version = "0.1.0"
+dependencies = [
+ "hyinstr",
+ "petgraph",
  "uuid",
 ]
 
