@@ -1,4 +1,10 @@
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc, u16, u64};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashSet},
+    path::{Path, PathBuf},
+    rc::Rc,
+    u16, u64,
+};
 
 use bigdecimal::{BigDecimal, Num};
 use chumsky::{
@@ -6,18 +12,20 @@ use chumsky::{
     text::{ascii::ident, digits},
 };
 use either::Either;
+use log::debug;
 use num_bigint::BigInt;
 use smallvec::SmallVec;
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
 use crate::{
-    consts::{fp::FConst, int::IConst},
+    consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
-        BasicBlock, CallingConvention, Function,
+        BasicBlock, CallingConvention, Function, Instruction, Module,
         fp::*,
         instructions::HyInstr,
         int::*,
+        mem::*,
         misc::*,
         operand::{Label, Name, Operand},
         symbol::{FunctionPointer, FunctionPointerType},
@@ -28,10 +36,10 @@ use crate::{
         aggregate::{ArrayType, StructType},
         primary::{FType, IType, PrimaryBasicType, PtrType, VcSize, VcType},
     },
+    utils::{Error, ParserError},
 };
 
-pub fn whitespace<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
-{
+fn whitespace<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone {
     any()
         .filter(|c: &char| c.is_whitespace())
         .repeated()
@@ -40,8 +48,8 @@ pub fn whitespace<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'s
         .labelled("whitespace")
 }
 
-pub fn itype_parser<'src>()
--> impl Parser<'src, &'src str, IType, extra::Err<Rich<'src, char>>> + Clone {
+fn itype_parser<'src>() -> impl Parser<'src, &'src str, IType, extra::Err<Rich<'src, char>>> + Clone
+{
     just("i")
         .ignore_then(digits(10).to_slice().try_map(|digits, span| {
             // 1. Attempt to parse digits into a usize
@@ -81,8 +89,8 @@ pub fn itype_parser<'src>()
         .labelled("integer type")
 }
 
-pub fn ftype_parser<'src>()
--> impl Parser<'src, &'src str, FType, extra::Err<Rich<'src, char>>> + Clone {
+fn ftype_parser<'src>() -> impl Parser<'src, &'src str, FType, extra::Err<Rich<'src, char>>> + Clone
+{
     choice((
         just("fp16").to(FType::Fp16),
         just("half").to(FType::Fp16),
@@ -99,7 +107,7 @@ pub fn ftype_parser<'src>()
     .labelled("floating-point type")
 }
 
-pub fn icmp_op_parser<'src>()
+fn icmp_op_parser<'src>()
 -> impl Parser<'src, &'src str, ICmpOp, extra::Err<Rich<'src, char>>> + Clone {
     ident()
         .validate(|s: &str, extra, emit| match ICmpOp::from_str(s) {
@@ -122,7 +130,7 @@ pub fn icmp_op_parser<'src>()
         .labelled("integer comparison operator")
 }
 
-pub fn fcmp_op_parser<'src>()
+fn fcmp_op_parser<'src>()
 -> impl Parser<'src, &'src str, FCmpOp, extra::Err<Rich<'src, char>>> + Clone {
     ident()
         .validate(|s: &str, extra, emit| match FCmpOp::from_str(s) {
@@ -145,7 +153,53 @@ pub fn fcmp_op_parser<'src>()
         .labelled("floating-point comparison operator")
 }
 
-pub fn ishift_op_parser<'src>()
+fn ordering_parser<'src>()
+-> impl Parser<'src, &'src str, MemoryOrdering, extra::Err<Rich<'src, char>>> + Clone {
+    ident()
+        .validate(|s: &str, extra, emit| match MemoryOrdering::from_str(s) {
+            Some(ordering) => ordering,
+            None => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "unknown memory ordering: {} (expected one of: {})",
+                        s,
+                        MemoryOrdering::iter()
+                            .map(|x| x.to_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                MemoryOrdering::Acq
+            }
+        })
+        .labelled("memory ordering")
+}
+
+fn cast_op_parser<'src>()
+-> impl Parser<'src, &'src str, CastOp, extra::Err<Rich<'src, char>>> + Clone {
+    ident()
+        .validate(|s: &str, extra, emit| match CastOp::from_str(s) {
+            Some(op) => op,
+            None => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "unknown cast operator: {} (expected one of: {})",
+                        s,
+                        CastOp::iter()
+                            .map(|x| x.to_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ));
+                CastOp::Trunc
+            }
+        })
+        .labelled("cast operator")
+}
+
+fn ishift_op_parser<'src>()
 -> impl Parser<'src, &'src str, IShiftOp, extra::Err<Rich<'src, char>>> + Clone {
     ident()
         .validate(|s: &str, extra, emit| match IShiftOp::from_str(s) {
@@ -168,12 +222,12 @@ pub fn ishift_op_parser<'src>()
         .labelled("integer shift operator")
 }
 
-pub fn tptr_parser<'src>()
--> impl Parser<'src, &'src str, PtrType, extra::Err<Rich<'src, char>>> + Clone {
+fn tptr_parser<'src>() -> impl Parser<'src, &'src str, PtrType, extra::Err<Rich<'src, char>>> + Clone
+{
     just("ptr").to(PtrType).labelled("function pointer type")
 }
 
-pub fn bigint_parser<'src>()
+fn bigint_parser<'src>()
 -> impl Parser<'src, &'src str, BigInt, extra::Err<Rich<'src, char>>> + Clone {
     choice((
         // Hexadecimal
@@ -201,7 +255,7 @@ pub fn bigint_parser<'src>()
     ))
 }
 
-pub fn primary_type_parser<'src>()
+fn primary_type_parser<'src>()
 -> impl Parser<'src, &'src str, PrimaryBasicType, extra::Err<Rich<'src, char>>> + Clone {
     choice((
         itype_parser().map(PrimaryBasicType::Int),
@@ -211,7 +265,7 @@ pub fn primary_type_parser<'src>()
     .labelled("primitive type")
 }
 
-pub fn type_parser<'src>(
+fn type_parser<'src>(
     registry: &'src TypeRegistry,
 ) -> impl Parser<'src, &'src str, Typeref, extra::Err<Rich<'src, char>>> {
     recursive(|tree| {
@@ -320,7 +374,7 @@ pub fn type_parser<'src>(
     })
 }
 
-pub fn maybe_type_parser<'src>(
+fn maybe_type_parser<'src>(
     registry: &'src TypeRegistry,
 ) -> impl Parser<'src, &'src str, Option<Typeref>, extra::Err<Rich<'src, char>>> {
     choice((
@@ -329,8 +383,7 @@ pub fn maybe_type_parser<'src>(
     ))
 }
 
-pub fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Err<Rich<'src, char>>>
-{
+fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Err<Rich<'src, char>>> {
     // UUID parser in standard 8-4-4-4-12 format
     let hex_digit = any()
         .filter(|c: &char| c.is_ascii_hexdigit())
@@ -360,7 +413,7 @@ pub fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Er
         .labelled("UUID")
 }
 
-pub fn iconst_parser<'src>() -> impl Parser<'src, &'src str, IConst, extra::Err<Rich<'src, char>>> {
+fn iconst_parser<'src>() -> impl Parser<'src, &'src str, IConst, extra::Err<Rich<'src, char>>> {
     itype_parser()
         .then_ignore(whitespace())
         .then(bigint_parser())
@@ -383,8 +436,7 @@ pub fn iconst_parser<'src>() -> impl Parser<'src, &'src str, IConst, extra::Err<
         .labelled("integer constant")
 }
 
-pub fn decimal_query<'src>()
--> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> {
+fn decimal_query<'src>() -> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> {
     // Simple floating-point parser using BigDecimal
     let sign = any()
         .filter(|&x: &char| x == '+' || x == '-')
@@ -431,7 +483,7 @@ pub fn decimal_query<'src>()
         .labelled("decimal floating-point number")
 }
 
-pub fn fp_parser<'src>() -> impl Parser<'src, &'src str, FConst, extra::Err<Rich<'src, char>>> {
+fn fp_parser<'src>() -> impl Parser<'src, &'src str, FConst, extra::Err<Rich<'src, char>>> {
     ftype_parser()
         .then_ignore(whitespace())
         .then(decimal_query())
@@ -439,7 +491,7 @@ pub fn fp_parser<'src>() -> impl Parser<'src, &'src str, FConst, extra::Err<Rich
         .labelled("floating-point constant")
 }
 
-pub fn func_ptr_parser<'src>(
+fn func_ptr_parser<'src>(
     func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + 'src,
 ) -> impl Parser<'src, &'src str, FunctionPointer, extra::Err<Rich<'src, char>>> {
     let named_func = just("%")
@@ -490,17 +542,15 @@ pub fn func_ptr_parser<'src>(
         })
 }
 
-pub fn label_parser<'src>(
+fn label_parser<'src>(
     named_label: impl Fn(String) -> Label + Clone + 'src,
 ) -> impl Parser<'src, &'src str, Label, extra::Err<Rich<'src, char>>> + Clone {
-    just("label")
-        .then_ignore(whitespace())
-        .ignore_then(chumsky::text::ascii::ident())
+    chumsky::text::ascii::ident()
         .map(move |s: &str| named_label(s.to_string()))
         .labelled("label")
 }
 
-pub fn percent_name_parser<'src>()
+fn percent_name_parser<'src>()
 -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
     just("%")
         .ignore_then(
@@ -513,7 +563,7 @@ pub fn percent_name_parser<'src>()
         .labelled("name")
 }
 
-pub fn register_parser<'src>(
+fn register_parser<'src>(
     named_name: impl Fn(String) -> Name + 'src,
 ) -> impl Parser<'src, &'src str, Name, extra::Err<Rich<'src, char>>> {
     percent_name_parser()
@@ -521,7 +571,7 @@ pub fn register_parser<'src>(
         .map(move |x| named_name(x))
 }
 
-pub fn operand_parser<'src>(
+fn operand_parser<'src>(
     func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + 'src,
     named_name: impl Fn(String) -> Name + 'src,
     label_namer: impl Fn(String) -> Label + Clone + 'src,
@@ -631,7 +681,7 @@ where
     F3: Fn(String) -> Label + Clone + 'src,
 {
     let overflow_policy_parser = choice((
-        just("nonwarp").to(OverflowPolicy::Panic),
+        just("panic").to(OverflowPolicy::Panic),
         just("wrap").to(OverflowPolicy::Wrap),
         just("saturate").to(OverflowPolicy::Saturate),
     ))
@@ -801,6 +851,7 @@ where
                 .padded()
                 .delimited_by(just("["), just("]"))
                 .map(|(label, operand)| TplLabelOperand { label, operand })
+                .padded()
                 .separated_by(just(","))
                 .collect::<SmallVec<TplLabelOperand, 4>>(),
         )
@@ -860,9 +911,151 @@ where
         },
     );
 
+    let cast = parse_simple_instruction(ctx.clone(), "cast", 1, cast_op_parser()).map(
+        |(dest, ty, op, mut operands)| {
+            HyInstr::Cast(Cast {
+                dest,
+                op,
+                source: operands.remove(0),
+                ty,
+            })
+        },
+    );
+
+    let alignement_parser = just(",")
+        .padded()
+        .ignore_then(just("align"))
+        .ignore_then(whitespace())
+        .ignore_then(bigint_parser())
+        .validate(|align, extra, emit| {
+            if align.bits() <= 32 && align >= BigInt::from(1) {
+                align.iter_u32_digits().next().unwrap() as u32
+            } else {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "alignment must be a strictly positive integer fitting in 32 bits, got {}",
+                        align
+                    ),
+                ));
+                1u32
+            }
+        })
+        .labelled("alignment");
+
+    let ordering_parser = just(",")
+        .padded()
+        .ignore_then(just("atomic"))
+        .ignore_then(whitespace())
+        .ignore_then(ordering_parser())
+        .labelled("memory ordering");
+
+    let mem_postfix = choice((
+        alignement_parser
+            .clone()
+            .or_not()
+            .then(ordering_parser.clone().or_not()),
+        ordering_parser
+            .clone()
+            .or_not()
+            .then(alignement_parser.clone().or_not())
+            .map(|(a, b)| (b, a)),
+    ));
+
+    let mload = parse_simple_instruction(ctx.clone(), "load", 1, just("volatile").or_not())
+        .then(mem_postfix.clone())
+        .map(
+            |((dest, ty, is_volatile, mut operands), (alignement, ordering))| {
+                HyInstr::MLoad(MLoad {
+                    dest,
+                    ty,
+                    addr: operands.remove(0),
+                    alignement,
+                    ordering: ordering,
+                    volatile: is_volatile.is_some(),
+                })
+            },
+        );
+
+    let mstore = just("store")
+        .ignore_then(whitespace())
+        .ignore_then(just("volatile").or_not().padded())
+        .then(
+            operand_parser(
+                ctx.func_retriver.clone(),
+                ctx.named_name.clone(),
+                ctx.label_namer.clone(),
+            )
+            .padded()
+            .separated_by(just(","))
+            .exactly(2)
+            .collect::<SmallVec<Operand, 2>>(),
+        )
+        .then(mem_postfix.clone())
+        .map(|((is_volatile, mut operands), (alignement, ordering))| {
+            HyInstr::MStore(MStore {
+                addr: operands.remove(0),
+                value: operands.remove(0),
+                alignment: alignement,
+                ordering,
+                volatile: is_volatile.is_some(),
+            })
+        });
+
+    let malloca = parse_simple_instruction(ctx.clone(), "alloca", 1, empty())
+        .then(alignement_parser.or_not())
+        .map(|((dest, ty, _, mut operands), alignment)| {
+            HyInstr::MAlloca(MAlloca {
+                dest,
+                ty,
+                count: operands.remove(0),
+                alignment,
+            })
+        });
+
+    let mgetelementptr = instruction_dest_parser(ctx.named_name.clone())
+        .padded()
+        .then_ignore(just("getelementptr"))
+        .then_ignore(whitespace())
+        .then(type_parser(ctx.registry).padded())
+        .then(
+            operand_parser(
+                ctx.func_retriver.clone(),
+                ctx.named_name.clone(),
+                ctx.label_namer.clone(),
+            )
+            .padded()
+            .separated_by(just(","))
+            .at_least(1)
+            .collect::<Vec<_>>(),
+        )
+        .map(|((dest, ty), mut indices)| {
+            HyInstr::MGetElementPtr(MGetElementPtr {
+                dest,
+                ty,
+                base: indices.remove(0),
+                indices,
+            })
+        });
+
     choice((
-        iadd, isub, imul, idiv, irem, iand, ior, ixor, iimplies, iequiv, ineg, inot, icmp, isht,
-        fcmp, fadd, fsub, fmul, fdiv, frem, fneg, phi, invoke, select,
+        choice((
+            iadd, isub, imul, idiv, irem, iand, ior, ixor, iimplies, iequiv, ineg, inot, icmp,
+            isht, fcmp, fadd, fsub, fmul,
+        )),
+        choice((
+            invoke,
+            select,
+            mload,
+            mstore,
+            malloca,
+            cast,
+            fdiv,
+            frem,
+            fneg,
+            phi,
+            mgetelementptr,
+        )),
     ))
 }
 
@@ -913,7 +1106,7 @@ fn parse_terminator<'src>(
     choice((branch_parser, jump_parser, ret_parser)).labelled("terminator")
 }
 
-pub fn parse_block<'src>(
+fn parse_block<'src>(
     func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
     named_name: impl Fn(String) -> Name + Clone + 'src,
     label_namer: impl Fn(String) -> Label + Clone + 'src,
@@ -954,7 +1147,7 @@ pub fn parse_block<'src>(
         .labelled("block")
 }
 
-pub fn cconv_parser<'src>()
+fn cconv_parser<'src>()
 -> impl Parser<'src, &'src str, CallingConvention, extra::Err<Rich<'src, char>>> {
     choice((
         just("cc").to(CallingConvention::C),
@@ -989,7 +1182,7 @@ pub fn cconv_parser<'src>()
     .labelled("calling convention")
 }
 
-pub fn visibility_parser<'src>()
+fn visibility_parser<'src>()
 -> impl Parser<'src, &'src str, crate::modules::Visibility, extra::Err<Rich<'src, char>>> {
     choice((
         just("default")
@@ -1004,7 +1197,7 @@ pub fn visibility_parser<'src>()
 pub fn function_parser<'src>(
     func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
     registry: &'src TypeRegistry,
-    next_func_uuid: impl Fn() -> Uuid + 'src,
+    uuid: Uuid,
 ) -> impl Parser<'src, &'src str, crate::modules::Function, extra::Err<Rich<'src, char>>> {
     let name_hashmap: Rc<RefCell<BTreeMap<String, Name>>> = Default::default();
     let named_name = move |string: String| {
@@ -1063,7 +1256,7 @@ pub fn function_parser<'src>(
         )
         .map(
             move |(((((cconv, visibility), return_type), func_name), params), blocks)| Function {
-                uuid: next_func_uuid(),
+                uuid,
                 name: Some(func_name.to_string()),
                 params,
                 return_type,
@@ -1079,4 +1272,248 @@ pub fn function_parser<'src>(
             },
         )
         .padded()
+}
+
+pub fn import_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
+    just("import")
+        .ignore_then(whitespace())
+        .ignore_then(
+            any()
+                .filter(|c: &char| *c != '\n' && *c != '\r' && *c != '"' && *c != '\'')
+                .repeated()
+                .collect::<String>()
+                .delimited_by(just("\""), just("\"")),
+        )
+        .map(|s: String| s.trim().to_string())
+        .padded()
+        .then_ignore(just(";"))
+}
+
+enum ModuleItem {
+    Import(String),
+    Function(Function),
+}
+
+pub fn extend_module_from_path(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    path: impl AsRef<Path>,
+) -> Result<(), Error> {
+    debug!("Extending module from path: {:?}", path.as_ref());
+    let canonical_path = std::fs::canonicalize(&path).map_err(|e| Error::FileNotFound {
+        path: path.as_ref().to_string_lossy().to_string(),
+        cause: e,
+    })?;
+
+    /* Hashset of all absolute path that have been imported (avoid cyclic imports) */
+    let mut imported_paths: HashSet<PathBuf> = Default::default();
+    let mut queue: Vec<PathBuf> = vec![canonical_path.clone()];
+
+    /* Construct index map for ext-func lookup */
+    let ext_func_lookup: BTreeMap<String, Uuid> = module
+        .functions
+        .iter()
+        .filter_map(|(uuid, func)| {
+            if let Some(name) = &func.name {
+                if func.visibility == Some(crate::modules::Visibility::Default) {
+                    Some((name.clone(), *uuid))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    /* List of unresolved internal functions */
+    let unresolved_internal_forward_map: RefCell<BTreeMap<Uuid, String>> = Default::default();
+    let unresolved_internal_reverse_map: RefCell<BTreeMap<String, Uuid>> = Default::default();
+    let unresolved_internal_forward_map_ref = &unresolved_internal_forward_map;
+    let unresolved_internal_reverse_map_ref = &unresolved_internal_reverse_map;
+    let mut resolve_map: BTreeMap<Uuid, Uuid> = Default::default();
+
+    /* Function retriever */
+    let func_retriver = {
+        let module = module.clone();
+        move |name: String, kind: FunctionPointerType| -> Option<Uuid> {
+            match kind {
+                FunctionPointerType::Internal => {
+                    /* Search in the current module */
+                    for (uuid, func) in &module.functions {
+                        if let Some(func_name) = &func.name {
+                            if *func_name == name {
+                                return Some(*uuid);
+                            }
+                        }
+                    }
+
+                    /* If not found, register as unresolved internal function */
+                    let mut unresolved_internal_forward_map =
+                        unresolved_internal_forward_map_ref.borrow_mut();
+                    let mut unresolved_internal_reverse_map =
+                        unresolved_internal_reverse_map_ref.borrow_mut();
+                    if let Some(uuid) = unresolved_internal_reverse_map.get(&name) {
+                        Some(*uuid)
+                    } else {
+                        let new_uuid = Uuid::new_v4();
+                        unresolved_internal_forward_map.insert(new_uuid, name.clone());
+                        unresolved_internal_reverse_map.insert(name, new_uuid);
+                        Some(new_uuid)
+                    }
+                }
+                FunctionPointerType::External => ext_func_lookup.get(&name).copied(),
+            }
+        }
+    };
+
+    /* Main loop to process the import queue */
+    while let Some(current_path) = queue.pop() {
+        if imported_paths.contains(&current_path) {
+            continue;
+        }
+        imported_paths.insert(current_path.clone());
+
+        /* Read the file content */
+        debug!("Reading module from path: {:?}", current_path);
+        let content = std::fs::read_to_string(&current_path).map_err(|e| Error::FileNotFound {
+            path: path.as_ref().to_string_lossy().to_string(),
+            cause: e,
+        })?;
+
+        /* Build the 'main' parser */
+        let file_parser = choice((
+            import_parser().map(ModuleItem::Import),
+            function_parser(func_retriver.clone(), registry, Uuid::new_v4())
+                .map(ModuleItem::Function),
+        ))
+        .padded()
+        .repeated()
+        .collect::<Vec<_>>();
+
+        /* Parse the file content */
+        let parse_result = file_parser.parse(&content);
+        if parse_result.has_errors() {
+            let errors = parse_result
+                .errors()
+                .map(|error| {
+                    log::error!(
+                        "Error parsing file {}: {}",
+                        current_path.to_string_lossy(),
+                        error
+                    );
+
+                    ParserError {
+                        file: current_path.to_string_lossy().to_string(),
+                        start: error.span().start(),
+                        end: error.span().end(),
+                        message: error.reason().to_string(),
+                    }
+                })
+                .collect();
+            return Err(Error::ParserErrors { errors });
+        }
+
+        if let Some(output) = parse_result.into_output() {
+            for item in output {
+                match item {
+                    ModuleItem::Import(import) => {
+                        /* If this is a relative path, make it relative to the current file
+                        parent directory */
+                        let import_path = PathBuf::from(import);
+                        let import_path = if import_path.is_relative() {
+                            let parent = current_path.parent().unwrap();
+                            parent.join(import_path)
+                        } else {
+                            import_path
+                        };
+
+                        let canonical_import_path =
+                            std::fs::canonicalize(&import_path).map_err(|e| {
+                                Error::FileNotFound {
+                                    path: import_path.to_string_lossy().to_string(),
+                                    cause: e,
+                                }
+                            })?;
+
+                        /* Add the import path to the queue */
+                        queue.push(canonical_import_path);
+                    }
+                    ModuleItem::Function(function) => {
+                        /* Check if this function was an unresolved internal function */
+                        let unresolved_internal_reverse_map =
+                            unresolved_internal_reverse_map_ref.borrow();
+                        if let Some(name) = &function.name {
+                            if let Some(&temp_uuid) = unresolved_internal_reverse_map.get(name) {
+                                /* Register the function under the original UUID */
+                                if resolve_map.insert(temp_uuid, function.uuid).is_some() {
+                                    return Err(Error::DuplicateFunctionName {
+                                        name: name.clone(),
+                                        file: current_path.to_string_lossy().to_string(),
+                                    });
+                                }
+                            }
+                        }
+
+                        module.functions.insert(function.uuid, function.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /* Verify all internal reference have been resolved */
+    let unresolved_internal_forward_map = unresolved_internal_forward_map_ref.borrow();
+    if resolve_map.len() < unresolved_internal_forward_map.len() {
+        /* Find all unresolved internal functions */
+        let unresolved: Vec<String> = unresolved_internal_forward_map
+            .iter()
+            .filter_map(|(uuid, name)| {
+                if !resolve_map.contains_key(uuid) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        /* Debug the error */
+        for name in &unresolved {
+            log::error!("Unresolved internal function: {}", name);
+        }
+        return Err(Error::UnresolvedInternalFunctions { names: unresolved });
+    }
+
+    /* Apply the resolve map to all functions */
+    for (_, function) in &mut module.functions {
+        for (_, block) in &mut function.body {
+            for instr in &mut block.instructions {
+                for operand in instr.operands_mut() {
+                    match operand {
+                        Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(
+                            internal_ptr,
+                        ))) => {
+                            if let Some(new_uuid) = resolve_map.get(&internal_ptr) {
+                                *internal_ptr = *new_uuid;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            for operand in block.terminator.operands_mut() {
+                match operand {
+                    Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(internal_ptr))) => {
+                        if let Some(new_uuid) = resolve_map.get(&internal_ptr) {
+                            *internal_ptr = *new_uuid;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

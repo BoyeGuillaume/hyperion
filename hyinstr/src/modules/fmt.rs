@@ -68,8 +68,8 @@ impl HyInstr {
                 use OverflowPolicy::*;
 
                 match (overflow_policy, signesness) {
-                    (Panic, Signed) => write!(f, "nonwarp signed "),
-                    (Panic, Unsigned) => write!(f, "nonwarp unsigned "),
+                    (Panic, Signed) => write!(f, "panic signed "),
+                    (Panic, Unsigned) => write!(f, "panic unsigned "),
                     (Wrap, Signed) => write!(f, "warp signed "),
                     (Wrap, Unsigned) => write!(f, "warp unsigned "),
                     (Saturate, Signed) => write!(f, "saturate signed "),
@@ -123,47 +123,41 @@ impl HyInstr {
                         Ok(false)
                     }
                     HyInstr::MLoad(load) => {
-                        if load.ordering.is_some() {
-                            write!(f, "atomic ")?;
-                        }
                         if load.volatile {
                             write!(f, "volatile ")?;
                         }
 
                         write!(
                             f,
-                            "{}, ptr {}",
+                            "{} {}",
                             self.registry.fmt(load.ty),
-                            load.addr.fmt(self.module)
+                            load.addr.fmt(self.module),
                         )?;
 
                         if let Some(ordering) = &load.ordering {
-                            write!(f, " {}", ordering.to_str())?;
+                            write!(f, ", atomic {}", ordering.to_str())?;
                         }
 
-                        if let Some(alignment) = load.alignment {
-                            write!(f, ", align {} ", alignment)?;
+                        if let Some(alignment) = load.alignement {
+                            write!(f, ", align {}", alignment)?;
                         }
 
                         Ok(true)
                     }
                     HyInstr::MStore(store) => {
-                        if store.ordering.is_some() {
-                            write!(f, "atomic ")?;
-                        }
                         if store.volatile {
                             write!(f, "volatile ")?;
                         }
 
                         write!(
                             f,
-                            "ptr {}, {}, ",
+                            "{}, {}",
                             store.addr.fmt(self.module),
                             store.value.fmt(self.module)
                         )?;
 
                         if let Some(ordering) = &store.ordering {
-                            write!(f, " {}", ordering.to_str())?;
+                            write!(f, ", atomic {}", ordering.to_str())?;
                         }
 
                         if let Some(alignment) = store.alignment {
@@ -175,7 +169,7 @@ impl HyInstr {
                     HyInstr::MAlloca(malloca) => {
                         write!(
                             f,
-                            "{}, {}",
+                            "{} {}",
                             self.registry.fmt(malloca.ty),
                             malloca.count.fmt(self.module)
                         )?;
@@ -195,7 +189,7 @@ impl HyInstr {
                             } else {
                                 write!(f, ", ")?;
                             }
-                            write!(f, "[ {}, {:#} ]", operand.fmt(self.module), label)?;
+                            write!(f, "[ {}, {} ]", label, operand.fmt(self.module))?;
                         }
                         Ok(true)
                     }
@@ -300,7 +294,7 @@ impl Terminator {
                 match self.terminator {
                     Terminator::CBranch(cbranch) => write!(
                         f,
-                        "branch {}, {:#}, {:#}",
+                        "branch {}, {}, {}",
                         cbranch.cond.fmt(self.module),
                         cbranch.target_true,
                         cbranch.target_false
@@ -362,7 +356,7 @@ impl Function {
                         .unwrap_or(format!("%func_{}", self.function.uuid))
                 )?;
 
-                write!(f, " (")?;
+                write!(f, "(")?;
                 let mut first = true;
                 for (param_name, param_type) in &self.function.params {
                     if first {

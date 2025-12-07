@@ -4,7 +4,16 @@ use uuid::Uuid;
 
 use crate::modules::operand::{Label, Name};
 
-#[derive(Debug, PartialEq, Eq, Hash, EnumIs, EnumTryAs, Error)]
+#[cfg(feature = "chumsky")]
+#[derive(Debug, Clone)]
+pub struct ParserError {
+    pub file: String,
+    pub start: usize,
+    pub end: usize,
+    pub message: String,
+}
+
+#[derive(Debug, EnumIs, EnumTryAs, Error)]
 pub enum Error {
     /// An operand refers to a name that has not been defined.
     #[error(
@@ -127,4 +136,24 @@ pub enum Error {
     /// A basic block with the given label already exists in the function.
     #[error("A basic block with label `{0}` already exists in the function.")]
     BlockLabelAlreadyExists(Label),
+
+    /// The provided file does not exist or is not accessible.
+    #[error("The provided file `{path}` does not exist or is not accessible: {cause}")]
+    FileNotFound { path: String, cause: std::io::Error },
+
+    #[cfg(feature = "chumsky")]
+    #[error("Parser errors occurred: {errors:?}")]
+    ParserErrors { errors: Vec<ParserError> },
+
+    /// A function with the given name already exists in the module.
+    #[cfg(feature = "chumsky")]
+    #[error("A function with the name `{name}` already exists in the module.")]
+    DuplicateFunctionName { name: String, file: String },
+
+    /// Internal functions were referenced but not defined within the module.
+    #[cfg(feature = "chumsky")]
+    #[error(
+        "The following internal functions were referenced but not defined within the module: {names:?}"
+    )]
+    UnresolvedInternalFunctions { names: Vec<String> },
 }

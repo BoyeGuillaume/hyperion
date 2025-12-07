@@ -832,7 +832,7 @@ pub struct FunctionAnalysisContext<'a> {
 /// `Module` acts as the compilation unit boundary for symbol visibility.
 /// Functions defined here appear in `functions`; references to symbols not
 /// defined locally are listed in `external_functions`.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Default, Clone, Hash)]
 pub struct Module {
     pub functions: BTreeMap<Uuid, Function>,
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,

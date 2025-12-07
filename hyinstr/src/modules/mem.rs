@@ -63,7 +63,7 @@ pub struct MLoad {
     pub dest: Name,
     pub ty: Typeref,
     pub addr: Operand,
-    pub alignment: Option<u32>,
+    pub alignement: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
@@ -186,12 +186,13 @@ impl Instruction for MAlloca {
 pub struct MGetElementPtr {
     pub dest: Name,
     pub ty: Typeref,
+    pub base: Operand,
     pub indices: Vec<Operand>,
 }
 
 impl Instruction for MGetElementPtr {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
-        self.indices.iter()
+        std::iter::once(&self.base).chain(self.indices.iter())
     }
 
     fn destination(&self) -> Option<Name> {
@@ -199,7 +200,7 @@ impl Instruction for MGetElementPtr {
     }
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        self.indices.iter_mut()
+        std::iter::once(&mut self.base).chain(self.indices.iter_mut())
     }
 
     fn set_destination(&mut self, name: Name) {

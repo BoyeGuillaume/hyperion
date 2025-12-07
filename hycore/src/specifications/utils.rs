@@ -24,9 +24,9 @@ use petgraph::graph::DiGraph;
 //     todo!();
 
 //     Ok(())
-// }
+//
 
-/// Simplify a meta function by removing redundant instructions and merging similar patterns
+/// Simplify a meta function by removing redundant instructions
 ///
 /// For more information about what simplifications are performed, check documentation of
 /// [`HyInstr::is_simple`]
@@ -44,8 +44,7 @@ pub fn simplify_meta_function(func: &mut Function) -> anyhow::Result<()> {
     }
 
     // Detect repeated patterns and simplify them here
-    // 1. Merge similar operands (e.g. if we have two `add $1, $2` instructions, we can merge them IN SAME BLOCK)
-    // 2. Merge identical blocks (e.g. if loop invariants remains unchanged across iterations)
+    // Merge similar operands (e.g. if we have two `add $1, $2` instructions, we can merge them IN SAME BLOCK)
     let mut previous_operand_map: HashMap<HyInstr, Option<Name>> = HashMap::new();
     let mut remapped_name: HashMap<Name, Name> = HashMap::new();
 

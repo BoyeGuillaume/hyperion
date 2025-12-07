@@ -55,6 +55,7 @@ pub enum HyInstr {
     Invoke(misc::Invoke),
     Phi(misc::Phi),
     Select(misc::Select),
+    Cast(misc::Cast),
 
     // Meta instructions
     MetaAssert(meta::MetaAssert),
@@ -121,6 +122,7 @@ impl HyInstrOp {
             HyInstrOp::Invoke => "invoke",
             HyInstrOp::Phi => "phi",
             HyInstrOp::Select => "select",
+            HyInstrOp::Cast => "cast",
 
             HyInstrOp::MetaAssert => "!assert",
             HyInstrOp::MetaAssume => "!assume",
@@ -256,6 +258,7 @@ define_instr_any_instr! {
     Invoke,
     Phi,
     Select,
+    Cast,
     MetaAssert,
     MetaAssume,
     MetaProb,
@@ -302,6 +305,7 @@ define_hyinstr_from!(mem::MGetElementPtr, MGetElementPtr);
 define_hyinstr_from!(misc::Invoke, Invoke);
 define_hyinstr_from!(misc::Phi, Phi);
 define_hyinstr_from!(misc::Select, Select);
+define_hyinstr_from!(misc::Cast, Cast);
 
 define_hyinstr_from!(meta::MetaAssert, MetaAssert);
 define_hyinstr_from!(meta::MetaAssume, MetaAssume);

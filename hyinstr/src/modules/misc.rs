@@ -7,6 +7,7 @@ use crate::{
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoEnumIterator};
 
 /// Function call instruction
 ///
@@ -137,6 +138,145 @@ impl Instruction for Select {
         std::iter::once(&mut self.condition)
             .chain(std::iter::once(&mut self.true_value))
             .chain(std::iter::once(&mut self.false_value))
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Cast operation enumeration
+///
+/// This enum defines the various casting operations supported in Hyperion. See [`Cast`] for more
+/// details.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CastOp {
+    /// Truncate integer
+    ///
+    /// Converts integer to integer of smaller width.
+    Trunc,
+
+    /// Zero extend integer
+    ///
+    /// Converts unsigned integer to unsigned integer of larger width. New bits are set to 0.
+    ZExt,
+
+    /// Sign extend integer
+    ///
+    /// Converts signed integer to signed integer of larger width. If the value is negative,
+    /// the new bits are set to 1, otherwise to 0.
+    SExt,
+
+    /// Float to float truncation
+    ///
+    /// Converts float to float of smaller width.
+    FpTrunc,
+
+    /// Float to float extension
+    ///
+    /// Converts float to float of larger width.
+    FpExt,
+
+    /// Float to unsigned integer
+    ///
+    /// Converts float to unsigned integer, always rounding toward zero. If value cannot fit in ty2,
+    /// behavior is undefined (poison value).
+    FpToUI,
+
+    /// Float to signed integer
+    ///
+    /// Converts float to signed integer, always rounding toward zero. If value cannot fit in ty2,
+    /// behavior is undefined (poison value).
+    FpToSI,
+    /// Unsigned integer to float
+    ///
+    /// Converts unsigned integer to float.
+    UIToFp,
+
+    /// Signed integer to float
+    ///
+    /// Converts signed integer to float.
+    SIToFp,
+
+    /// Ptr to integer
+    ///
+    /// Converts a pointer to an integer type. If pointer is smaller than integer type, it
+    /// is zero-extended. If larger, it is truncated.
+    PtrToInt,
+
+    /// Integer to ptr
+    ///
+    /// Converts an integer to a pointer type. If integer is smaller than pointer type, it
+    /// is zero-extended. If larger, it is truncated.
+    IntToPtr,
+
+    /// Bitcast
+    ///
+    /// Converts between types of the same size without changing the bit representation.
+    Bitcast,
+}
+
+impl CastOp {
+    /// Returns a string representation of the cast operation.
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            CastOp::Trunc => "trunc",
+            CastOp::ZExt => "zext",
+            CastOp::SExt => "sext",
+            CastOp::FpTrunc => "fptrunc",
+            CastOp::FpExt => "fpext",
+            CastOp::FpToUI => "fptoui",
+            CastOp::FpToSI => "fptosi",
+            CastOp::UIToFp => "uitofp",
+            CastOp::SIToFp => "sitofp",
+            CastOp::PtrToInt => "ptrtoint",
+            CastOp::IntToPtr => "inttoptr",
+            CastOp::Bitcast => "bitcast",
+        }
+    }
+
+    /// Parses a string to return the corresponding cast operation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        CastOp::iter().find(|op| op.to_str() == s)
+    }
+}
+
+/// Cast instruction
+///
+/// This instruction casts a value from one type to another using the specified cast operation.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Cast {
+    /// The destination SSA name for the casted result.
+    pub dest: Name,
+    /// The type to cast to.
+    pub ty: Typeref,
+    /// The source operand to cast.
+    pub source: Operand,
+    /// The cast operation to perform.
+    pub op: CastOp,
+}
+
+impl Instruction for Cast {
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.source)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.source)
     }
 
     fn destination(&self) -> Option<Name> {
