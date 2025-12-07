@@ -103,5 +103,5 @@ tags
 *.pdf
 
 # Added by cargo
-
+Cargo.lock
 /target
