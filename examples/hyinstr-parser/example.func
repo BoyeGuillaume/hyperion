@@ -1,0 +1,45 @@
+define cc i32 %pow(%a: i32, %b: i32) {
+entry:
+    %is_zero = icmp eq i1 %b, i32 0
+    branch %is_zero, output, loop
+
+loop:
+    %i = phi i32 [ entry, %b ], [ loop, %next_i ]
+    %current = phi i32 [ entry, %a ], [ loop, %next_current ]
+    %next_i = isub saturate unsigned i32 %i, i32 1
+    %next_current = imul saturate unsigned i32 %current, %a
+    %is_zero_2 = icmp eq i1 %next_i, i32 0
+    branch %is_zero_2, output, loop
+
+output:
+    %out = phi i32 [ entry, i32 1 ], [ loop, %next_current ]
+    ret %out
+}
+
+define cc void %mul_vec(%n: i32, %a: ptr, %b: ptr, %c: ptr) {
+entry:
+    %temp = alloca i32 %n, align 0x40
+    ret void
+
+loop_entry:
+    %current_i = phi i32 [ entry, i32 0 ], [ loop, %next_i ]
+    %should_loop = icmp ult i1 %current_i, %n
+    branch %should_loop, loop, exit
+
+loop:
+    %next_i = iadd panic unsigned i32 %current_i, i32 1
+    %a_i = getelementptr ptr %a, %next_i
+    %b_i = getelementptr ptr %b, %next_i
+    %c_i = getelementptr ptr %c, %next_i
+    %a_float = load fp32 %a_i, align 4
+    %b_float = load fp32 %b_i, align 4
+    %c_float = fadd fp32 %a_float, %b_float
+    %useless = fneg fp32 %c_float
+    store %c_i, %c_float
+    jump loop_entry
+
+exit:
+    ret void
+}
+
+
