@@ -2,7 +2,7 @@ use hyinstr::{
     consts::AnyConst,
     modules::{
         BasicBlock, CallingConvention, Module,
-        int::{ICmp, ICmpOp, IMul, ISub, IntegerSignedness, OverflowPolicy},
+        int::{ICmp, ICmpVariant, IMul, ISub, IntegerSignedness, OverflowPolicy},
         misc::Invoke,
         operand::{Label, Operand},
         symbol::FunctionPointer,
@@ -93,11 +93,11 @@ fn main() {
                 ty: i32_ty,
                 lhs: Operand::Reg(0),
                 rhs: Operand::Imm(1u32.into()),
-                op: ICmpOp::Sle,
+                variant: ICmpVariant::Sle,
             }
             .into(),
         ],
-        terminator: hyinstr::modules::terminator::CBranch {
+        terminator: hyinstr::modules::terminator::Branch {
             cond: Operand::Reg(1),
             target_true: block_base_case.label(),
             target_false: block_recurse_a.label(),

@@ -163,7 +163,7 @@ impl Instruction for Select {
 /// details.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum CastOp {
+pub enum CastVariant {
     /// Truncate integer
     ///
     /// Converts integer to integer of smaller width.
@@ -229,28 +229,28 @@ pub enum CastOp {
     Bitcast,
 }
 
-impl CastOp {
+impl CastVariant {
     /// Returns a string representation of the cast operation.
     pub fn to_str(&self) -> &'static str {
         match self {
-            CastOp::Trunc => "trunc",
-            CastOp::ZExt => "zext",
-            CastOp::SExt => "sext",
-            CastOp::FpTrunc => "fptrunc",
-            CastOp::FpExt => "fpext",
-            CastOp::FpToUI => "fptoui",
-            CastOp::FpToSI => "fptosi",
-            CastOp::UIToFp => "uitofp",
-            CastOp::SIToFp => "sitofp",
-            CastOp::PtrToInt => "ptrtoint",
-            CastOp::IntToPtr => "inttoptr",
-            CastOp::Bitcast => "bitcast",
+            CastVariant::Trunc => "trunc",
+            CastVariant::ZExt => "zext",
+            CastVariant::SExt => "sext",
+            CastVariant::FpTrunc => "fptrunc",
+            CastVariant::FpExt => "fpext",
+            CastVariant::FpToUI => "fptoui",
+            CastVariant::FpToSI => "fptosi",
+            CastVariant::UIToFp => "uitofp",
+            CastVariant::SIToFp => "sitofp",
+            CastVariant::PtrToInt => "ptrtoint",
+            CastVariant::IntToPtr => "inttoptr",
+            CastVariant::Bitcast => "bitcast",
         }
     }
 
     /// Parses a string to return the corresponding cast operation.
     pub fn from_str(s: &str) -> Option<Self> {
-        CastOp::iter().find(|op| op.to_str() == s)
+        CastVariant::iter().find(|op| op.to_str() == s)
     }
 }
 
@@ -265,18 +265,18 @@ pub struct Cast {
     /// The type to cast to.
     pub ty: Typeref,
     /// The source operand to cast.
-    pub source: Operand,
+    pub value: Operand,
     /// The cast operation to perform.
-    pub op: CastOp,
+    pub variant: CastVariant,
 }
 
 impl Instruction for Cast {
     fn operands(&self) -> impl Iterator<Item = &Operand> {
-        std::iter::once(&self.source)
+        std::iter::once(&self.value)
     }
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        std::iter::once(&mut self.source)
+        std::iter::once(&mut self.value)
     }
 
     fn destination(&self) -> Option<Name> {

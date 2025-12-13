@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use anyhow::bail;
 use bit_set::BitSet;
 use hyinstr::modules::{
     Function, Instruction, InstructionRef,
@@ -26,22 +25,18 @@ use petgraph::graph::DiGraph;
 //     Ok(())
 //
 
-/// Simplify a meta function by removing redundant instructions
+/// A simple simplification pass for functions
 ///
-/// For more information about what simplifications are performed, check documentation of
-/// [`HyInstr::is_simple`]
+/// This simplification focuses on basic optimizations that do not require complex.
+/// - It merges similar operands that do not have side effects together (within the same block) to reduce redundancy.
 ///
 /// # Arguments
 /// * `func` - The function to simplify
 ///
-pub fn simplify_meta_function(func: &mut Function) -> anyhow::Result<()> {
+pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     func.verify()
         .expect("Function must be valid before simplifying");
-
-    if !func.meta_function {
-        bail!("Function must be a meta function to be simplified");
-    }
 
     // Detect repeated patterns and simplify them here
     // Merge similar operands (e.g. if we have two `add $1, $2` instructions, we can merge them IN SAME BLOCK)
@@ -58,7 +53,11 @@ pub fn simplify_meta_function(func: &mut Function) -> anyhow::Result<()> {
                 return true;
             }
 
-            match previous_operand_map.get(elem) {
+            // Clone the element and set its destination to None for comparison
+            let mut cloned_elem = elem.clone();
+            cloned_elem.set_destination(0);
+
+            match previous_operand_map.get(&cloned_elem) {
                 Some(existing_name) => {
                     // Remap the result name to the existing one
                     let result = elem.destination();
@@ -75,7 +74,7 @@ pub fn simplify_meta_function(func: &mut Function) -> anyhow::Result<()> {
                 None => {
                     // Insert the new operand into the hash map
                     let result = elem.destination();
-                    previous_operand_map.insert(elem.clone(), result);
+                    previous_operand_map.insert(cloned_elem, result);
                     true
                 }
             }
@@ -93,6 +92,9 @@ pub fn simplify_meta_function(func: &mut Function) -> anyhow::Result<()> {
 }
 
 /// Remove unused operations from the function
+///
+/// This pass removes instructions that do not contribute to the final output of the function,
+/// i.e., instructions whose results are never used and that do not have side effects.
 ///
 /// # Arguments
 /// * `func` - The function to process
@@ -130,14 +132,14 @@ pub fn remove_unused_op(func: &mut Function) -> anyhow::Result<()> {
                 | HyInstrOp::MetaAssert
                 | HyInstrOp::MetaAssume
         ) {
-            usage_graph.add_edge(node_index, source_node_index, ());
+            usage_graph.add_edge(source_node_index, node_index, ());
         }
     }
     for block in func.body.values() {
         block.terminator.operands().for_each(|operand| {
             if let Some(name) = operand.try_as_reg_ref() {
                 if let Some(&src_node) = name_to_node.get(&name) {
-                    usage_graph.add_edge(src_node, source_node_index, ());
+                    usage_graph.add_edge(source_node_index, src_node, ());
                 }
             }
         });
@@ -147,8 +149,10 @@ pub fn remove_unused_op(func: &mut Function) -> anyhow::Result<()> {
         let dst = refs_to_node[&instr_ref];
 
         for name in instr.operands().filter_map(|x| x.try_as_reg_ref()) {
-            let src = name_to_node[name];
-            usage_graph.add_edge(dst, src, ());
+            // Can be None if the operand register refers to an argument of the function
+            if let Some(&src) = name_to_node.get(&name) {
+                usage_graph.add_edge(dst, src, ());
+            }
         }
     }
 

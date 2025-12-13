@@ -130,7 +130,56 @@ impl HyInstrOp {
         }
     }
 
-    pub fn from_string(s: &str) -> Option<Self> {
+    pub fn arity(&self) -> Option<usize> {
+        match self {
+            HyInstrOp::INeg | HyInstrOp::INot | HyInstrOp::FNeg | HyInstrOp::Cast => Some(1),
+            HyInstrOp::IAdd
+            | HyInstrOp::ISub
+            | HyInstrOp::IMul
+            | HyInstrOp::IDiv
+            | HyInstrOp::IRem
+            | HyInstrOp::ICmp
+            | HyInstrOp::ISht
+            | HyInstrOp::IAnd
+            | HyInstrOp::IOr
+            | HyInstrOp::IXor
+            | HyInstrOp::IImplies
+            | HyInstrOp::IEquiv
+            | HyInstrOp::FAdd
+            | HyInstrOp::FSub
+            | HyInstrOp::FMul
+            | HyInstrOp::FDiv
+            | HyInstrOp::FRem
+            | HyInstrOp::FCmp => Some(2), // binary ops
+            HyInstrOp::MLoad => Some(1),       // ptr
+            HyInstrOp::MStore => Some(2),      // ptr + value
+            HyInstrOp::MAlloca => Some(1),     // allocation size
+            HyInstrOp::MGetElementPtr => None, // variable arity (at least 2 - base ptr + one index)
+            HyInstrOp::Invoke => None,         // variable arity (at least 1 - function ptr)
+            HyInstrOp::Phi => None,            // variable arity (at least 1)
+            HyInstrOp::Select => Some(3),      // cond + val_true + val_false
+            HyInstrOp::MetaAssert | HyInstrOp::MetaAssume => Some(1), // condition
+            HyInstrOp::MetaProb => None,       // variable arity depending on variant
+        }
+    }
+
+    pub fn has_variant(&self) -> bool {
+        matches!(
+            self,
+            HyInstrOp::ICmp
+                | HyInstrOp::FCmp
+                | HyInstrOp::Cast
+                | HyInstrOp::ISht
+                | HyInstrOp::MetaProb
+                | HyInstrOp::IAdd
+                | HyInstrOp::ISub
+                | HyInstrOp::IMul
+                | HyInstrOp::IDiv
+                | HyInstrOp::IRem
+        )
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
         HyInstrOp::iter().find(|op| op.opname() == s)
     }
 }

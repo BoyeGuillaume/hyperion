@@ -97,10 +97,9 @@ impl StructType {
         {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if self.r#ref.packed {
-                    write!(f, "<{{")?;
-                } else {
-                    write!(f, "{{")?;
+                    write!(f, "packed ")?;
                 }
+                write!(f, "{{")?;
 
                 let mut first = true;
                 for typeref in self.r#ref.element_types.iter() {
@@ -113,11 +112,7 @@ impl StructType {
                     write!(f, "{}", elem.internal_fmt(self.ref_object.deref()))?;
                 }
 
-                if self.r#ref.packed {
-                    write!(f, "}}>")
-                } else {
-                    write!(f, "}}")
-                }
+                write!(f, "}}")
             }
         }
 

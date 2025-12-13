@@ -30,6 +30,7 @@ use crate::{
 use petgraph::prelude::DiGraphMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumIter, IntoEnumIterator};
 use uuid::Uuid;
 
 pub mod fmt;
@@ -136,7 +137,7 @@ pub enum Linkage {
 ///
 ///
 /// Note: A symbol with internal or private linkage must have default visibility.
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Visibility {
     /// Default visibility
@@ -163,10 +164,24 @@ pub enum Visibility {
     Protected,
 }
 
+impl Visibility {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Visibility::Default => "default",
+            Visibility::Hidden => "hidden",
+            Visibility::Protected => "protected",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        Visibility::iter().find(|v| v.to_str() == s)
+    }
+}
+
 /// LLVM functions, calls and invokes can all have an optional calling convention specified for the call. The calling convention of any pair
 /// of dynamic caller/callee must match, or the behavior of the program is undefined. The following calling conventions are supported by LLVM,
 /// and more may be added in the future:
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CallingConvention {
     /// The C calling convention
@@ -291,6 +306,23 @@ impl CallingConvention {
             CallingConvention::Numbered(n) => format!("cc{}", n).into(),
         }
     }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match CallingConvention::iter()
+            .filter(|x| !matches!(x, CallingConvention::Numbered(_)))
+            .find(|cc| cc.to_string().as_ref() == s)
+        {
+            Some(cc) => Some(cc),
+            None => {
+                if let Some(num_str) = s.strip_prefix("cc") {
+                    if let Ok(num) = num_str.parse::<u32>() {
+                        return Some(CallingConvention::Numbered(num));
+                    }
+                }
+                None
+            }
+        }
+    }
 }
 
 /// Reference to a specific instruction within a function.
@@ -328,7 +360,7 @@ impl From<InstructionRef> for (Label, usize) {
 pub struct BasicBlock {
     pub label: Label,
     pub instructions: Vec<HyInstr>,
-    pub terminator: terminator::Terminator,
+    pub terminator: terminator::HyTerminator,
 }
 
 impl BasicBlock {

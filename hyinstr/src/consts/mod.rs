@@ -17,8 +17,12 @@ pub mod int;
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AnyConst {
+    /// Integer constant
     Int(IConst),
+
+    /// Floating‑point constant
     Float(FConst),
+
     /// Function pointer constant (should be used only for function call instructions)
     FuncPtr(FunctionPointer),
 }

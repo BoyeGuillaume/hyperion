@@ -6,6 +6,7 @@
 use auto_enums::auto_enum;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
 use crate::modules::operand::{Label, Name, Operand};
 
@@ -14,7 +15,7 @@ use crate::modules::operand::{Label, Name, Operand};
 /// See `Label` in `operand.rs` for more information about code labels.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CBranch {
+pub struct Branch {
     /// The condition operand; should evaluate to a boolean value.
     ///
     /// The condition is evaluated, and if it is true (non-zero), control
@@ -51,23 +52,47 @@ pub struct Ret {
 pub struct Trap;
 
 /// Control flow terminator instructions
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumTryAs, EnumIs, EnumDiscriminants)]
+#[strum_discriminants(name(HyTerminatorOp))]
+#[strum_discriminants(derive(EnumIter))]
+#[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum Terminator {
-    CBranch(CBranch),
+pub enum HyTerminator {
+    Branch(Branch),
     Jump(Jump),
     Ret(Ret),
     Trap(Trap),
 }
 
-impl Terminator {
+impl HyTerminatorOp {
+    pub fn opname(&self) -> &'static str {
+        match self {
+            HyTerminatorOp::Branch => "branch",
+            HyTerminatorOp::Jump => "jump",
+            HyTerminatorOp::Ret => "ret",
+            HyTerminatorOp::Trap => "trap",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        HyTerminatorOp::iter().find(|op| op.opname() == s)
+    }
+}
+
+impl HyTerminator {
+    pub fn op(&self) -> HyTerminatorOp {
+        self.into()
+    }
+}
+
+impl HyTerminator {
     #[auto_enum(Iterator)]
     pub fn operands(&self) -> impl Iterator<Item = &Operand> {
         match self {
-            Terminator::CBranch(cbranch) => std::iter::once(&cbranch.cond),
-            Terminator::Jump(_) => std::iter::empty(),
-            Terminator::Ret(ret) => ret.value.iter(),
-            Terminator::Trap(_) => std::iter::empty(),
+            HyTerminator::Branch(cbranch) => std::iter::once(&cbranch.cond),
+            HyTerminator::Jump(_) => std::iter::empty(),
+            HyTerminator::Ret(ret) => ret.value.iter(),
+            HyTerminator::Trap(_) => std::iter::empty(),
         }
     }
 
@@ -84,10 +109,10 @@ impl Terminator {
     #[auto_enum(Iterator)]
     pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
         match self {
-            Terminator::CBranch(cbranch) => std::iter::once(&mut cbranch.cond),
-            Terminator::Jump(_) => std::iter::empty(),
-            Terminator::Ret(ret) => ret.value.iter_mut(),
-            Terminator::Trap(_) => std::iter::empty(),
+            HyTerminator::Branch(cbranch) => std::iter::once(&mut cbranch.cond),
+            HyTerminator::Jump(_) => std::iter::empty(),
+            HyTerminator::Ret(ret) => ret.value.iter_mut(),
+            HyTerminator::Trap(_) => std::iter::empty(),
         }
     }
 
@@ -104,29 +129,29 @@ impl Terminator {
     #[auto_enum(Iterator)]
     pub fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&'_ Operand>)> + '_ {
         match self {
-            Terminator::CBranch(cbranch) => [
+            HyTerminator::Branch(cbranch) => [
                 (cbranch.target_true, Some(&cbranch.cond)),
                 (cbranch.target_false, None),
             ]
             .into_iter(),
-            Terminator::Jump(jump) => [(jump.target, None)].into_iter(),
-            Terminator::Ret(_) => std::iter::empty(),
-            Terminator::Trap(_) => std::iter::empty(),
+            HyTerminator::Jump(jump) => [(jump.target, None)].into_iter(),
+            HyTerminator::Ret(_) => std::iter::empty(),
+            HyTerminator::Trap(_) => std::iter::empty(),
         }
     }
 }
 
 macro_rules! define_terminator_from {
     ($typ:ty, $variant:ident) => {
-        impl From<$typ> for Terminator {
+        impl From<$typ> for HyTerminator {
             fn from(inst: $typ) -> Self {
-                Terminator::$variant(inst)
+                HyTerminator::$variant(inst)
             }
         }
     };
 }
 
-define_terminator_from!(CBranch, CBranch);
+define_terminator_from!(Branch, Branch);
 define_terminator_from!(Jump, Jump);
 define_terminator_from!(Ret, Ret);
 define_terminator_from!(Trap, Trap);

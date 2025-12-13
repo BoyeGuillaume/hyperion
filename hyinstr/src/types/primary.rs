@@ -18,7 +18,7 @@
 use num_bigint::BigInt;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::{EnumIs, EnumTryAs};
+use strum::{EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
 /// Represents an integer type with a specific bit width.
@@ -118,7 +118,7 @@ impl std::fmt::Display for IType {
 ///
 /// Different floating-point types correspond to different precisions and
 /// formats. Not all floating-point types may be supported on all targets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FType {
     /// 16-bit floating point value (IEEE-754 binary16)
@@ -153,31 +153,27 @@ pub enum FType {
     PPCFp128,
 }
 
+impl FType {
+    pub fn from_str(str: &str) -> Option<Self> {
+        FType::iter().find(|ftype| ftype.to_str() == str)
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            FType::Fp16 => "fp16",
+            FType::Bf16 => "bf16",
+            FType::Fp32 => "fp32",
+            FType::Fp64 => "fp64",
+            FType::Fp128 => "fp128",
+            FType::X86Fp80 => "x86_fp80",
+            FType::PPCFp128 => "ppc_fp128",
+        }
+    }
+}
+
 impl std::fmt::Display for FType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() {
-            let s = match self {
-                FType::Fp16 => "fp16",
-                FType::Bf16 => "bf16",
-                FType::Fp32 => "fp32",
-                FType::Fp64 => "fp64",
-                FType::Fp128 => "fp128",
-                FType::X86Fp80 => "x86_fp80",
-                FType::PPCFp128 => "ppc_fp128",
-            };
-            write!(f, "{}", s)
-        } else {
-            let s = match self {
-                FType::Fp16 => "half",
-                FType::Bf16 => "bfloat",
-                FType::Fp32 => "float",
-                FType::Fp64 => "double",
-                FType::Fp128 => "fp128",
-                FType::X86Fp80 => "x86_fp80",
-                FType::PPCFp128 => "ppc_fp128",
-            };
-            write!(f, "{}", s)
-        }
+        write!(f, "{}", self.to_str())
     }
 }
 

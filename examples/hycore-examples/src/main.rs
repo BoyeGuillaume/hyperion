@@ -1,67 +1,66 @@
-use hycore::tests_utils::example_a;
-use hyinstr::{modules::Module, types::TypeRegistry};
+use chumsky::Parser;
+use hycore::specifications::utils::{remove_unused_op, simple_simplify_function};
+use hyinstr::{
+    modules::{Module, parser::function_parser, symbol::FunctionPointerType},
+    types::TypeRegistry,
+};
+use uuid::Uuid;
+
+const FN_CODE: &str = r#"
+define i32 %factorial ( %n: i32 ) {
+entry:
+   %cmp1 = icmp eq i1 %n, i32 0
+   branch %cmp1, return_result, recurse
+recurse:
+   %n_minus_1 = isub wrap unsigned i32 %n, i32 1
+   %recursive_result = invoke i32 ptr %factorial (%n_minus_1)
+   %result2 = imul saturate unsigned i32 %n, %recursive_result
+   %result = imul wrap unsigned i32 %n, %recursive_result
+   jump return_result
+return_result:
+   %final_result = phi i32 [ recurse, %result2 ], [ entry, i32 1 ]
+   ret %final_result
+}
+"#;
 
 fn main() {
-    let mut type_registry = TypeRegistry::new([0; 6]);
-    let func = example_a(&mut type_registry);
-
-    // Create a module to hold the function
-    let mod_a = Module {
-        functions: vec![func.clone()]
-            .into_iter()
-            .map(|f| (f.uuid, f))
-            .collect(),
-        external_functions: Default::default(),
+    let type_registry = TypeRegistry::new([0; 6]);
+    let uuid = Uuid::new_v4();
+    let func_retriever = |name: String, func_type: FunctionPointerType| -> Option<Uuid> {
+        if name == "factorial" && func_type == FunctionPointerType::Internal {
+            Some(uuid)
+        } else {
+            None
+        }
     };
 
-    // Validate the module
-    match mod_a.verify() {
-        Ok(_) => println!("Module is valid SSA."),
-        Err(e) => eprintln!("Module SSA validation error: {}", e),
-    }
+    let parse_result = function_parser(func_retriever, &type_registry, uuid).parse(FN_CODE);
+    if parse_result.has_errors() {
+        for err in parse_result.errors() {
+            let (start, end) = {
+                let s = err.span();
+                (s.start, s.end)
+            };
 
-    // Display the control flow of the function
-    let cfg = func.derive_function_flow();
-    println!("Control Flow Graph of factorial function:");
-    for edge in cfg.all_edges() {
-        match edge.2 {
-            Some(op) => println!("  {} --[{:?}]-> {}", edge.0, op, edge.1),
-            None => println!("  {} --> {}", edge.0, edge.1),
+            eprintln!("Parse error: {}", err);
+            /* Display line with error */
+            let line_start = FN_CODE[..start].rfind('\n').map_or(0, |p| p + 1);
+            let line_end = FN_CODE[end..].find('\n').map_or(FN_CODE.len(), |p| end + p);
+            eprintln!("{}", &FN_CODE[line_start..line_end]);
+            eprintln!("{:>width$}^", "", width = start - line_start);
         }
+        panic!("Failed to parse function code");
     }
 
-    // Display each block
-    for function in mod_a.functions.values() {
-        println!(
-            "declare {} {} %{} ({})",
-            function
-                .return_type
-                .map(|ty| type_registry.fmt(ty).to_string())
-                .unwrap_or("void".to_string()),
-            function.uuid,
-            function.name.as_deref().unwrap_or("<unnamed>"),
-            function
-                .params
-                .iter()
-                .map(|(name, ty)| format!("%{}: {}", name, type_registry.fmt(*ty)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+    let mut func = parse_result.into_output().unwrap();
+    func.verify().expect("Function verification failed");
 
-        for (uuid, block) in function.body.iter() {
-            println!("  {}: ", uuid);
-            if !block.instructions.is_empty() {
-                println!(
-                    "{}",
-                    block
-                        .instructions
-                        .iter()
-                        .map(|instr| format!("   {}", instr.fmt(&type_registry, Some(&mod_a))))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                );
-            }
-            println!("   {}", block.terminator.fmt(Some(&mod_a)));
-        }
-    }
+    simple_simplify_function(&mut func).unwrap();
+    remove_unused_op(&mut func).unwrap();
+
+    let mut module = Module::default();
+    module.functions.insert(func.uuid, func);
+    // module.verify().unwrap();
+
+    println!("Parsed module: {}", module.fmt(&type_registry));
 }

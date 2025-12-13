@@ -45,8 +45,6 @@ pub enum Operand {
     Reg(Name),
     /// Immediate literal (integer or floating‑point).
     Imm(AnyConst),
-    /// Code label (used for control‑flow).
-    Lbl(Label),
     /// Meta operand (only used internally in attributes/properties)
     ///
     /// Notice: Meta operands should not appear in regular instructions and

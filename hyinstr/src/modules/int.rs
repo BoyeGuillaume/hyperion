@@ -29,18 +29,84 @@ pub enum OverflowPolicy {
     Saturate,
 }
 
+/// Additional signedness policy for overflow handling
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum OverflowSignednessPolicy {
+    /// Wrap (signedness does not matter for wrap)
+    Wrap,
+
+    /// Signed saturation (two's complement)
+    SSat,
+
+    /// Unsigned saturation
+    USat,
+
+    /// Signed trap (panic on overflow)
+    STrap,
+
+    /// Unsigned trap (panic on overflow)
+    UTrap,
+}
+
+impl OverflowSignednessPolicy {
+    /// Creates an [`OverflowSignednessPolicy`] from its string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        OverflowSignednessPolicy::iter().find(|op| op.to_str() == s)
+    }
+
+    /// Returns the string representation of the [`OverflowSignednessPolicy`].
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            OverflowSignednessPolicy::Wrap => "wrap",
+            OverflowSignednessPolicy::SSat => "ssat",
+            OverflowSignednessPolicy::USat => "usat",
+            OverflowSignednessPolicy::STrap => "strap",
+            OverflowSignednessPolicy::UTrap => "utrap",
+        }
+    }
+
+    /// Returns associated signedness if applicable
+    pub fn signedness(&self) -> Option<IntegerSignedness> {
+        match self {
+            OverflowSignednessPolicy::SSat | OverflowSignednessPolicy::STrap => {
+                Some(IntegerSignedness::Signed)
+            }
+            OverflowSignednessPolicy::USat | OverflowSignednessPolicy::UTrap => {
+                Some(IntegerSignedness::Unsigned)
+            }
+            OverflowSignednessPolicy::Wrap => None,
+        }
+    }
+}
+
 /// Signedness for integer operations
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IntegerSignedness {
     Signed,
     Unsigned,
 }
 
+impl IntegerSignedness {
+    /// Creates an [`IntegerSignedness`] from its string representation.
+    pub fn from_str(s: &str) -> Option<Self> {
+        IntegerSignedness::iter().find(|op| op.to_str() == s)
+    }
+
+    /// Returns the string representation of the [`IntegerSignedness`].
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            IntegerSignedness::Signed => "signed",
+            IntegerSignedness::Unsigned => "unsigned",
+        }
+    }
+}
+
 /// Integer comparison operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum ICmpOp {
+pub enum ICmpVariant {
     /// Equal
     Eq,
     /// Not equal
@@ -63,25 +129,25 @@ pub enum ICmpOp {
     Sle,
 }
 
-impl ICmpOp {
+impl ICmpVariant {
     /// Creates an [`ICmpOp`] from its string representation.
     pub fn from_str(s: &str) -> Option<Self> {
-        ICmpOp::iter().find(|op| op.to_str() == s)
+        ICmpVariant::iter().find(|op| op.to_str() == s)
     }
 
     /// Returns the string representation of the [`ICmpOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
-            ICmpOp::Eq => "eq",
-            ICmpOp::Ne => "ne",
-            ICmpOp::Ugt => "ugt",
-            ICmpOp::Uge => "uge",
-            ICmpOp::Ult => "ult",
-            ICmpOp::Ule => "ule",
-            ICmpOp::Sgt => "sgt",
-            ICmpOp::Sge => "sge",
-            ICmpOp::Slt => "slt",
-            ICmpOp::Sle => "sle",
+            ICmpVariant::Eq => "eq",
+            ICmpVariant::Ne => "ne",
+            ICmpVariant::Ugt => "ugt",
+            ICmpVariant::Uge => "uge",
+            ICmpVariant::Ult => "ult",
+            ICmpVariant::Ule => "ule",
+            ICmpVariant::Sgt => "sgt",
+            ICmpVariant::Sge => "sge",
+            ICmpVariant::Slt => "slt",
+            ICmpVariant::Sle => "sle",
         }
     }
 
@@ -89,7 +155,12 @@ impl ICmpOp {
     pub fn is_unsigned(&self) -> bool {
         matches!(
             self,
-            ICmpOp::Ugt | ICmpOp::Uge | ICmpOp::Ult | ICmpOp::Ule | ICmpOp::Eq | ICmpOp::Ne
+            ICmpVariant::Ugt
+                | ICmpVariant::Uge
+                | ICmpVariant::Ult
+                | ICmpVariant::Ule
+                | ICmpVariant::Eq
+                | ICmpVariant::Ne
         )
     }
 
@@ -97,7 +168,12 @@ impl ICmpOp {
     pub fn is_signed(&self) -> bool {
         matches!(
             self,
-            ICmpOp::Sgt | ICmpOp::Sge | ICmpOp::Slt | ICmpOp::Sle | ICmpOp::Eq | ICmpOp::Ne
+            ICmpVariant::Sgt
+                | ICmpVariant::Sge
+                | ICmpVariant::Slt
+                | ICmpVariant::Sle
+                | ICmpVariant::Eq
+                | ICmpVariant::Ne
         )
     }
 }
@@ -105,7 +181,7 @@ impl ICmpOp {
 /// Integer shift operations disambiguation
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum IShiftOp {
+pub enum IShiftVariant {
     /// Logical left shift
     Lsl,
     /// Logical right shift
@@ -118,20 +194,20 @@ pub enum IShiftOp {
     Ror,
 }
 
-impl IShiftOp {
+impl IShiftVariant {
     /// Creates an [`IShiftOp`] from its string representation.
     pub fn from_str(s: &str) -> Option<Self> {
-        IShiftOp::iter().find(|op| op.to_str() == s)
+        IShiftVariant::iter().find(|op| op.to_str() == s)
     }
 
     /// Returns the string representation of the [`IShiftOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
-            IShiftOp::Lsl => "lsl",
-            IShiftOp::Lsr => "lsr",
-            IShiftOp::Asr => "asr",
-            IShiftOp::Rol => "rol",
-            IShiftOp::Ror => "ror",
+            IShiftVariant::Lsl => "lsl",
+            IShiftVariant::Lsr => "lsr",
+            IShiftVariant::Asr => "asr",
+            IShiftVariant::Rol => "rol",
+            IShiftVariant::Ror => "ror",
         }
     }
 }
@@ -144,8 +220,7 @@ pub struct IAdd {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub overflow: OverflowPolicy,
-    pub signedness: IntegerSignedness,
+    pub variant: OverflowSignednessPolicy,
 }
 
 impl Instruction for IAdd {
@@ -182,8 +257,7 @@ pub struct ISub {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub overflow: OverflowPolicy,
-    pub signedness: IntegerSignedness,
+    pub variant: OverflowSignednessPolicy,
 }
 
 impl Instruction for ISub {
@@ -220,8 +294,7 @@ pub struct IMul {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub overflow: OverflowPolicy,
-    pub signedness: IntegerSignedness,
+    pub variant: OverflowSignednessPolicy,
 }
 
 impl Instruction for IMul {
@@ -335,7 +408,7 @@ pub struct ICmp {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub op: ICmpOp,
+    pub variant: ICmpVariant,
 }
 
 impl Instruction for ICmp {
@@ -372,7 +445,7 @@ pub struct ISht {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub op: IShiftOp,
+    pub variant: IShiftVariant,
 }
 
 impl Instruction for ISht {

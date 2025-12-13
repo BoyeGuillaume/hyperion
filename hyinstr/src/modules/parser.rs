@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashSet},
+    hash::Hash,
     path::{Path, PathBuf},
     rc::Rc,
     u16, u64,
@@ -8,387 +9,126 @@ use std::{
 
 use bigdecimal::{BigDecimal, Num};
 use chumsky::{
-    prelude::*,
-    text::{ascii::ident, digits},
+    input::ValueInput, label, prelude::*, text::{Char, ascii::ident, digits}
 };
-use either::Either;
+use either::Either::{self, Left};
 use log::debug;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use smallvec::SmallVec;
-use strum::IntoEnumIterator;
+use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
 use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
-        BasicBlock, CallingConvention, Function, Instruction, Module,
-        fp::*,
-        instructions::HyInstr,
-        int::*,
-        mem::*,
-        misc::*,
-        operand::{Label, Name, Operand},
-        symbol::{FunctionPointer, FunctionPointerType},
-        terminator::{CBranch, Jump, Ret, Terminator},
+        BasicBlock, CallingConvention, Function, Instruction, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
     },
     types::{
         AnyType, TypeRegistry, Typeref,
         aggregate::{ArrayType, StructType},
-        primary::{FType, IType, PrimaryBasicType, PtrType, VcSize, VcType},
+        primary::{FType, IType, PrimaryBasicType, PrimaryType, PtrType, VcSize, VcType},
     },
     utils::{Error, ParserError},
 };
 
-fn whitespace<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone {
+type Span = SimpleSpan;
+type Spanned<T> = (T, Span);
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
+enum Token<'a> {
+    // Special identifiers and keywords
+    IType(IType),
+    FType(FType),
+    Ordering(MemoryOrdering),
+    Visibility(Visibility),
+    CallingConvention(CallingConvention),
+    TerminatorOp(HyTerminatorOp),
+    InstrOp(HyInstrOp, Vec<&'a str>),
+    Void,
+    Import,
+    Identifier(&'a str, Vec<&'a str>),
+
+    /// UUID parser (prefixed with '@')
+    Uuid(Uuid),
+
+    /// Register identifier (prefixed with '%')
+    Register(&'a str),
+
+    /// Numeric literal (can be decimal, octal, hexadecimal or binary, prefixed accordingly)
+    Number(BigInt),
+
+    /// Decimal floating-point literal
+    Decimal(BigDecimal),
+
+    /// String literal (enclosed in double quotes)
+    StringLiteral(String),
+
+    /// Left parenthesis '('
+    LParen,
+
+    /// Right parenthesis ')'
+    RParen,
+
+    /// Left brace '{'
+    LBrace,
+
+    /// Right brace '}'
+    RBrace,
+
+    /// Left bracket '['
+    LBracket,
+
+    /// Right bracket ']'
+    RBracket,
+
+    /// Left angle bracket '<'
+    LAngle,
+
+    /// Right angle bracket '>'
+    RAngle,
+
+    /// Comma ','
+    Comma,
+
+    /// Colon ':'
+    Colon,
+
+    /// Equals '='
+    Equals,
+}
+
+impl Token<'_> {
+    pub fn discriminant(&self) -> TokenDiscriminants {
+        self.into()
+    }
+}
+
+fn just_match<'src, I>(
+    token: TokenDiscriminants,
+) -> impl Parser<'src, I, Token<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
     any()
-        .filter(|c: &char| c.is_whitespace())
-        .repeated()
-        .at_least(1)
-        .ignored()
-        .labelled("whitespace")
+        .filter(move |t: &Token| t.discriminant() == token)
+        .labelled(format!("token {:?}", token))
 }
 
-fn itype_parser<'src>() -> impl Parser<'src, &'src str, IType, extra::Err<Rich<'src, char>>> + Clone
-{
-    just("i")
-        .ignore_then(digits(10).to_slice().try_map(|digits, span| {
-            // 1. Attempt to parse digits into a usize
-            let width: u32 = match u32::from_str_radix(digits, 10) {
-                Ok(w) => w,
-                Err(_) => {
-                    return Err(Rich::custom(span, {
-                        format!("invalid integer type width: {}", digits)
-                    }));
-                }
-            };
-
-            // 2. Validate that the width is a positive non-zero value
-            if width < IType::MIN_BITS {
-                return Err(Rich::custom(span, {
-                    format!(
-                        "minimum integer type width is {}, got {}",
-                        IType::MIN_BITS,
-                        width
-                    )
-                }));
-            }
-
-            // 3. Check validity according to your type system rules
-            if width > IType::MAX_BITS {
-                return Err(Rich::custom(span, {
-                    format!(
-                        "maximum integer type width is {}, got {}",
-                        IType::MAX_BITS,
-                        width
-                    )
-                }));
-            }
-
-            Ok(IType::new(width))
-        }))
-        .labelled("integer type")
+fn tuple_left<A, B>(t: (A, B)) -> A {
+    t.0
 }
 
-fn ftype_parser<'src>() -> impl Parser<'src, &'src str, FType, extra::Err<Rich<'src, char>>> + Clone
-{
-    choice((
-        just("fp16").to(FType::Fp16),
-        just("half").to(FType::Fp16),
-        just("bf16").to(FType::Bf16),
-        just("bfloat").to(FType::Bf16),
-        just("fp32").to(FType::Fp32),
-        just("float").to(FType::Fp32),
-        just("fp64").to(FType::Fp64),
-        just("double").to(FType::Fp64),
-        just("fp128").to(FType::Fp128),
-        just("x86_fp80").to(FType::X86Fp80),
-        just("ppc_fp128").to(FType::PPCFp128),
-    ))
-    .labelled("floating-point type")
+fn tuple_right<A, B>(t: (A, B)) -> B {
+    t.1
 }
 
-fn icmp_op_parser<'src>()
--> impl Parser<'src, &'src str, ICmpOp, extra::Err<Rich<'src, char>>> + Clone {
-    ident()
-        .validate(|s: &str, extra, emit| match ICmpOp::from_str(s) {
-            Some(op) => op,
-            None => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "unknown integer comparison operator: {} (expected one of: {})",
-                        s,
-                        ICmpOp::iter()
-                            .map(|x| x.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                ICmpOp::Eq
-            }
-        })
-        .labelled("integer comparison operator")
-}
-
-fn fcmp_op_parser<'src>()
--> impl Parser<'src, &'src str, FCmpOp, extra::Err<Rich<'src, char>>> + Clone {
-    ident()
-        .validate(|s: &str, extra, emit| match FCmpOp::from_str(s) {
-            Some(op) => op,
-            None => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "unknown floating-point comparison operator: {} (expected one of: {})",
-                        s,
-                        FCmpOp::iter()
-                            .map(|x| x.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                FCmpOp::One
-            }
-        })
-        .labelled("floating-point comparison operator")
-}
-
-fn ordering_parser<'src>()
--> impl Parser<'src, &'src str, MemoryOrdering, extra::Err<Rich<'src, char>>> + Clone {
-    ident()
-        .validate(|s: &str, extra, emit| match MemoryOrdering::from_str(s) {
-            Some(ordering) => ordering,
-            None => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "unknown memory ordering: {} (expected one of: {})",
-                        s,
-                        MemoryOrdering::iter()
-                            .map(|x| x.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                MemoryOrdering::Acq
-            }
-        })
-        .labelled("memory ordering")
-}
-
-fn cast_op_parser<'src>()
--> impl Parser<'src, &'src str, CastOp, extra::Err<Rich<'src, char>>> + Clone {
-    ident()
-        .validate(|s: &str, extra, emit| match CastOp::from_str(s) {
-            Some(op) => op,
-            None => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "unknown cast operator: {} (expected one of: {})",
-                        s,
-                        CastOp::iter()
-                            .map(|x| x.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                CastOp::Trunc
-            }
-        })
-        .labelled("cast operator")
-}
-
-fn ishift_op_parser<'src>()
--> impl Parser<'src, &'src str, IShiftOp, extra::Err<Rich<'src, char>>> + Clone {
-    ident()
-        .validate(|s: &str, extra, emit| match IShiftOp::from_str(s) {
-            Some(op) => op,
-            None => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "unknown integer shift operator: {} (expected one of: {})",
-                        s,
-                        IShiftOp::iter()
-                            .map(|x| x.to_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                ));
-                IShiftOp::Lsl
-            }
-        })
-        .labelled("integer shift operator")
-}
-
-fn tptr_parser<'src>() -> impl Parser<'src, &'src str, PtrType, extra::Err<Rich<'src, char>>> + Clone
-{
-    just("ptr").to(PtrType).labelled("function pointer type")
-}
-
-fn bigint_parser<'src>()
--> impl Parser<'src, &'src str, BigInt, extra::Err<Rich<'src, char>>> + Clone {
-    choice((
-        // Hexadecimal
-        just("0x")
-            .ignore_then(
-                text::digits(16)
-                    .at_least(1)
-                    .collect::<String>()
-                    .try_map(|s, span| {
-                        BigInt::parse_bytes(s.as_bytes(), 16).ok_or_else(|| {
-                            Rich::custom(span, format!("invalid hexadecimal number: {}", s))
-                        })
-                    }),
-            )
-            .labelled("hexadecimal number"),
-        // Decimal
-        digits(10)
-            .at_least(1)
-            .collect::<String>()
-            .try_map(|s, span| {
-                BigInt::parse_bytes(s.as_bytes(), 10)
-                    .ok_or_else(|| Rich::custom(span, format!("invalid decimal number: {}", s)))
-            })
-            .labelled("decimal number"),
-    ))
-}
-
-fn primary_type_parser<'src>()
--> impl Parser<'src, &'src str, PrimaryBasicType, extra::Err<Rich<'src, char>>> + Clone {
-    choice((
-        itype_parser().map(PrimaryBasicType::Int),
-        ftype_parser().map(PrimaryBasicType::Float),
-        tptr_parser().map(PrimaryBasicType::Ptr),
-    ))
-    .labelled("primitive type")
-}
-
-fn type_parser<'src>(
-    registry: &'src TypeRegistry,
-) -> impl Parser<'src, &'src str, Typeref, extra::Err<Rich<'src, char>>> {
-    recursive(|tree| {
-        // Primitive type (itype, ftype)
-        let primary_type = primary_type_parser().map(|ty| registry.search_or_insert(ty.into()));
-
-        // Array type (e.g., [N x T])
-        let vector_array_base = bigint_parser()
-            .labelled("number")
-            .validate(|elem, extra, emit| {
-                if elem <= BigInt::ZERO {
-                    emit.emit(Rich::custom(
-                        extra.span(),
-                        format!("array/vector size must be positive, got {}", elem),
-                    ));
-                    1u16
-                } else if elem > BigInt::from(u16::MAX) {
-                    emit.emit(Rich::custom(
-                        extra.span(),
-                        format!(
-                            "array/vector size {} exceeds maximum supported size {}",
-                            elem,
-                            u16::MAX
-                        ),
-                    ));
-                    u16::MAX
-                } else {
-                    elem.iter_u64_digits().next().unwrap() as u16
-                }
-            })
-            .padded()
-            .then_ignore(just("x"));
-
-        let array_type = just("[")
-            .ignore_then(
-                vector_array_base
-                    .clone()
-                    .then(tree.clone().padded())
-                    .then_ignore(just("]")),
-            )
-            .map(|(size, elem_type)| {
-                registry.search_or_insert(AnyType::Array(ArrayType {
-                    ty: elem_type,
-                    num_elements: size,
-                }))
-            })
-            .labelled("array type");
-
-        let vc_type = just("<")
-            .ignore_then(just("vscale").padded().or_not())
-            .then(
-                vector_array_base
-                    .then(primary_type_parser().padded())
-                    .then_ignore(just(">")),
-            )
-            .map(|(is_scalable, (size, ty))| {
-                registry.search_or_insert(AnyType::Primary(
-                    VcType {
-                        ty,
-                        size: if is_scalable.is_some() {
-                            VcSize::Scalable(size)
-                        } else {
-                            VcSize::Fixed(size)
-                        },
-                    }
-                    .into(),
-                ))
-            });
-
-        // Struct type (e.g., { T1, T2, T3 })
-        let core_struct_type = tree
-            .padded()
-            .separated_by(just(",").padded())
-            .collect::<Vec<_>>()
-            .delimited_by(just("{"), just("}"));
-
-        let struct_type = core_struct_type
-            .clone()
-            .map(|elements| {
-                registry.search_or_insert(AnyType::Struct(StructType {
-                    element_types: elements,
-                    packed: false,
-                }))
-            })
-            .labelled("structure type");
-
-        let packed_struct_type = core_struct_type
-            .delimited_by(just("<"), just(">"))
-            .map(|elements| {
-                registry.search_or_insert(AnyType::Struct(StructType {
-                    element_types: elements,
-                    packed: true,
-                }))
-            })
-            .labelled("packed structure type");
-
-        // vector_type
-        choice((
-            primary_type,
-            struct_type,
-            packed_struct_type,
-            array_type,
-            vc_type,
-        ))
-        .labelled("type")
-    })
-}
-
-fn maybe_type_parser<'src>(
-    registry: &'src TypeRegistry,
-) -> impl Parser<'src, &'src str, Option<Typeref>, extra::Err<Rich<'src, char>>> {
-    choice((
-        type_parser(registry).map(Some),
-        just("void").to(None).labelled("void type"),
-    ))
-}
-
-fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Err<Rich<'src, char>>> {
+fn uuid_parser<'src>() -> impl Parser<'src, &'src str, Uuid, extra::Err<Rich<'src, char>>> {
     // UUID parser in standard 8-4-4-4-12 format
     let hex_digit = any()
         .filter(|c: &char| c.is_ascii_hexdigit())
         .labelled("hexadecimal digit");
-    hex_digit
+    just("@")
+        .ignore_then(hex_digit)
         .repeated()
         .exactly(8)
         .then_ignore(just('-'))
@@ -413,30 +153,65 @@ fn uuid_parser<'src>() -> impl Parser<'src, &'src str, uuid::Uuid, extra::Err<Ri
         .labelled("UUID")
 }
 
-fn iconst_parser<'src>() -> impl Parser<'src, &'src str, IConst, extra::Err<Rich<'src, char>>> {
-    itype_parser()
-        .then_ignore(whitespace())
-        .then(bigint_parser())
-        .validate(|(itype, value), extra, emit| {
-            if itype.fits_value(&value) {
-                IConst { ty: itype, value }
-            } else {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "integer constant value {} does not fit in type {} (max {})",
-                        value,
-                        itype,
-                        itype.max_value().unwrap_or(u64::MAX)
-                    ),
-                ));
-                IConst { ty: itype, value }
-            }
-        })
-        .labelled("integer constant")
+fn bigint_parser<'src>()
+-> impl Parser<'src, &'src str, BigInt, extra::Err<Rich<'src, char>>> + Clone {
+    let hex_num = just("0x")
+        .ignore_then(digits(16).to_slice())
+        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 16).unwrap());
+
+    let oct_num = just("0o")
+        .ignore_then(digits(8).to_slice())
+        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 8).unwrap());
+
+    let bin_num = just("0b")
+        .ignore_then(digits(2).to_slice())
+        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 2).unwrap());
+
+    let dec_num = digits(10)
+        .to_slice()
+        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 10).unwrap());
+
+    choice((hex_num, oct_num, bin_num, dec_num)).labelled("number")
 }
 
-fn decimal_query<'src>() -> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> {
+fn u32_parser<'src>() -> impl Parser<'src, &'src str, u32, extra::Err<Rich<'src, char>>> + Clone {
+    digits(10)
+        .to_slice()
+        .validate(|s: &str, extra, emit| match u32::from_str_radix(s, 10) {
+            Ok(val) => val,
+            Err(e) => {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!("invalid u32 number: {}", e),
+                ));
+                0u32
+            }
+        })
+        .labelled("u32 number")
+}
+
+fn string_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
+    just('"')
+        .ignore_then(
+            any()
+                .filter(|&c: &char| c != '"' && c != '\\')
+                .or(just('\\').ignore_then(any().map(|c| match c {
+                    'n' => '\n',
+                    't' => '\t',
+                    'r' => '\r',
+                    '\\' => '\\',
+                    '"' => '"',
+                    other => other,
+                })))
+                .repeated()
+                .collect::<String>()
+        )
+        .then_ignore(just('"'))
+        .labelled("string literal")
+}
+
+fn bigdecimal_parser<'src>()
+-> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> + Clone {
     // Simple floating-point parser using BigDecimal
     let sign = any()
         .filter(|&x: &char| x == '+' || x == '-')
@@ -483,810 +258,1106 @@ fn decimal_query<'src>() -> impl Parser<'src, &'src str, BigDecimal, extra::Err<
         .labelled("decimal floating-point number")
 }
 
-fn fp_parser<'src>() -> impl Parser<'src, &'src str, FConst, extra::Err<Rich<'src, char>>> {
-    ftype_parser()
-        .then_ignore(whitespace())
-        .then(decimal_query())
-        .map(|(ty, value)| FConst { ty, value })
-        .labelled("floating-point constant")
+fn identifier_parser<'src>()
+-> impl Parser<'src, &'src str, Token<'src>, extra::Err<Rich<'src, char>>> + Clone {
+    let base_identifier = chumsky::text::ident()
+        .then(
+            just(".")
+                .ignore_then(chumsky::text::ident().to_slice())
+                .repeated()
+                .collect::<Vec<_>>(),
+        )
+        .validate(|(s, other), extra, emit| {
+            if s == "void" && other.is_empty() {
+                return Token::Void;
+            }
+            if s == "import" && other.is_empty() {
+                return Token::Import;
+            }
+            if let Some(visibility) = Visibility::from_str(s) {
+                if !other.is_empty() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "visibility '{}' does not take any variants, but variants were provided",
+                            s
+                        ),
+                    ));
+                }
+                return Token::Visibility(visibility);
+            }
+            if let Some(cc) = CallingConvention::from_str(s) {
+                if !other.is_empty() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "calling convention '{}' does not take any variants, but variants were provided",
+                            s
+                        ),
+                    ));
+                }
+                return Token::CallingConvention(cc);
+            }
+            if let Some(hyinstr_op) = HyInstrOp::from_str(s) {
+                return Token::InstrOp(hyinstr_op, other);
+            }
+            if let Some(terminator_op) = HyTerminatorOp::from_str(s) {
+                if !other.is_empty() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "terminator operation '{}' does not take any variants, but variants were provided",
+                            s
+                        ),
+                    ));
+                }
+
+                return Token::TerminatorOp(terminator_op);
+            }
+
+            if other.is_empty() {
+                let ftype = FType::from_str(s).map(Token::FType);
+                let ordering = MemoryOrdering::from_str(s).map(Token::Ordering);
+
+                ftype
+                    .or(ordering)
+                    .unwrap_or_else(|| Token::Identifier(s, other))
+            } else {
+                Token::Identifier(s, other)
+            }
+        })
+        .labelled("identifier");
+
+    let itype = just("i")
+        .ignore_then(u32_parser())
+        .try_map(|width, span| {
+            IType::try_new(width).map(Token::IType).ok_or_else(|| {
+                Rich::custom(
+                    span,
+                    format!(
+                        "cannot create IType with width {} (must be between {} and {})",
+                        width,
+                        IType::MIN_BITS,
+                        IType::MAX_BITS
+                    ),
+                )
+            })
+        })
+        .labelled("itype");
+
+    choice((base_identifier, itype))
 }
 
-fn func_ptr_parser<'src>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + 'src,
-) -> impl Parser<'src, &'src str, FunctionPointer, extra::Err<Rich<'src, char>>> {
-    let named_func = just("%")
+fn register_parser<'src>()
+-> impl Parser<'src, &'src str, &'src str, extra::Err<Rich<'src, char>>> + Clone {
+    just("%")
         .ignore_then(
             any()
-                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
+                .filter(|c: &char| c.is_ident_continue())
                 .repeated()
-                .collect::<String>()
-                .labelled("function identifier"),
+                .to_slice(),
         )
-        .labelled("function pointer")
-        .map(Either::Left);
+        .labelled("register")
+}
 
-    let uuid_func = just("@")
-        .ignore_then(uuid_parser())
-        .labelled("function UUID")
-        .map(Either::Right);
+fn comment_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
+{
+    just(";")
+        .ignore_then(any().filter(|&c: &char| c != '\n').repeated())
+        .ignored()
+        .labelled("comment")
+}
 
-    tptr_parser()
-        .then_ignore(whitespace())
-        .ignore_then(just("external").then_ignore(whitespace()).or_not())
-        .then(choice((named_func, uuid_func)))
-        .validate(move |(is_external, name), extra, emit| {
-            let kind = if is_external.is_some() {
+fn ignoring_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
+{
+    choice((
+        any().filter(|c: &char| c.is_whitespace()).repeated(),
+        comment_parser(),
+    ))
+    .repeated()
+    .ignored()
+    .labelled("whitespace or comment")
+}
+
+fn lexer<'src>()
+-> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
+    choice((
+        bigint_parser().map(Token::Number),
+        bigdecimal_parser().map(Token::Decimal),
+        string_parser().map(Token::StringLiteral),
+        just("(").to(Token::LParen),
+        just(")").to(Token::RParen),
+        just("{").to(Token::LBrace),
+        just("}").to(Token::RBrace),
+        just("[").to(Token::LBracket),
+        just("]").to(Token::RBracket),
+        just("<").to(Token::LAngle),
+        just(">").to(Token::RAngle),
+        just(",").to(Token::Comma),
+        just(":").to(Token::Colon),
+        just("=").to(Token::Equals),
+        register_parser().map(Token::Register),
+        identifier_parser(),
+    ))
+    .padded_by(ignoring_parser())
+    .map_with(|item, extra| (item, extra.span()))
+    .repeated()
+    .collect::<Vec<_>>()
+}
+
+fn primary_basic_type_parser<'src, I>()
+-> impl Parser<'src, I, PrimaryBasicType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    any()
+        .filter(|x: &Token| {
+            x.is_i_type()
+                || x.is_f_type()
+                || x
+                    .try_as_identifier_ref()
+                    .map(|x| x.1.is_empty() && *x.0 == "ptr")
+                    .unwrap_or(false)
+        })
+        .map(|token| {
+            match token {
+                Token::IType(itype) => PrimaryBasicType::Int(itype).into(),
+                Token::FType(ftype) => PrimaryBasicType::Float(ftype).into(),
+                Token::Identifier(s, v) if s == "ptr" && v.is_empty() => {
+                    PrimaryBasicType::Ptr(PtrType).into()
+                }
+                _ => unreachable!(),
+            }
+        })
+}
+
+fn primary_type_parser<'src, I>()
+-> impl Parser<'src, I, PrimaryType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    let primary_type =
+        primary_basic_type_parser().map(|prim_type| prim_type.into());
+
+    // Vector types (e.g., <4 x i32> or <vscale 4 x i32>)
+    let vector_type = just(Token::Identifier("vscale", vec![]))
+        .or_not()
+        .then(
+            just_match(TokenDiscriminants::Number)
+            .validate(
+                |num_span, extra, emit| {
+                    let num = num_span.try_as_number().unwrap();
+
+                    if num <= BigInt::ZERO {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "vector size must be a positive non-zero integer",
+                        ));
+                        1u16
+                    } else if num > BigInt::from(u16::MAX) {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "vector size too large: maximum allowed is {}, got {}",
+                                u16::MAX,
+                                num
+                            ),
+                        ));
+                        1u16
+                    } else {
+                        num.to_u32_digits().1.into_iter().next().unwrap() as u16
+                    }
+                },
+            ),
+            // .map(|(num_token, num_span)| num_token.try_as_number().unwrap()),
+        )
+        .then_ignore(just(Token::Identifier("x", vec![])))
+        .then(primary_basic_type_parser())
+        .delimited_by(just(Token::LAngle), just(Token::RAngle))
+        .map(|((is_vscale, num), ty)| {
+            PrimaryType::Vc(VcType {
+                ty,
+                size: if is_vscale.is_some() {
+                    VcSize::Scalable(num)
+                } else {
+                    VcSize::Fixed(num)
+                },
+            })
+        });
+
+    choice((primary_type, vector_type)).labelled("primary type")
+}
+
+fn type_parser<'src, I>(
+    registry: &'src TypeRegistry,
+) -> impl Parser<'src, I, Typeref, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    recursive(|tree| {
+        // Primary basic types
+        let primary_type = primary_type_parser().map(move |prim_type| {
+            registry.search_or_insert(prim_type.into())
+        });
+
+        // Array types (e.g., [10 x i32])
+        let array_type = just(Token::LBracket)
+            .ignore_then(just_match(TokenDiscriminants::Number))
+            .then_ignore(just(Token::Identifier("x", vec![])))
+            .then(tree.clone())
+            .then_ignore(just(Token::RBracket))
+            .validate(|(size_token, ty), extra, emit| {
+                let size_token = size_token.try_as_number().unwrap();
+                let num_elements = if size_token <= BigInt::ZERO {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        "array size must be a positive non-zero integer",
+                    ));
+                    1u16
+                } else if size_token > BigInt::from(u16::MAX) {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "array size too large: maximum allowed is {}, got {}",
+                            u16::MAX,
+                            size_token
+                        ),
+                    ));
+                    1u16
+                } else {
+                    size_token.to_u32_digits().1.into_iter().next().unwrap() as u16
+                };
+                let array_type = ArrayType { ty, num_elements };
+                registry.search_or_insert(array_type.into())
+            })
+            .labelled("array type");
+
+        // Structure types (e.g., { i32, fp32, [4 x i8] })
+        let struct_type = just(Token::Identifier("packed", vec![]))
+            .or_not()
+            .then(
+                tree
+                    .clone()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>()
+                    .delimited_by(
+                        just(Token::LBrace),
+                        just(Token::RBrace),
+                    ),
+            )
+            .map_with(|(packed, element_types), extra| {
+                let struct_type = StructType {
+                    element_types,
+                    packed: packed.is_some(),
+                };
+                registry.search_or_insert(struct_type.into())
+            })
+            .labelled("struct type");
+
+        choice((primary_type, array_type, struct_type))
+    })
+    .labelled("type")
+}
+
+fn constant_parser<'src, I>(
+    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+) -> impl Parser<'src, I, AnyConst, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    let itype_const = just_match(TokenDiscriminants::IType)
+        .then(just_match(TokenDiscriminants::Number))
+        .map(|(a, b)| {
+            AnyConst::Int(IConst {
+                ty: a.try_as_i_type().unwrap(),
+                value: b.try_as_number().unwrap(),
+            })
+        })
+        .labelled("integer constant");
+
+    let ftype_const = just_match(TokenDiscriminants::FType)
+        .then(just_match(TokenDiscriminants::Decimal))
+        .map(|(a, b)| {
+            AnyConst::Float(FConst {
+                ty: a.try_as_f_type().unwrap(),
+                value: b.try_as_decimal().unwrap(),
+            })
+        })
+        .labelled("floating-point constant");
+
+    let func_ptr = just(Token::Identifier("ptr", vec![]))
+        .ignore_then(just(Token::Identifier("external", vec![])).to(()).or_not())
+        .then(
+            just_match(TokenDiscriminants::Identifier)
+                .map(|token| token.try_as_identifier().unwrap()),
+        )
+        .validate(move |(external, name), extra, emit| {
+            let name = {
+                let mut full_name = name.0.to_string();
+                for part in name.1 {
+                    full_name.push('.');
+                    full_name.push_str(part);
+                }
+                full_name
+            };
+            let ftype = if external.is_some() {
                 FunctionPointerType::External
             } else {
                 FunctionPointerType::Internal
             };
 
-            let uuid = match name {
-                Either::Left(func_name) => match func_retriver(func_name.clone(), kind) {
-                    Some(uuid) => uuid,
-                    None => {
-                        emit.emit(Rich::custom(
-                            extra.span(),
-                            format!("undefined function name: {}", func_name),
-                        ));
-                        Uuid::nil()
-                    }
-                },
-                Either::Right(uuid) => uuid,
-            };
-
-            match kind {
-                FunctionPointerType::Internal => FunctionPointer::Internal(uuid),
-                FunctionPointerType::External => FunctionPointer::External(uuid),
+            match func_retriver(name.clone(), ftype) {
+                Some(uuid) => 
+                    match ftype {
+                        FunctionPointerType::Internal => {
+                            AnyConst::FuncPtr(FunctionPointer::Internal(uuid))
+                        }
+                        FunctionPointerType::External => {
+                            AnyConst::FuncPtr(FunctionPointer::External(uuid))
+                        }
+                    },
+                
+                None => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "{}function pointer '{}' not found",
+                            if external.is_some() { "external " } else { "" },
+                            name
+                        ),
+                    ));
+                    
+                    AnyConst::FuncPtr(FunctionPointer::Internal(Uuid::nil()))
+                }
             }
         })
+        .labelled("function pointer");
+
+    choice((itype_const, ftype_const, func_ptr))
 }
 
-fn label_parser<'src>(
-    named_label: impl Fn(String) -> Label + Clone + 'src,
-) -> impl Parser<'src, &'src str, Label, extra::Err<Rich<'src, char>>> + Clone {
-    chumsky::text::ascii::ident()
-        .map(move |s: &str| named_label(s.to_string()))
+fn label_parser<'src, I>(
+    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
+) -> impl Parser<'src, I, Label, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    just_match(TokenDiscriminants::Identifier)
+        .map(move |token| {
+            let ident = token.try_as_identifier().unwrap();
+            let mut full_name = ident.0.to_string();
+            for part in ident.1 {
+                full_name.push('.');
+                full_name.push_str(part);
+            }
+
+            label_namespace(&full_name)
+        })
         .labelled("label")
 }
 
-fn percent_name_parser<'src>()
--> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
-    just("%")
-        .ignore_then(
-            any()
-                .filter(|c: &char| c.is_ascii_alphanumeric() || *c == '_')
-                .repeated()
-                .collect::<String>()
-                .labelled("identifier"),
-        )
-        .labelled("name")
-}
-
-fn register_parser<'src>(
-    named_name: impl Fn(String) -> Name + 'src,
-) -> impl Parser<'src, &'src str, Name, extra::Err<Rich<'src, char>>> {
-    percent_name_parser()
+fn register_parser_a<'src, I>(
+    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
+) -> impl Parser<'src, I, Name, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    just_match(TokenDiscriminants::Register)
+        .map(move |token| {
+            register_namespace(token.try_as_register().unwrap())
+        })
         .labelled("register")
-        .map(move |x| named_name(x))
 }
 
-fn operand_parser<'src>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + 'src,
-    named_name: impl Fn(String) -> Name + 'src,
-    label_namer: impl Fn(String) -> Label + Clone + 'src,
-) -> impl Parser<'src, &'src str, Operand, extra::Err<Rich<'src, char>>> {
-    let reg_parser = register_parser(named_name).map(Operand::Reg);
-
-    let imm_parser = choice((
-        iconst_parser().map(|x| Operand::Imm(x.into())),
-        fp_parser().map(|x| Operand::Imm(x.into())),
-        func_ptr_parser(func_retriver).map(|x| Operand::Imm(x.into())),
-    ))
-    .labelled("immediate");
-
-    let lbl_parser = label_parser(label_namer.clone()).map(Operand::Lbl);
-
-    choice((reg_parser, imm_parser, lbl_parser))
-}
-
-fn instruction_dest_parser<'src>(
-    named_name: impl Fn(String) -> Name + Clone + 'src,
-) -> impl Parser<'src, &'src str, Name, extra::Err<Rich<'src, char>>> + Clone {
-    percent_name_parser()
-        .padded()
-        .then_ignore(just('='))
-        .padded()
-        .map(move |s: String| named_name(s))
-        .labelled("instruction destination")
-}
-
-struct TplLabelOperand {
-    label: Label,
-    operand: Operand,
-}
-
-impl<const N: usize> chumsky::container::Container<Operand> for SmallVec<Operand, N> {
-    fn with_capacity(n: usize) -> Self {
-        SmallVec::with_capacity(n)
-    }
-
-    fn push(&mut self, item: Operand) {
-        SmallVec::push(self, item)
-    }
-}
-
-impl<const N: usize> chumsky::container::Container<TplLabelOperand>
-    for SmallVec<TplLabelOperand, N>
-{
-    fn with_capacity(n: usize) -> Self {
-        SmallVec::with_capacity(n)
-    }
-
-    fn push(&mut self, item: TplLabelOperand) {
-        SmallVec::push(self, item)
-    }
-}
-
-#[derive(Clone)]
-struct CtxA<'src, F1, F2, F3>
+fn operand_parser<'src, I>(
+    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
+    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+) -> impl Parser<'src, I, Operand, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where
-    F1: Fn(String, FunctionPointerType) -> Option<Uuid> + Clone,
-    F2: Fn(String) -> Name + Clone,
-    F3: Fn(String) -> Label + Clone,
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    func_retriver: F1,
-    named_name: F2,
-    label_namer: F3,
-    registry: &'src TypeRegistry,
+    let reg_parser = register_parser_a(register_namespace).map(Operand::Reg);
+    let const_parser = constant_parser(func_retriver)
+        .map(Operand::Imm)
+        .labelled("immediate operand");
+
+    choice((reg_parser, const_parser))
 }
 
-fn parse_simple_instruction<'src, U, F1, F2, F3>(
-    ctx: CtxA<'src, F1, F2, F3>,
-    opname: &'static str,
-    num_operand: usize,
-    parser: impl Parser<'src, &'src str, U, extra::Err<Rich<'src, char>>>,
-) -> impl Parser<'src, &'src str, (Name, Typeref, U, SmallVec<Operand, 2>), extra::Err<Rich<'src, char>>>
+fn parse_instruction<'src, I>(
+    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
+    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
+    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+    type_registry: &'src TypeRegistry,
+) -> impl Parser<'src, I, HyInstr, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 where
-    F1: Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    F2: Fn(String) -> Name + Clone + 'src,
-    F3: Fn(String) -> Label + Clone + 'src,
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    instruction_dest_parser(ctx.named_name.clone())
-        .padded()
-        .then_ignore(just(opname))
-        .then_ignore(whitespace())
-        .then(parser.padded())
-        .then(type_parser(ctx.registry).padded())
-        .then(
-            operand_parser(
-                ctx.func_retriver.clone(),
-                ctx.named_name.clone(),
-                ctx.label_namer.clone(),
-            )
-            .padded()
-            .separated_by(just(","))
-            .exactly(num_operand)
-            .collect::<SmallVec<Operand, 2>>(),
-        )
-        .map(|(((dest, custom), ty), operands)| (dest, ty, custom, operands))
-}
-
-fn parse_instruction<'src, F1, F2, F3>(
-    ctx: CtxA<'src, F1, F2, F3>,
-) -> impl Parser<'src, &'src str, HyInstr, extra::Err<Rich<'src, char>>>
-where
-    F1: Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    F2: Fn(String) -> Name + Clone + 'src,
-    F3: Fn(String) -> Label + Clone + 'src,
-{
-    let overflow_policy_parser = choice((
-        just("panic").to(OverflowPolicy::Panic),
-        just("wrap").to(OverflowPolicy::Wrap),
-        just("saturate").to(OverflowPolicy::Saturate),
-    ))
-    .labelled("overflow policy");
-
-    let integer_signedness_parser = choice((
-        just("signed").to(IntegerSignedness::Signed),
-        just("unsigned").to(IntegerSignedness::Unsigned),
-    ))
-    .labelled("integer signedness");
-
-    macro_rules! define_op {
-        (
-            binary policy signedness,
-            $opname:ident,
-            $actual:ident
-        ) => {
-            let $opname = parse_simple_instruction(
-                ctx.clone(),
-                stringify!($opname),
-                2,
-                overflow_policy_parser
-                    .padded()
-                    .then(integer_signedness_parser),
-            )
-            .map(|(dest, ty, (overflow_policy, signess), mut operands)| {
-                HyInstr::$actual($actual {
-                    dest,
-                    ty,
-                    lhs: operands.remove(0),
-                    rhs: operands.remove(0),
-                    overflow: overflow_policy,
-                    signedness: signess,
-                })
-            });
-        };
-        (
-            binary signedness,
-            $opname:ident,
-            $actual:ident
-        ) => {
-            let $opname = parse_simple_instruction(
-                ctx.clone(),
-                stringify!($opname),
-                2,
-                integer_signedness_parser,
-            )
-            .map(|(dest, ty, signedness, mut operands)| {
-                HyInstr::$actual($actual {
-                    dest,
-                    ty,
-                    lhs: operands.remove(0),
-                    rhs: operands.remove(0),
-                    signedness,
-                })
-            });
-        };
-        (
-            binary,
-            $opname:ident,
-            $actual:ident
-        ) => {
-            let $opname = parse_simple_instruction(ctx.clone(), stringify!($opname), 2, empty())
-                .map(|(dest, ty, _, mut operands)| {
-                    HyInstr::$actual($actual {
-                        dest,
-                        ty,
-                        lhs: operands.remove(0),
-                        rhs: operands.remove(0),
-                    })
-                });
-        };
-        (
-            unary,
-            $opname:ident,
-            $actual:ident
-        ) => {
-            let $opname = parse_simple_instruction(ctx.clone(), stringify!($opname), 1, empty())
-                .map(|(dest, ty, _, mut operands)| {
-                    HyInstr::$actual($actual {
-                        dest,
-                        ty,
-                        value: operands.remove(0),
-                    })
-                });
-        };
-    }
-
-    // == Integer operations ==
-    define_op!(binary policy signedness, iadd, IAdd);
-    define_op!(binary policy signedness, isub, ISub);
-    define_op!(binary policy signedness, imul, IMul);
-    define_op!(binary signedness, idiv, IDiv);
-    define_op!(binary signedness, irem, IRem);
-    define_op!(binary, iand, IAnd);
-    define_op!(binary, ior, IOr);
-    define_op!(binary, ixor, IXor);
-    define_op!(binary, iimplies, IImplies);
-    define_op!(binary, iequiv, IEquiv);
-
-    define_op!(unary, ineg, INeg);
-    define_op!(unary, inot, INot);
-
-    let icmp = parse_simple_instruction(ctx.clone(), "icmp", 2, icmp_op_parser()).map(
-        |(dest, ty, op, mut operands)| {
-            HyInstr::ICmp(ICmp {
-                dest,
-                ty,
-                lhs: operands.remove(0),
-                rhs: operands.remove(0),
-                op,
-            })
-        },
-    );
-
-    let isht = parse_simple_instruction(ctx.clone(), "ishift", 2, ishift_op_parser()).map(
-        |(dest, ty, op, mut operands)| {
-            HyInstr::ISht(ISht {
-                dest,
-                ty,
-                lhs: operands.remove(0),
-                rhs: operands.remove(0),
-                op,
-            })
-        },
-    );
-
-    // == Floating-point operations ==
-    let fcmp = parse_simple_instruction(ctx.clone(), "fcmp", 2, fcmp_op_parser()).map(
-        |(dest, ty, op, mut operands)| {
-            HyInstr::FCmp(FCmp {
-                dest,
-                ty,
-                lhs: operands.remove(0),
-                rhs: operands.remove(0),
-                op,
-            })
-        },
-    );
-
-    define_op!(binary, fadd, FAdd);
-    define_op!(binary, fsub, FSub);
-    define_op!(binary, fmul, FMul);
-    define_op!(binary, fdiv, FDiv);
-    define_op!(binary, frem, FRem);
-    define_op!(unary, fneg, FNeg);
-
-    let cloned_ctx = ctx.clone();
-    let phi = instruction_dest_parser(ctx.named_name.clone())
-        .padded()
-        .then_ignore(just("phi"))
-        .then_ignore(whitespace())
-        .then(type_parser(ctx.registry).padded())
-        .then(
-            text::ident()
-                .padded()
-                .map(move |s: &str| (cloned_ctx.label_namer)(s.to_string()))
-                .then_ignore(just(","))
-                .then(
-                    operand_parser(
-                        ctx.func_retriver.clone(),
-                        ctx.named_name.clone(),
-                        ctx.label_namer.clone(),
-                    )
-                    .padded(),
-                )
-                .padded()
-                .delimited_by(just("["), just("]"))
-                .map(|(label, operand)| TplLabelOperand { label, operand })
-                .padded()
-                .separated_by(just(","))
-                .collect::<SmallVec<TplLabelOperand, 4>>(),
-        )
-        .map(|((dest, ty), operands)| {
-            HyInstr::Phi(Phi {
-                dest,
-                ty,
-                values: operands.into_iter().map(|x| (x.operand, x.label)).collect(),
-            })
-        });
-
-    let invoke = instruction_dest_parser(ctx.named_name.clone())
-        .or_not()
-        .padded()
-        .then_ignore(just("invoke"))
-        .then_ignore(whitespace())
-        .then(cconv_parser().then_ignore(whitespace()).or_not())
-        .then(maybe_type_parser(ctx.registry).then_ignore(whitespace()))
-        .then(
-            operand_parser(
-                ctx.func_retriver.clone(),
-                ctx.named_name.clone(),
-                ctx.label_namer.clone(),
-            )
-            .padded(),
-        )
-        .then(
-            operand_parser(
-                ctx.func_retriver.clone(),
-                ctx.named_name.clone(),
-                ctx.label_namer.clone(),
-            )
-            .padded()
-            .separated_by(just(","))
+    let operand_parser = choice((
+        /* Use by most instructions */
+        operand_parser(register_namespace.clone(), func_retriver.clone())
+            .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .delimited_by(just("("), just(")")),
+            .map(Either::Left),
+
+        /* Use by phi instructions */
+        operand_parser(register_namespace.clone(), func_retriver.clone())
+            .then(
+                label_parser(move |s| label_namespace(s))
+            )
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(Either::Right),
+    ));
+
+    just_match(TokenDiscriminants::Register)
+        .map(|x| x.try_as_register().unwrap())
+        .then_ignore(just(Token::Colon))
+        .then(type_parser(type_registry))
+        .then_ignore(just(Token::Equals))
+        .or_not()
+        .then(
+            just_match(TokenDiscriminants::InstrOp)
+                .map(|x| x.try_as_instr_op().unwrap()),
         )
-        .map(|((((dest, cconv), ty), function), operands)| {
-            HyInstr::Invoke(Invoke {
-                dest,
-                cconv,
-                ty,
-                function,
-                args: operands,
-            })
-        });
+        .then(operand_parser)
+        .then(
+            just(Token::Comma)
+            .ignore_then(
+                just(Token::Identifier("align", vec![])),
+            )
+            .ignore_then(just_match(TokenDiscriminants::Number))
+            .validate(|num_token, extra, emit| {
+                let align = num_token.try_as_number().unwrap();
+                if align <= BigInt::from(0) || align > BigInt::from(u32::MAX) {
+                    emit.emit(Rich::custom(
+                       extra.span(),
+                        format!(
+                            "invalid alignment value: must be between 1 and {}, got {}",
+                            u32::MAX,
+                            align
+                        ),
+                    ));
+                }
 
-    let select = parse_simple_instruction(ctx.clone(), "select", 3, empty()).map(
-        |(dest, ty, _, mut operands)| {
-            HyInstr::Select(Select {
-                dest,
-                ty,
-                condition: operands.remove(0),
-                true_value: operands.remove(0),
-                false_value: operands.remove(0),
+                align.to_u32_digits().1.into_iter().next().unwrap()
             })
-        },
-    );
-
-    let cast = parse_simple_instruction(ctx.clone(), "cast", 1, cast_op_parser()).map(
-        |(dest, ty, op, mut operands)| {
-            HyInstr::Cast(Cast {
-                dest,
-                op,
-                source: operands.remove(0),
-                ty,
-            })
-        },
-    );
-
-    let alignement_parser = just(",")
-        .padded()
-        .ignore_then(just("align"))
-        .ignore_then(whitespace())
-        .ignore_then(bigint_parser())
-        .validate(|align, extra, emit| {
-            if align.bits() <= 32 && align >= BigInt::from(1) {
-                align.iter_u32_digits().next().unwrap() as u32
+            .or_not(),
+        )
+        .validate(move |(elem, align), extra, emit| {
+            let ((destination, op), operand) = elem;
+            let (op, variant) = op;
+            let dest_and_ty = if let Some((dest, ty)) = destination {
+                Some((register_namespace(dest), ty))
             } else {
+                None
+            };
+
+            if op != HyInstrOp::Phi && matches!(operand, Either::Right(_)) {
                 emit.emit(Rich::custom(
                     extra.span(),
                     format!(
-                        "alignment must be a strictly positive integer fitting in 32 bits, got {}",
-                        align
+                        "syntax error for {} instruction: only 'phi' instructions can use the [operand, label] syntax, use operands separated by commas instead",
+                        op.opname()
+                    )
+                ));
+
+                return 
+                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                ;
+            }
+            else if op == HyInstrOp::Phi && matches!(operand, Either::Left(_)) {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "syntax error for phi instruction: expected [operand, label] pairs, got operands separated by commas instead",
+                    )
+                ));
+
+                return 
+                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                ;
+            }
+
+            if op.has_variant() != variant.is_empty() {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "syntax error for {} instruction: expected {} variant operands, got {}",
+                        op.opname(),
+                        if op.has_variant() { "variant" } else { "no variant" },
+                        if variant.is_empty() { "no variant" } else { "variant" }
                     ),
                 ));
-                1u32
+
+                return 
+                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                ;
+            }
+
+            if op.has_variant() {
+                let num_variant_operands = match op {
+                    _ => 1,
+                };
+
+                if variant.len() != num_variant_operands {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "arity mismatch for {} instruction variant: expected {} variant operands, got {}",
+                            op.opname(),
+                            num_variant_operands,
+                            variant.len()
+                        ),
+                    ));
+
+                    return 
+                        HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                    ;
+                }
+            }
+
+            if let Some(arity) = op.arity() {
+                // only phi-instructions can have right variant operands, therefore we 
+                // asume left here
+                let operand = operand.as_ref().unwrap_left();
+                if operand.len() != arity {
+
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "arity mismatch for {} instruction: expected {} operands, got {}",
+                            op.opname(),
+                            arity,
+                            operand.len()
+                        ),
+                    ));
+
+                    return 
+                        HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    
+                }
+            }
+
+            if align.is_some() && !matches!(op, HyInstrOp::MLoad | HyInstrOp::MStore | HyInstrOp::MAlloca) {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "alignment specifier is only valid for load, store and alloca instructions, got {} instruction",
+                        op.opname()
+                    ),
+                ));
+            }
+
+            match op {
+                HyInstrOp::IAdd | HyInstrOp::ISub | HyInstrOp::IMul => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let variant = match OverflowSignednessPolicy::from_str(&variant[0]) {
+                        Some(variant) => variant,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown overflow signedness policy: {} (expected one of: {})",
+                                    variant[0],
+                                    OverflowSignednessPolicy::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            OverflowSignednessPolicy::Wrap
+                        }
+                    };
+
+                    match op {
+                        HyInstrOp::IAdd => IAdd { dest, ty, lhs, rhs, variant }.into(),
+                        HyInstrOp::ISub => ISub { dest, ty, lhs, rhs, variant }.into(),
+                        HyInstrOp::IMul => IMul { dest, ty, lhs, rhs, variant }.into(),
+                        _ => unreachable!(),
+                    }
+                }
+                HyInstrOp::IDiv | HyInstrOp::IRem => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let signedness = match IntegerSignedness::from_str(&variant[0]) {
+                        Some(variant) => variant,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown signedness variant: {} (expected one of: {})",
+                                    variant[0],
+                                    IntegerSignedness::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            IntegerSignedness::Unsigned
+                        }
+                    };
+
+                    match op {
+                        HyInstrOp::IDiv => IDiv { dest, ty, lhs, rhs, signedness }.into(),
+                        HyInstrOp::IRem => IRem { dest, ty, lhs, rhs, signedness }.into(),
+                        _ => unreachable!(),
+                    }
+                }
+                HyInstrOp::ISht => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let variant = match IShiftVariant::from_str(&variant[0]) {
+                        Some(variant) => variant,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown integer isht variant: {} (expected one of: {})",
+                                    variant[0],
+                                    IShiftVariant::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            IShiftVariant::Asr
+                        }
+                    };
+
+                    ISht { dest, ty, lhs, rhs, variant }.into()
+                }
+                HyInstrOp::FNeg => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    FNeg { dest, ty, value }.into()
+                }
+                HyInstrOp::INeg => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    INeg { dest, ty, value }.into()
+                }
+                HyInstrOp::IAnd |
+                HyInstrOp::IOr |
+                HyInstrOp::IXor |
+                HyInstrOp::INot |
+                HyInstrOp::IImplies |
+                HyInstrOp::IEquiv |
+                HyInstrOp::FAdd |
+                HyInstrOp::FSub |
+                HyInstrOp::FMul |
+                HyInstrOp::FDiv |
+                HyInstrOp::FRem => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    match op {
+                        HyInstrOp::IAnd => IAnd { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::IOr => IOr { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::IXor => IXor { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::INot => INot { dest, ty, value: lhs }.into(),
+                        HyInstrOp::IImplies => IImplies { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::IEquiv => IEquiv { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::FAdd => FAdd { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::FSub => FSub { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::FMul => FMul { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::FDiv => FDiv { dest, ty, lhs, rhs }.into(),
+                        HyInstrOp::FRem => FRem { dest, ty, lhs, rhs }.into(),
+                        _ => unreachable!(),
+                    }
+                }
+                HyInstrOp::FCmp => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let variant = match FCmpVariant::from_str(&variant[0]) {
+                        Some(variant) => variant,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown floating-point comparison variant: {} (expected one of: {})",
+                                    variant[0],
+                                    FCmpVariant::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            FCmpVariant::One
+                        }
+                    };
+
+                    FCmp { dest, ty, lhs, rhs, variant }.into()
+                }
+                HyInstrOp::ICmp => {
+                    let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    let variant = match ICmpVariant::from_str(&variant[0]) {
+                        Some(variant) => variant,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown integer comparison variant: {} (expected one of: {})",
+                                    variant[0],
+                                    ICmpVariant::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            ICmpVariant::Eq
+                        }
+                    };
+
+                    ICmp { dest, ty, lhs, rhs, variant }.into()
+                },
+                HyInstrOp::MLoad => todo!(),
+                HyInstrOp::MStore => todo!(),
+                HyInstrOp::MAlloca => {
+                    let [count] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    
+                    MAlloca { dest, ty, count, alignment: align }.into()
+                }
+                HyInstrOp::MGetElementPtr => {
+                    let mut indices = operand.unwrap_left();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    
+                    if indices.is_empty() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for {} instruction: expected at least 1 operand for indices, got 0",
+                                op.opname(),
+                            ),
+                        ));
+
+                        return 
+                            HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                       ;
+                    }
+
+                    let base = indices.remove(0);
+
+                    MGetElementPtr { dest, ty, base, indices }.into()
+                }
+                HyInstrOp::Invoke => todo!(),
+                HyInstrOp::Phi => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    Phi { dest, ty, values: operand.unwrap_right() }.into()
+                }
+                HyInstrOp::Select => {
+                    let [condition, true_value, false_value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    Select { dest, ty, condition, true_value, false_value }.into()
+                }
+                HyInstrOp::Cast => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let variant = match CastVariant::from_str(&variant[0]) {
+                        Some(op) => op,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown cast variant: {} (expected one of: {})",
+                                    variant[0],
+                                    CastVariant::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            CastVariant::Trunc
+                        }
+                    };
+
+                    Cast { dest, ty, value, variant }.into()
+                }
+                HyInstrOp::MetaAssert => {
+                    let [condition] = operand.unwrap_left().try_into().unwrap();
+
+                    MetaAssert { condition }.into()
+                }
+                HyInstrOp::MetaAssume => {
+                    let [condition] = operand.unwrap_left().try_into().unwrap();
+
+                    MetaAssume { condition }.into()
+                }
+                HyInstrOp::MetaProb => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let variant = match MetaProbVariant::from_str(&variant[0]) {
+                        Some(op) => op,
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown meta-probability variant: {} (expected one of: {})",
+                                    variant[0],
+                                    MetaProbVariant::iter()
+                                        .map(|x| x.to_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                ),
+                            ));
+                            MetaProbVariant::ExpectedValue
+                        }
+                    };
+
+                    if variant.arity() != operand.as_ref().unwrap_left().len() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for meta-probability variant {}: expected {} operands, got {}",
+                                variant.to_str(),
+                                variant.arity(),
+                                operand.as_ref().unwrap_left().len()
+                            ),
+                        ));
+
+                        return 
+                            HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
+                        ;
+                    }
+
+                    let operand = match variant {
+                        MetaProbVariant::ExpectedValue => {
+                            let [value] = operand.unwrap_left().try_into().unwrap();
+                            MetaProbOperand::ExpectedValue(value)
+                        }
+                        MetaProbVariant::Probability => {
+                            let [value] = operand.unwrap_left().try_into().unwrap();
+                            MetaProbOperand::Probability(value)
+                        }
+                        MetaProbVariant::Variance => {
+                            let [value] = operand.unwrap_left().try_into().unwrap();
+                            MetaProbOperand::Variance(value)
+                        }
+                        MetaProbVariant::ProbabilityReachability => MetaProbOperand::ProbabilityReachability,
+                        MetaProbVariant::ExpectedIterations => MetaProbOperand::ExpectedIterations,
+                    };
+
+                    MetaProb { dest, ty, operand }.into()
+                }
             }
         })
-        .labelled("alignment");
+}
 
-    let ordering_parser = just(",")
-        .padded()
-        .ignore_then(just("atomic"))
-        .ignore_then(whitespace())
-        .ignore_then(ordering_parser())
-        .labelled("memory ordering");
+fn parse_terminator<'src, I>(
+    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
+    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
+    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+) -> impl Parser<'src, I, HyTerminator, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    let branch = just(Token::TerminatorOp(HyTerminatorOp::Branch))
+        .then(operand_parser(register_namespace.clone(), func_retriver.clone())
+    )
+    .then_ignore(just(Token::Comma))
+    .then(
+        label_parser(label_namespace.clone())
+    )
+    .then(
+        label_parser(label_namespace.clone())
+    ).map(|(((op, cond), target_true), target_false)| {
+        Branch {
+            cond: cond,
+            target_true: target_true,
+            target_false: target_false,
+        }.into()
+    });
 
-    let mem_postfix = choice((
-        alignement_parser
-            .clone()
-            .or_not()
-            .then(ordering_parser.clone().or_not()),
-        ordering_parser
-            .clone()
-            .or_not()
-            .then(alignement_parser.clone().or_not())
-            .map(|(a, b)| (b, a)),
-    ));
+    let trap = just(Token::TerminatorOp(HyTerminatorOp::Trap))
+        .to(Trap.into());
 
-    let mload = parse_simple_instruction(ctx.clone(), "load", 1, just("volatile").or_not())
-        .then(mem_postfix.clone())
-        .map(
-            |((dest, ty, is_volatile, mut operands), (alignement, ordering))| {
-                HyInstr::MLoad(MLoad {
-                    dest,
-                    ty,
-                    addr: operands.remove(0),
-                    alignement,
-                    ordering: ordering,
-                    volatile: is_volatile.is_some(),
-                })
-            },
-        );
-
-    let mstore = just("store")
-        .ignore_then(whitespace())
-        .ignore_then(just("volatile").or_not().padded())
-        .then(
-            operand_parser(
-                ctx.func_retriver.clone(),
-                ctx.named_name.clone(),
-                ctx.label_namer.clone(),
-            )
-            .padded()
-            .separated_by(just(","))
-            .exactly(2)
-            .collect::<SmallVec<Operand, 2>>(),
+    let jump = just(Token::TerminatorOp(HyTerminatorOp::Jump))
+        .ignore_then(
+            label_parser(label_namespace.clone())
         )
-        .then(mem_postfix.clone())
-        .map(|((is_volatile, mut operands), (alignement, ordering))| {
-            HyInstr::MStore(MStore {
-                addr: operands.remove(0),
-                value: operands.remove(0),
-                alignment: alignement,
-                ordering,
-                volatile: is_volatile.is_some(),
-            })
+        .map(|target| {
+            Jump {
+                target: target,
+            }.into()
+        });
+    
+    let ret = just(Token::TerminatorOp(HyTerminatorOp::Ret))
+        .ignore_then(
+            operand_parser(register_namespace.clone(), func_retriver.clone()).map(Either::Left)
+            .or(just(Token::Void).map(Either::Right))
+        )
+        .map(|operand| {
+            Ret {
+                value: operand.left(),
+            }.into()
         });
 
-    let malloca = parse_simple_instruction(ctx.clone(), "alloca", 1, empty())
-        .then(alignement_parser.or_not())
-        .map(|((dest, ty, _, mut operands), alignment)| {
-            HyInstr::MAlloca(MAlloca {
-                dest,
-                ty,
-                count: operands.remove(0),
-                alignment,
-            })
-        });
+    choice((
+        branch,
+        trap,
+        jump,
+        ret,
+    )).boxed()
+}
 
-    let mgetelementptr = instruction_dest_parser(ctx.named_name.clone())
-        .padded()
-        .then_ignore(just("getelementptr"))
-        .then_ignore(whitespace())
-        .then(type_parser(ctx.registry).padded())
+
+fn parse_function<'src, I>(
+    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
+    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
+    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+    type_registry: &'src TypeRegistry,
+    uuid_generator: impl Fn(&str) -> Uuid + Clone + 'src,
+) -> impl Parser<'src, I, Function, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    let block_label = label_parser(label_namespace.clone())
+        .then_ignore(just(Token::Colon));
+
+    let block = block_label
         .then(
-            operand_parser(
-                ctx.func_retriver.clone(),
-                ctx.named_name.clone(),
-                ctx.label_namer.clone(),
+            parse_instruction(
+                register_namespace.clone(),
+                label_namespace.clone(),
+                func_retriver.clone(),
+                type_registry,
             )
-            .padded()
-            .separated_by(just(","))
-            .at_least(1)
+            .repeated()
             .collect::<Vec<_>>(),
         )
-        .map(|((dest, ty), mut indices)| {
-            HyInstr::MGetElementPtr(MGetElementPtr {
-                dest,
-                ty,
-                base: indices.remove(0),
-                indices,
-            })
+        .then(
+            parse_terminator(
+                register_namespace.clone(),
+                label_namespace.clone(),
+                func_retriver.clone(),
+            ),
+        )
+        .map(|((label, instructions), terminator)| {
+            BasicBlock {
+                label: label,
+                instructions,
+                terminator: terminator,
+            }
         });
 
-    choice((
-        choice((
-            iadd, isub, imul, idiv, irem, iand, ior, ixor, iimplies, iequiv, ineg, inot, icmp,
-            isht, fcmp, fadd, fsub, fmul,
-        )),
-        choice((
-            invoke,
-            select,
-            mload,
-            mstore,
-            malloca,
-            cast,
-            fdiv,
-            frem,
-            fneg,
-            phi,
-            mgetelementptr,
-        )),
-    ))
-}
+    let meta_arguments = any()
+        .filter(|x: &Token| x.is_calling_convention() || x.is_visibility())
+        .repeated()
+        .at_most(2)
+        .collect::<Vec<_>>()
+        .validate(|meta_args, extra, emit| {
+            let mut seen_cconv = false;
+            let mut seen_visibility = false;
 
-fn parse_terminator<'src>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    named_name: impl Fn(String) -> Name + Clone + 'src,
-    label_namer: impl Fn(String) -> Label + Clone + 'src,
-) -> impl Parser<'src, &'src str, Terminator, extra::Err<Rich<'src, char>>> {
-    let branch_parser = just("branch")
-        .ignore_then(
-            operand_parser(
-                func_retriver.clone(),
-                named_name.clone(),
-                label_namer.clone(),
-            )
-            .padded(),
-        )
-        .then_ignore(just(",").padded())
-        .then(label_parser(label_namer.clone()))
-        .then_ignore(just(",").padded())
-        .then(label_parser(label_namer.clone()))
-        .map(|((cond, target_true), target_false)| {
-            Terminator::CBranch(CBranch {
-                cond,
-                target_true,
-                target_false,
-            })
-        })
-        .labelled("branch terminator");
-
-    let jump_parser = just("jump")
-        .ignore_then(whitespace())
-        .ignore_then(label_parser(label_namer.clone()))
-        .map(|target| Terminator::Jump(Jump { target }))
-        .labelled("jump terminator");
-
-    let ret_parser = just("ret")
-        .ignore_then(whitespace())
-        .ignore_then(choice((
-            just("void").to(None),
-            operand_parser(func_retriver, named_name, label_namer.clone())
-                .padded()
-                .map(Some),
-        )))
-        .map(|value| Terminator::Ret(Ret { value }))
-        .labelled("return terminator");
-
-    choice((branch_parser, jump_parser, ret_parser)).labelled("terminator")
-}
-
-fn parse_block<'src>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    named_name: impl Fn(String) -> Name + Clone + 'src,
-    label_namer: impl Fn(String) -> Label + Clone + 'src,
-    registry: &'src TypeRegistry,
-) -> impl Parser<'src, &'src str, BasicBlock, extra::Err<Rich<'src, char>>> {
-    let terminator_parser = parse_terminator(
-        func_retriver.clone(),
-        named_name.clone(),
-        label_namer.clone(),
-    );
-
-    let ctx = CtxA {
-        func_retriver,
-        named_name,
-        label_namer: label_namer.clone(),
-        registry,
-    };
-
-    text::ident()
-        .map(move |s: &str| label_namer(s.to_string()))
-        .padded()
-        .then_ignore(just(":"))
-        .labelled("block label")
-        .padded()
-        .then(
-            parse_instruction(ctx)
-                .padded()
-                .repeated()
-                .collect::<Vec<_>>(),
-        )
-        .then(terminator_parser.padded())
-        .padded()
-        .map(|((label, instructions), terminator)| BasicBlock {
-            label,
-            instructions,
-            terminator,
-        })
-        .labelled("block")
-}
-
-fn cconv_parser<'src>()
--> impl Parser<'src, &'src str, CallingConvention, extra::Err<Rich<'src, char>>> {
-    choice((
-        just("cc").to(CallingConvention::C),
-        just("fastcc").to(CallingConvention::FastC),
-        just("coldcc").to(CallingConvention::ColdC),
-        just("ghccc").to(CallingConvention::GhcC),
-        just("hipecc").to(CallingConvention::HipeC),
-        just("anyregcc").to(CallingConvention::AnyRegC),
-        just("preservemostcc").to(CallingConvention::PreserveMostC),
-        just("preserveallcc").to(CallingConvention::PreserveAllC),
-        just("preservenonecc").to(CallingConvention::PreserveNoneC),
-        just("cxx_fast_tlscc").to(CallingConvention::CxxFastTlsC),
-        just("tailcc").to(CallingConvention::TailC),
-        just("swiftcc").to(CallingConvention::SwiftC),
-        just("swifttailcc").to(CallingConvention::SwiftTailC),
-        just("cfguard_checkcc").to(CallingConvention::CfguardCheckC),
-        just("cc")
-            .ignore_then(digits(10).to_slice().try_map(|digits, span| {
-                let n: u32 = match u32::from_str_radix(digits, 10) {
-                    Ok(num) => num,
-                    Err(_) => {
-                        return Err(Rich::custom(
-                            span,
-                            format!("invalid calling convention number: {}", digits),
+            for token in &meta_args {
+                if token.is_calling_convention() {
+                    if seen_cconv {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "duplicate calling convention metadata",
                         ));
                     }
-                };
-                Ok(n)
-            }))
-            .map(|n| CallingConvention::Numbered(n)),
-    ))
-    .labelled("calling convention")
+                    seen_cconv = true;
+                } else if token.is_visibility() {
+                    if seen_visibility {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "duplicate visibility metadata",
+                        ));
+                    }
+                    seen_visibility = true;
+                }
+            }
+
+            meta_args
+        });
+
+    let arglist = 
+        register_parser_a(register_namespace.clone())
+        .then_ignore(just(Token::Colon))
+        .then(type_parser(type_registry))
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(
+            just(Token::LParen),
+            just(Token::RParen),
+        );
+
+    just(Token::Identifier("define", vec![]))
+    .ignore_then(type_parser(type_registry).map(Either::Left).or(just(Token::Void).map(Either::Right)))
+    .then(meta_arguments)
+    .then(
+        just_match(TokenDiscriminants::Register)
+            .map(|x| x.try_as_register().unwrap()),
+    )
+    .then(arglist)
+    .then(
+        block.repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(
+            just(Token::LBrace),
+            just(Token::RBrace),
+        )
+    )
+    .map(move |((((ty, meta), func_name), params), blocks)| {
+        let uuid = uuid_generator(func_name);
+        let mut cconv = None;
+        let mut visibility = None;
+
+        for meta_token in meta {
+            if meta_token.is_calling_convention() {
+                cconv = Some(meta_token.try_as_calling_convention().unwrap());
+            } else if meta_token.is_visibility() {
+                visibility = Some(meta_token.try_as_visibility().unwrap());
+            }
+        }
+
+        let func = Function {
+            uuid,
+            name: Some(func_name.to_string()),
+            params,
+            return_type: ty.left(),
+            body: blocks.into_iter().map(|block| (block.label, block)).collect(),
+            visibility: visibility,
+            cconv: cconv,
+            wildcard_types: Default::default(),
+            meta_function: false,
+        };
+
+        func
+    })
+    .labelled("function definition")
 }
 
-fn visibility_parser<'src>()
--> impl Parser<'src, &'src str, crate::modules::Visibility, extra::Err<Rich<'src, char>>> {
-    choice((
-        just("default")
-            .or_not()
-            .to(crate::modules::Visibility::Default),
-        just("hidden").to(crate::modules::Visibility::Hidden),
-        just("protected").to(crate::modules::Visibility::Protected),
-    ))
-    .labelled("visibility")
+fn import_parser<'src, I>() -> impl Parser<'src, I, String, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    // spanned_match_identifier("import")
+    just_match(TokenDiscriminants::Import)
+        .ignore_then(
+            just_match(TokenDiscriminants::StringLiteral)
+                .map(|token| token.try_as_string_literal().unwrap()),
+        )
+        .labelled("import statement")
 }
 
+/// ===================================================================
+/// =================== OLD PARSERS BELOW THIS LINE ===================
+/// ===================================================================
 pub fn function_parser<'src>(
     func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
     registry: &'src TypeRegistry,
     uuid: Uuid,
 ) -> impl Parser<'src, &'src str, crate::modules::Function, extra::Err<Rich<'src, char>>> {
-    let name_hashmap: Rc<RefCell<BTreeMap<String, Name>>> = Default::default();
-    let named_name = move |string: String| {
-        let hashmap = &mut *name_hashmap.borrow_mut();
-        if let Some(name) = hashmap.get(&string) {
-            name.clone()
-        } else {
-            let next_name = hashmap.len() as u32;
-            hashmap.insert(string, next_name);
-            next_name
-        }
-    };
-
-    let label_hashmap: Rc<RefCell<BTreeMap<String, Label>>> = Default::default();
-    let label_namer = move |string: String| {
-        let hashmap = &mut *label_hashmap.borrow_mut();
-        if let Some(label) = hashmap.get(&string) {
-            label.clone()
-        } else {
-            let next_label = Label(hashmap.len() as u32);
-            hashmap.insert(string, next_label);
-            next_label
-        }
-    };
-
-    just("define")
-        .ignore_then(whitespace())
-        .ignore_then(cconv_parser().then_ignore(whitespace()).or_not())
-        .then(visibility_parser().then_ignore(whitespace()).or_not())
-        .then(maybe_type_parser(registry))
-        .then_ignore(whitespace())
-        .then(percent_name_parser())
-        .then(
-            register_parser(named_name.clone())
-                .then_ignore(just(":").padded())
-                .then(type_parser(registry))
-                .padded()
-                .separated_by(just(","))
-                .collect::<Vec<_>>()
-                .delimited_by(just("("), just(")"))
-                .padded(),
-        )
-        .then(
-            parse_block(
-                func_retriver.clone(),
-                named_name.clone(),
-                label_namer.clone(),
-                registry,
-            )
-            // just("A")
-            .padded()
-            .repeated()
-            .collect::<Vec<_>>()
-            .delimited_by(just("{"), just("}"))
-            .padded(),
-        )
-        .map(
-            move |(((((cconv, visibility), return_type), func_name), params), blocks)| Function {
-                uuid,
-                name: Some(func_name.to_string()),
-                params,
-                return_type,
-                // body: todo!(),
-                body: blocks
-                    .into_iter()
-                    .map(|block| (block.label.clone(), block))
-                    .collect(),
-                visibility,
-                cconv,
-                wildcard_types: Default::default(),
-                meta_function: false,
-            },
-        )
-        .padded()
-}
-
-pub fn import_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
-    just("import")
-        .ignore_then(whitespace())
-        .ignore_then(
-            any()
-                .filter(|c: &char| *c != '\n' && *c != '\r' && *c != '"' && *c != '\'')
-                .repeated()
-                .collect::<String>()
-                .delimited_by(just("\""), just("\"")),
-        )
-        .map(|s: String| s.trim().to_string())
-        .padded()
-        .then_ignore(just(";"))
+    todo()
 }
 
 enum ModuleItem {
@@ -1294,226 +1365,65 @@ enum ModuleItem {
     Function(Function),
 }
 
+fn extend_module<A: Clone + Eq + Hash>(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    from_string: impl Fn(&str) -> A,
+    to_string: impl Fn(A) -> String,
+    relative_to: impl Fn(A, A) -> A,
+    include: impl Fn(A) -> Result<String, Error>,
+    initial: A,
+) -> Result<(), Error> {
+    todo!()
+}
+
+pub fn extend_module_from_string(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    source: &str,
+) -> Result<(), Error> {
+    extend_module(
+        module,
+        registry,
+        |_| panic!("Cannot resolve relative paths from string source"),
+        |a| a,
+        |_, _| panic!("Cannot resolve relative paths from string source"),
+        |a| {
+            debug!("Reading source from string source");
+            Ok(a)
+        },
+        source.to_string(),
+    )
+}
+
 pub fn extend_module_from_path(
     module: &mut Module,
     registry: &TypeRegistry,
     path: impl AsRef<Path>,
 ) -> Result<(), Error> {
-    debug!("Extending module from path: {:?}", path.as_ref());
+    // Canonicalize the path
     let canonical_path = std::fs::canonicalize(&path).map_err(|e| Error::FileNotFound {
         path: path.as_ref().to_string_lossy().to_string(),
         cause: e,
     })?;
 
-    /* Hashset of all absolute path that have been imported (avoid cyclic imports) */
-    let mut imported_paths: HashSet<PathBuf> = Default::default();
-    let mut queue: Vec<PathBuf> = vec![canonical_path.clone()];
-
-    /* Construct index map for ext-func lookup */
-    let ext_func_lookup: BTreeMap<String, Uuid> = module
-        .functions
-        .iter()
-        .filter_map(|(uuid, func)| {
-            if let Some(name) = &func.name {
-                if func.visibility == Some(crate::modules::Visibility::Default) {
-                    Some((name.clone(), *uuid))
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    /* List of unresolved internal functions */
-    let unresolved_internal_forward_map: RefCell<BTreeMap<Uuid, String>> = Default::default();
-    let unresolved_internal_reverse_map: RefCell<BTreeMap<String, Uuid>> = Default::default();
-    let unresolved_internal_forward_map_ref = &unresolved_internal_forward_map;
-    let unresolved_internal_reverse_map_ref = &unresolved_internal_reverse_map;
-    let mut resolve_map: BTreeMap<Uuid, Uuid> = Default::default();
-
-    /* Function retriever */
-    let func_retriver = {
-        let module = module.clone();
-        move |name: String, kind: FunctionPointerType| -> Option<Uuid> {
-            match kind {
-                FunctionPointerType::Internal => {
-                    /* Search in the current module */
-                    for (uuid, func) in &module.functions {
-                        if let Some(func_name) = &func.name {
-                            if *func_name == name {
-                                return Some(*uuid);
-                            }
-                        }
-                    }
-
-                    /* If not found, register as unresolved internal function */
-                    let mut unresolved_internal_forward_map =
-                        unresolved_internal_forward_map_ref.borrow_mut();
-                    let mut unresolved_internal_reverse_map =
-                        unresolved_internal_reverse_map_ref.borrow_mut();
-                    if let Some(uuid) = unresolved_internal_reverse_map.get(&name) {
-                        Some(*uuid)
-                    } else {
-                        let new_uuid = Uuid::new_v4();
-                        unresolved_internal_forward_map.insert(new_uuid, name.clone());
-                        unresolved_internal_reverse_map.insert(name, new_uuid);
-                        Some(new_uuid)
-                    }
-                }
-                FunctionPointerType::External => ext_func_lookup.get(&name).copied(),
-            }
-        }
-    };
-
-    /* Main loop to process the import queue */
-    while let Some(current_path) = queue.pop() {
-        if imported_paths.contains(&current_path) {
-            continue;
-        }
-        imported_paths.insert(current_path.clone());
-
-        /* Read the file content */
-        debug!("Reading module from path: {:?}", current_path);
-        let content = std::fs::read_to_string(&current_path).map_err(|e| Error::FileNotFound {
-            path: path.as_ref().to_string_lossy().to_string(),
-            cause: e,
-        })?;
-
-        /* Build the 'main' parser */
-        let file_parser = choice((
-            import_parser().map(ModuleItem::Import),
-            function_parser(func_retriver.clone(), registry, Uuid::new_v4())
-                .map(ModuleItem::Function),
-        ))
-        .padded()
-        .repeated()
-        .collect::<Vec<_>>();
-
-        /* Parse the file content */
-        let parse_result = file_parser.parse(&content);
-        if parse_result.has_errors() {
-            let errors = parse_result
-                .errors()
-                .map(|error| {
-                    log::error!(
-                        "Error parsing file {}: {}",
-                        current_path.to_string_lossy(),
-                        error
-                    );
-
-                    ParserError {
-                        file: current_path.to_string_lossy().to_string(),
-                        start: error.span().start(),
-                        end: error.span().end(),
-                        message: error.reason().to_string(),
-                    }
+    extend_module(
+        module,
+        registry,
+        |s: &str| PathBuf::from(s),
+        |a: PathBuf| a.to_string_lossy().to_string(),
+        |base: PathBuf, relative: PathBuf| base.parent().unwrap().join(relative),
+        |a: PathBuf| {
+            debug!("Reading source file at path: {}", a.to_string_lossy());
+            std::fs::read_to_string(&a)
+                .map_err(|e| Error::FileNotFound {
+                    path: a.to_string_lossy().to_string(),
+                    cause: e,
                 })
-                .collect();
-            return Err(Error::ParserErrors { errors });
-        }
-
-        if let Some(output) = parse_result.into_output() {
-            for item in output {
-                match item {
-                    ModuleItem::Import(import) => {
-                        /* If this is a relative path, make it relative to the current file
-                        parent directory */
-                        let import_path = PathBuf::from(import);
-                        let import_path = if import_path.is_relative() {
-                            let parent = current_path.parent().unwrap();
-                            parent.join(import_path)
-                        } else {
-                            import_path
-                        };
-
-                        let canonical_import_path =
-                            std::fs::canonicalize(&import_path).map_err(|e| {
-                                Error::FileNotFound {
-                                    path: import_path.to_string_lossy().to_string(),
-                                    cause: e,
-                                }
-                            })?;
-
-                        /* Add the import path to the queue */
-                        queue.push(canonical_import_path);
-                    }
-                    ModuleItem::Function(function) => {
-                        /* Check if this function was an unresolved internal function */
-                        let unresolved_internal_reverse_map =
-                            unresolved_internal_reverse_map_ref.borrow();
-                        if let Some(name) = &function.name {
-                            if let Some(&temp_uuid) = unresolved_internal_reverse_map.get(name) {
-                                /* Register the function under the original UUID */
-                                if resolve_map.insert(temp_uuid, function.uuid).is_some() {
-                                    return Err(Error::DuplicateFunctionName {
-                                        name: name.clone(),
-                                        file: current_path.to_string_lossy().to_string(),
-                                    });
-                                }
-                            }
-                        }
-
-                        module.functions.insert(function.uuid, function.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    /* Verify all internal reference have been resolved */
-    let unresolved_internal_forward_map = unresolved_internal_forward_map_ref.borrow();
-    if resolve_map.len() < unresolved_internal_forward_map.len() {
-        /* Find all unresolved internal functions */
-        let unresolved: Vec<String> = unresolved_internal_forward_map
-            .iter()
-            .filter_map(|(uuid, name)| {
-                if !resolve_map.contains_key(uuid) {
-                    Some(name.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        /* Debug the error */
-        for name in &unresolved {
-            log::error!("Unresolved internal function: {}", name);
-        }
-        return Err(Error::UnresolvedInternalFunctions { names: unresolved });
-    }
-
-    /* Apply the resolve map to all functions */
-    for (_, function) in &mut module.functions {
-        for (_, block) in &mut function.body {
-            for instr in &mut block.instructions {
-                for operand in instr.operands_mut() {
-                    match operand {
-                        Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(
-                            internal_ptr,
-                        ))) => {
-                            if let Some(new_uuid) = resolve_map.get(&internal_ptr) {
-                                *internal_ptr = *new_uuid;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            for operand in block.terminator.operands_mut() {
-                match operand {
-                    Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(internal_ptr))) => {
-                        if let Some(new_uuid) = resolve_map.get(&internal_ptr) {
-                            *internal_ptr = *new_uuid;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    Ok(())
+                .inspect_err(|e| {
+                    log::error!("An error occurred while reading the source file: {}", e);
+                })
+        },
+        canonical_path,
+    )
 }

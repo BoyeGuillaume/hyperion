@@ -8,6 +8,7 @@ use crate::{
 use either::Either;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
 /// Assertion instruction
 ///
@@ -124,9 +125,11 @@ impl Instruction for MetaAssume {
 ///
 /// Models different kinds of probability-related operands that can be used in
 /// probabilistic programming constructs.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
+#[strum_discriminants(name(MetaProbVariant))]
+#[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum ProbOperand {
+pub enum MetaProbOperand {
     /// Operand (boolean) value, this is the probability that the given operand is true. Input
     /// should be a boolean value.
     Probability(Operand),
@@ -158,6 +161,39 @@ pub enum ProbOperand {
     ExpectedIterations,
 }
 
+impl MetaProbVariant {
+    /// Get the arity of the probability operand
+    ///
+    /// Unlike other instructions, (which have the [`super::instructions::HyInstrOp::arity`] method),
+    /// the arity of a [`MetaProb`] instruction depends on the specific variant of the
+    /// [`MetaProbOperand`]. This method returns the number of operands required for the
+    /// specific probability operation.
+    pub fn arity(&self) -> usize {
+        match self {
+            MetaProbVariant::Probability
+            | MetaProbVariant::ExpectedValue
+            | MetaProbVariant::Variance => 1,
+            MetaProbVariant::ProbabilityReachability | MetaProbVariant::ExpectedIterations => 0,
+        }
+    }
+
+    /// Get name of the variant as a string
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            MetaProbVariant::Probability => "prb",   /* boolean */
+            MetaProbVariant::ExpectedValue => "xpt", /* numeric */
+            MetaProbVariant::Variance => "var",      /* numeric */
+            MetaProbVariant::ProbabilityReachability => "rch", /* no operand */
+            MetaProbVariant::ExpectedIterations => "eit", /* no operand */
+        }
+    }
+
+    /// Create variant from string
+    pub fn from_str(s: &str) -> Option<MetaProbVariant> {
+        MetaProbVariant::iter().find(|variant| variant.to_str() == s)
+    }
+}
+
 /// Probability function instruction
 ///
 /// This operation represents a probability function used in probabilistic programming.
@@ -175,7 +211,7 @@ pub struct MetaProb {
     pub ty: Typeref,
 
     /// The operand representing the probability input.
-    pub operand: ProbOperand,
+    pub operand: MetaProbOperand,
 }
 
 impl Instruction for MetaProb {
@@ -185,10 +221,10 @@ impl Instruction for MetaProb {
 
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         match &self.operand {
-            ProbOperand::Probability(op)
-            | ProbOperand::ExpectedValue(op)
-            | ProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
-            ProbOperand::ProbabilityReachability | ProbOperand::ExpectedIterations => {
+            MetaProbOperand::Probability(op)
+            | MetaProbOperand::ExpectedValue(op)
+            | MetaProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
+            MetaProbOperand::ProbabilityReachability | MetaProbOperand::ExpectedIterations => {
                 Either::Right(std::iter::empty())
             }
         }
@@ -196,10 +232,10 @@ impl Instruction for MetaProb {
 
     fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
         match &mut self.operand {
-            ProbOperand::Probability(op)
-            | ProbOperand::ExpectedValue(op)
-            | ProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
-            ProbOperand::ProbabilityReachability | ProbOperand::ExpectedIterations => {
+            MetaProbOperand::Probability(op)
+            | MetaProbOperand::ExpectedValue(op)
+            | MetaProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
+            MetaProbOperand::ProbabilityReachability | MetaProbOperand::ExpectedIterations => {
                 Either::Right(std::iter::empty())
             }
         }

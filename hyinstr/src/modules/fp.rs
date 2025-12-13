@@ -19,7 +19,7 @@ use crate::{
 /// Floating-point comparison operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum FCmpOp {
+pub enum FCmpVariant {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
     Oeq,
     /// Ordered and greater than (i.e., neither operand is NaN and lhs > rhs)
@@ -48,28 +48,28 @@ pub enum FCmpOp {
     Ord,
 }
 
-impl FCmpOp {
+impl FCmpVariant {
     /// Creates an [`FCmpOp`] from its string representation.
     pub fn from_str(s: &str) -> Option<Self> {
-        FCmpOp::iter().find(|op| op.to_str() == s)
+        FCmpVariant::iter().find(|op| op.to_str() == s)
     }
 
     /// Returns the string representation of the [`FCmpOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
-            FCmpOp::Oeq => "oeq",
-            FCmpOp::Ogt => "ogt",
-            FCmpOp::Oge => "oge",
-            FCmpOp::Olt => "olt",
-            FCmpOp::Ole => "ole",
-            FCmpOp::One => "one",
-            FCmpOp::Ueq => "ueq",
-            FCmpOp::Ugt => "ugt",
-            FCmpOp::Uge => "uge",
-            FCmpOp::Ult => "ult",
-            FCmpOp::Ule => "ule",
-            FCmpOp::Une => "une",
-            FCmpOp::Ord => "ord",
+            FCmpVariant::Oeq => "oeq",
+            FCmpVariant::Ogt => "ogt",
+            FCmpVariant::Oge => "oge",
+            FCmpVariant::Olt => "olt",
+            FCmpVariant::Ole => "ole",
+            FCmpVariant::One => "one",
+            FCmpVariant::Ueq => "ueq",
+            FCmpVariant::Ugt => "ugt",
+            FCmpVariant::Uge => "uge",
+            FCmpVariant::Ult => "ult",
+            FCmpVariant::Ule => "ule",
+            FCmpVariant::Une => "une",
+            FCmpVariant::Ord => "ord",
         }
     }
 }
@@ -299,7 +299,7 @@ pub struct FCmp {
     pub ty: Typeref,
     pub lhs: Operand,
     pub rhs: Operand,
-    pub op: FCmpOp,
+    pub variant: FCmpVariant,
 }
 
 impl Instruction for FCmp {

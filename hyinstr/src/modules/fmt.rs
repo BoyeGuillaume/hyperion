@@ -1,11 +1,13 @@
+use bigdecimal::num_traits::sign;
+
 use crate::{
     modules::{
         Function, Instruction, Module,
         instructions::HyInstr,
-        int::{IDiv, IRem, IntegerSignedness, OverflowPolicy},
-        meta::ProbOperand,
+        int::{IDiv, IRem, IntegerSignedness, OverflowPolicy, OverflowSignednessPolicy},
+        meta::MetaProbOperand,
         operand::{Label, Operand},
-        terminator::Terminator,
+        terminator::HyTerminator,
     },
     types::TypeRegistry,
 };
@@ -32,7 +34,7 @@ impl Operand {
                 match self.operand {
                     Operand::Reg(name) => write!(f, "%{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
-                    Operand::Lbl(label) => write!(f, "{:#}", label),
+                    // Operand::Lbl(label) => write!(f, "{:#}", label),
                     Operand::Meta(meta) => write!(f, "M_{}", meta.0),
                 }
             }
@@ -59,67 +61,38 @@ impl HyInstr {
         }
 
         impl<'a> Fmt<'a> {
-            fn fmt_integer_policy(
-                f: &mut std::fmt::Formatter<'_>,
-                signesness: IntegerSignedness,
-                overflow_policy: OverflowPolicy,
-            ) -> std::fmt::Result {
-                use IntegerSignedness::*;
-                use OverflowPolicy::*;
-
-                match (overflow_policy, signesness) {
-                    (Panic, Signed) => write!(f, "panic signed "),
-                    (Panic, Unsigned) => write!(f, "panic unsigned "),
-                    (Wrap, Signed) => write!(f, "warp signed "),
-                    (Wrap, Unsigned) => write!(f, "warp unsigned "),
-                    (Saturate, Signed) => write!(f, "saturate signed "),
-                    (Saturate, Unsigned) => write!(f, "saturate unsigned "),
-                }
-            }
-
             fn specific_fmt(
                 &self,
                 f: &mut std::fmt::Formatter<'_>,
             ) -> Result<bool, std::fmt::Error> {
                 match self.instr {
                     HyInstr::IAdd(iadd) => {
-                        Self::fmt_integer_policy(f, iadd.signedness, iadd.overflow)?;
+                        write!(f, ".{} ", iadd.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::ISub(isub) => {
-                        Self::fmt_integer_policy(f, isub.signedness, isub.overflow)?;
+                        write!(f, ".{} ", isub.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::IMul(imul) => {
-                        Self::fmt_integer_policy(f, imul.signedness, imul.overflow)?;
+                        write!(f, ".{} ", imul.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::IDiv(IDiv { signedness, .. })
                     | HyInstr::IRem(IRem { signedness, .. }) => {
-                        match signedness {
-                            IntegerSignedness::Signed => write!(f, "signed ")?,
-                            IntegerSignedness::Unsigned => write!(f, "unsigned ")?,
-                        };
+                        write!(f, ".{} ", signedness.to_str())?;
                         Ok(false)
                     }
                     HyInstr::ICmp(cmp) => {
-                        write!(f, "{} ", cmp.op.to_str())?;
+                        write!(f, ".{} ", cmp.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::FCmp(cmp) => {
-                        write!(f, "{} ", cmp.op.to_str())?;
+                        write!(f, ".{} ", cmp.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::ISht(isht) => {
-                        use crate::modules::int::IShiftOp::*;
-                        let op_variant = match isht.op {
-                            Lsl => "lsl",
-                            Lsr => "lsr",
-                            Asr => "asr",
-                            Rol => "rol",
-                            Ror => "ror",
-                        };
-                        write!(f, "{} ", op_variant)?;
+                        write!(f, ".{} ", isht.variant.to_str())?;
                         Ok(false)
                     }
                     HyInstr::MLoad(load) => {
@@ -195,30 +168,17 @@ impl HyInstr {
                     }
                     HyInstr::MetaProb(prob) => {
                         match &prob.operand {
-                            ProbOperand::Probability(operand) => {
-                                write!(f, "prob {}", operand.fmt(self.module))?;
-                            }
-                            ProbOperand::ExpectedValue(operand) => {
-                                write!(f, "ev {}", operand.fmt(self.module))?;
-                            }
-                            ProbOperand::Variance(operand) => {
-                                write!(f, "var {}", operand.fmt(self.module))?;
-                            }
-                            ProbOperand::ProbabilityReachability => write!(f, "rch")?,
-                            ProbOperand::ExpectedIterations => write!(f, "eit")?,
+                            MetaProbOperand::Probability(_) => write!(f, ".prob")?,
+                            MetaProbOperand::ExpectedValue(_) => write!(f, ".ev")?,
+                            MetaProbOperand::Variance(_) => write!(f, ".var")?,
+                            MetaProbOperand::ProbabilityReachability => write!(f, ".rch")?,
+                            MetaProbOperand::ExpectedIterations => write!(f, ".eit")?,
                         };
-                        Ok(true)
+                        Ok(false)
                     }
                     HyInstr::Invoke(invoke) => {
                         if let Some(cconv) = &invoke.cconv {
-                            write!(f, "{} ", cconv.to_string())?;
-                        }
-
-                        if let Some(ty) = invoke.ty {
-                            write!(f, "{} ", self.registry.fmt(ty))?;
-                        } else {
-                            debug_assert!(invoke.dest.is_none());
-                            write!(f, "void ")?;
+                            write!(f, " {} ", cconv.to_string())?;
                         }
 
                         write!(f, "{}(", invoke.function.fmt(self.module))?;
@@ -245,19 +205,17 @@ impl HyInstr {
                 let opname = self.instr.op().opname();
 
                 if let Some(dest) = self.instr.destination() {
-                    write!(f, "%{} = ", dest)?;
+                    let ty = self.instr.destination_type().unwrap();
+                    write!(f, "%{}: {} = ", dest, self.registry.fmt(ty))?;
                 }
-                write!(f, "{} ", opname)?;
+                write!(f, "{}", opname)?;
 
                 // Perform specific formatting based on instruction type
                 if self.specific_fmt(f)? {
                     return Ok(());
                 }
 
-                // Following match arms to be filled in with specific instruction formatting
-                if let Some(dest_type) = self.instr.destination_type() {
-                    write!(f, "{} ", self.registry.fmt(dest_type))?;
-                }
+                write!(f, " ")?;
 
                 // Format operands
                 let mut first = true;
@@ -282,34 +240,34 @@ impl HyInstr {
     }
 }
 
-impl Terminator {
+impl HyTerminator {
     pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
-            terminator: &'a Terminator,
+            terminator: &'a HyTerminator,
             module: Option<&'a Module>,
         }
 
         impl std::fmt::Display for Fmt<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.terminator {
-                    Terminator::CBranch(cbranch) => write!(
+                    HyTerminator::Branch(cbranch) => write!(
                         f,
                         "branch {}, {}, {}",
                         cbranch.cond.fmt(self.module),
                         cbranch.target_true,
                         cbranch.target_false
                     ),
-                    Terminator::Jump(jump) => {
+                    HyTerminator::Jump(jump) => {
                         write!(f, "jump label {}", jump.target)
                     }
-                    Terminator::Ret(ret) => {
+                    HyTerminator::Ret(ret) => {
                         if let Some(value) = &ret.value {
                             write!(f, "ret {:#}", value.fmt(self.module))
                         } else {
                             write!(f, "ret void")
                         }
                     }
-                    Terminator::Trap(_) => {
+                    HyTerminator::Trap(_) => {
                         write!(f, "trap")
                     }
                 }
@@ -391,6 +349,29 @@ impl Function {
             function: self,
             type_registry,
             module,
+        }
+    }
+}
+
+impl Module {
+    pub fn fmt<'a>(&'a self, type_registry: &'a TypeRegistry) -> impl std::fmt::Display + 'a {
+        struct Fmt<'a> {
+            module: &'a Module,
+            type_registry: &'a TypeRegistry,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                for function in self.module.functions.values() {
+                    writeln!(f, "{}", function.fmt(self.type_registry, Some(self.module)))?;
+                }
+                Ok(())
+            }
+        }
+
+        Fmt {
+            module: self,
+            type_registry,
         }
     }
 }

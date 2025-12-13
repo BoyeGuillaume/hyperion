@@ -19,4 +19,4 @@ bit-set = { workspace = true }
 
 [features]
 default = []
-test-utils = []
+test-utils = ["hyinstr/chumsky"]
