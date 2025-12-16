@@ -2,7 +2,7 @@ use hyinstr::{
     consts::AnyConst,
     modules::{
         BasicBlock, CallingConvention, Module,
-        int::{ICmp, ICmpVariant, IMul, ISub, IntegerSignedness, OverflowPolicy},
+        int::{ICmp, ICmpVariant, IMul, ISub, OverflowSignednessPolicy},
         misc::Invoke,
         operand::{Label, Operand},
         symbol::FunctionPointer,
@@ -55,8 +55,7 @@ fn main() {
                 ty: i32_ty,
                 lhs: Operand::Reg(0),
                 rhs: Operand::Imm(1u32.into()),
-                overflow: OverflowPolicy::Panic,
-                signedness: IntegerSignedness::Unsigned,
+                variant: OverflowSignednessPolicy::Wrap,
             }
             .into(),
             Invoke {
@@ -74,8 +73,7 @@ fn main() {
                 ty: i32_ty,
                 lhs: Operand::Reg(0),
                 rhs: Operand::Reg(5),
-                overflow: OverflowPolicy::Panic,
-                signedness: IntegerSignedness::Unsigned,
+                variant: OverflowSignednessPolicy::Wrap,
             }
             .into(),
         ],

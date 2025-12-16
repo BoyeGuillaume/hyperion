@@ -34,8 +34,9 @@ fn main() {
             hyinstr::utils::Error::ParserErrors { errors } => {
                 eprintln!("Failed to parse module from {}:", args.input);
                 for error in errors {
-                    let span = (error.file.clone(), error.start..error.end);
-                    let source = std::fs::read_to_string(&error.file).unwrap_or_default();
+                    let file = error.file.clone().unwrap_or_else(|| "<??>".to_string());
+                    let span = (file.clone(), error.start..error.end);
+                    let source = std::fs::read_to_string(&file).unwrap_or_default();
 
                     Report::build(ariadne::ReportKind::Error, span.clone())
                         .with_message(format!("{}", error.message))
@@ -45,7 +46,7 @@ fn main() {
                                 .with_color(a),
                         )
                         .finish()
-                        .print((error.file.clone(), Source::from(source)))
+                        .print((file.clone(), Source::from(source)))
                         .unwrap();
                 }
                 std::process::exit(1);

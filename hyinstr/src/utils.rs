@@ -7,7 +7,7 @@ use crate::modules::operand::{Label, Name};
 #[cfg(feature = "chumsky")]
 #[derive(Debug, Clone)]
 pub struct ParserError {
-    pub file: String,
+    pub file: Option<String>,
     pub start: usize,
     pub end: usize,
     pub message: String,

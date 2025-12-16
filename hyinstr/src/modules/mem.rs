@@ -108,7 +108,7 @@ impl Instruction for MLoad {
 pub struct MStore {
     pub addr: Operand,
     pub value: Operand,
-    pub alignment: Option<u32>,
+    pub alignement: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
@@ -148,7 +148,7 @@ pub struct MAlloca {
     pub dest: Name,
     pub ty: Typeref,
     pub count: Operand,
-    pub alignment: Option<u32>,
+    pub alignement: Option<u32>,
 }
 
 impl Instruction for MAlloca {

@@ -133,7 +133,7 @@ impl HyInstr {
                             write!(f, ", atomic {}", ordering.to_str())?;
                         }
 
-                        if let Some(alignment) = store.alignment {
+                        if let Some(alignment) = store.alignement {
                             write!(f, ", align {} ", alignment)?;
                         }
 
@@ -147,7 +147,7 @@ impl HyInstr {
                             malloca.count.fmt(self.module)
                         )?;
 
-                        if let Some(alignment) = malloca.alignment {
+                        if let Some(alignment) = malloca.alignement {
                             write!(f, ", align {} ", alignment)?;
                         }
 

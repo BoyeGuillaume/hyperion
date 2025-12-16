@@ -1,18 +1,13 @@
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashSet},
-    hash::Hash,
-    path::{Path, PathBuf},
-    rc::Rc,
-    u16, u64,
+    cell::RefCell, collections::{BTreeMap, HashSet}, ffi::OsString, hash::Hash, path::{Path, PathBuf}, rc::Rc, u16, u64
 };
 
 use bigdecimal::{BigDecimal, Num};
 use chumsky::{
-    input::ValueInput, label, prelude::*, text::{Char, ascii::ident, digits}
+    extra::{ParserExtra, SimpleState}, input::{MapExtra, ValueInput}, inspector::Inspector, label::{self, LabelError}, prelude::*, text::{Char, ascii::ident, digits}
 };
 use either::Either::{self, Left};
-use log::debug;
+use log::{debug, info, error};
 use num_bigint::{BigInt, Sign};
 use smallvec::SmallVec;
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
@@ -97,29 +92,118 @@ enum Token<'a> {
     Equals,
 }
 
+impl std::fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Token::IType(itype) => write!(f, "{}", itype),
+            Token::FType(ftype) => write!(f, "{}", ftype),
+            Token::Ordering(ordering) => write!(f, "{:?}", ordering),
+            Token::Visibility(visibility) => write!(f, "{:?}", visibility),
+            Token::CallingConvention(cc) => write!(f, "{:?}", cc),
+            Token::TerminatorOp(op) => write!(f, "{:?}", op),
+            Token::InstrOp(op, variants) => {
+                if variants.is_empty() {
+                    write!(f, "{:?}", op)
+                } else {
+                    write!(f, "{:?}<{:?}>", op, variants)
+                }
+            }
+            Token::Void => write!(f, "void"),
+            Token::Import => write!(f, "import"),
+            Token::Identifier(s, variants) => {
+                if variants.is_empty() {
+                    write!(f, "{}", s)
+                } else {
+                    write!(f, "{}.{}", s, variants.join("."))
+                }
+            }
+            Token::Uuid(uuid) => write!(f, "{}", uuid),
+            Token::Register(name) => write!(f, "%{}", name),
+            Token::Number(num) => write!(f, "{}", num),
+            Token::Decimal(dec) => write!(f, "{}", dec),
+            Token::StringLiteral(s) => write!(f, "{:?}", s),
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::LBrace => write!(f, "{{"),
+            Token::RBrace => write!(f, "}}"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
+            Token::LAngle => write!(f, "<"),
+            Token::RAngle => write!(f, ">"),
+            Token::Comma => write!(f, ","),
+            Token::Colon => write!(f, ":"),
+            Token::Equals => write!(f, "="),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct State<'a> {
+    label_namespace: BTreeMap<String, Label>,
+    register_namespace: BTreeMap<String, Name>,
+    func_retriever: Rc<dyn Fn(String, FunctionPointerType) -> Option<Uuid> + 'a>,
+    uuid_generator: Rc<dyn Fn() -> Uuid + 'a>,
+    type_registry: &'a TypeRegistry,
+}
+
+impl<'a> State<'a> {
+    pub fn new(
+        type_registry: &'a TypeRegistry,
+        func_retriever: Rc<dyn Fn(String, FunctionPointerType) -> Option<Uuid> + 'a>,
+        uuid_generator: Rc<dyn Fn() -> Uuid + 'a>
+    ) -> Self {
+        Self {
+            label_namespace: BTreeMap::new(),
+            register_namespace: BTreeMap::new(),
+            func_retriever,
+            uuid_generator,
+            type_registry,
+        }
+    }
+
+    pub fn get_label(&mut self, name: &str) -> Label {
+        if let Some(label) = self.label_namespace.get(name) {
+            *label
+        } else {
+            let label = Label(self.label_namespace.len() as u32);
+            self.label_namespace.insert(name.to_string(), label);
+            label
+        }
+    }
+
+    pub fn get_register(&mut self, name: &str) -> Name {
+        if let Some(reg) = self.register_namespace.get(name) {
+            *reg
+        } else {
+            let reg = self.register_namespace.len() as u32;
+            self.register_namespace.insert(name.to_string(), reg);
+            reg
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.label_namespace.clear();
+        self.register_namespace.clear();
+    }
+}
+
 impl Token<'_> {
     pub fn discriminant(&self) -> TokenDiscriminants {
         self.into()
     }
 }
 
-fn just_match<'src, I>(
+fn just_match<'src, I, E>(
     token: TokenDiscriminants,
-) -> impl Parser<'src, I, Token<'src>, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+) -> impl Parser<'src, I, Token<'src>, E> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+    E: ParserExtra<'src, I>,
+    E::Error: LabelError<'src, I, String>,
 {
     any()
         .filter(move |t: &Token| t.discriminant() == token)
         .labelled(format!("token {:?}", token))
-}
-
-fn tuple_left<A, B>(t: (A, B)) -> A {
-    t.0
-}
-
-fn tuple_right<A, B>(t: (A, B)) -> B {
-    t.1
 }
 
 fn uuid_parser<'src>() -> impl Parser<'src, &'src str, Uuid, extra::Err<Rich<'src, char>>> {
@@ -155,23 +239,70 @@ fn uuid_parser<'src>() -> impl Parser<'src, &'src str, Uuid, extra::Err<Rich<'sr
 
 fn bigint_parser<'src>()
 -> impl Parser<'src, &'src str, BigInt, extra::Err<Rich<'src, char>>> + Clone {
-    let hex_num = just("0x")
-        .ignore_then(digits(16).to_slice())
-        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 16).unwrap());
-
-    let oct_num = just("0o")
-        .ignore_then(digits(8).to_slice())
-        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 8).unwrap());
-
-    let bin_num = just("0b")
-        .ignore_then(digits(2).to_slice())
-        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 2).unwrap());
-
-    let dec_num = digits(10)
+    digits(10)
+        .then(
+            any()
+                .filter(|&c: &char| c.is_ascii_alphanumeric())
+                .repeated(),
+        )
         .to_slice()
-        .map(|x: &str| BigInt::parse_bytes(x.as_bytes(), 10).unwrap());
+        .validate(|element: &str, extra, emit| {
+            let two_char = if element.len() >= 2 {
+                &element[0..2]
+            } else {
+                ""
+            };
 
-    choice((hex_num, oct_num, bin_num, dec_num)).labelled("number")
+            match two_char {
+                "0x" => {
+                    match BigInt::from_str_radix(&element[2..], 16) {
+                        Ok(val) => return val,
+                        Err(e) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("{} (hexadecimal)", e),
+                            ));
+                        }
+                    }
+                }
+                "0o" => {
+                    match BigInt::from_str_radix(&element[2..], 8) {
+                        Ok(val) => return val,
+                        Err(e) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("{} (octal)", e),
+                            ));
+                        }
+                    }
+                }
+                "0b" => {
+                    match BigInt::from_str_radix(&element[2..], 2) {
+                        Ok(val) => return val,
+                        Err(e) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("{} (binary)", e),
+                            ));
+                        }
+                    }
+                }
+                _ => {
+                    match BigInt::from_str_radix(element, 10) {
+                        Ok(val) => return val,
+                        Err(e) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("{} (decimal)", e),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            BigInt::from(0)
+        })
+        .labelled("number")
 }
 
 fn u32_parser<'src>() -> impl Parser<'src, &'src str, u32, extra::Err<Rich<'src, char>>> + Clone {
@@ -371,11 +502,10 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'s
 fn ignoring_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
 {
     choice((
-        any().filter(|c: &char| c.is_whitespace()).repeated(),
+        any().filter(|c: &char| c.is_whitespace()).to(()),
         comment_parser(),
     ))
     .repeated()
-    .ignored()
     .labelled("whitespace or comment")
 }
 
@@ -383,7 +513,7 @@ fn lexer<'src>()
 -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
     choice((
         bigint_parser().map(Token::Number),
-        bigdecimal_parser().map(Token::Decimal),
+        // bigdecimal_parser().map(Token::Decimal),
         string_parser().map(Token::StringLiteral),
         just("(").to(Token::LParen),
         just(")").to(Token::RParen),
@@ -405,8 +535,11 @@ fn lexer<'src>()
     .collect::<Vec<_>>()
 }
 
+type Extra<'src> = extra::Full<Rich<'src, Token<'src>, Span>, SimpleState<State<'src>>, ()>;
+
 fn primary_basic_type_parser<'src, I>()
--> impl Parser<'src, I, PrimaryBasicType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+// -> impl Parser<'src, I, PrimaryBasicType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+-> impl Parser<'src, I, PrimaryBasicType, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
@@ -432,7 +565,7 @@ where
 }
 
 fn primary_type_parser<'src, I>()
--> impl Parser<'src, I, PrimaryType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+-> impl Parser<'src, I, PrimaryType, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
@@ -488,16 +621,15 @@ where
     choice((primary_type, vector_type)).labelled("primary type")
 }
 
-fn type_parser<'src, I>(
-    registry: &'src TypeRegistry,
-) -> impl Parser<'src, I, Typeref, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn type_parser<'src, I>() 
+-> impl Parser<'src, I, Typeref, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     recursive(|tree| {
         // Primary basic types
-        let primary_type = primary_type_parser().map(move |prim_type| {
-            registry.search_or_insert(prim_type.into())
+        let primary_type = primary_type_parser().map_with(move |prim_type, extra| {
+            extra.state().type_registry.search_or_insert(prim_type.into())
         });
 
         // Array types (e.g., [10 x i32])
@@ -528,7 +660,8 @@ where
                     size_token.to_u32_digits().1.into_iter().next().unwrap() as u16
                 };
                 let array_type = ArrayType { ty, num_elements };
-                registry.search_or_insert(array_type.into())
+                let state: &mut SimpleState<State<'src>> = extra.state();
+                state.type_registry.search_or_insert(array_type.into())
             })
             .labelled("array type");
 
@@ -550,7 +683,8 @@ where
                     element_types,
                     packed: packed.is_some(),
                 };
-                registry.search_or_insert(struct_type.into())
+                let state: &mut SimpleState<State<'src>> = extra.state();
+                state.type_registry.search_or_insert(struct_type.into())
             })
             .labelled("struct type");
 
@@ -560,8 +694,8 @@ where
 }
 
 fn constant_parser<'src, I>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-) -> impl Parser<'src, I, AnyConst, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+    // func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
+) -> impl Parser<'src, I, AnyConst, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
@@ -606,7 +740,9 @@ where
                 FunctionPointerType::Internal
             };
 
-            match func_retriver(name.clone(), ftype) {
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            state.func_retriever.as_ref()(name.clone(), ftype);
+            match (state.func_retriever.as_ref())(name.clone(), ftype) {
                 Some(uuid) => 
                     match ftype {
                         FunctionPointerType::Internal => {
@@ -636,14 +772,12 @@ where
     choice((itype_const, ftype_const, func_ptr))
 }
 
-fn label_parser<'src, I>(
-    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
-) -> impl Parser<'src, I, Label, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn label_parser<'src, I>() -> impl Parser<'src, I, Label, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     just_match(TokenDiscriminants::Identifier)
-        .map(move |token| {
+        .map_with(move |token, extra| {
             let ident = token.try_as_identifier().unwrap();
             let mut full_name = ident.0.to_string();
             for part in ident.1 {
@@ -651,59 +785,51 @@ where
                 full_name.push_str(part);
             }
 
-            label_namespace(&full_name)
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            state.get_label(&full_name)
         })
         .labelled("label")
 }
 
-fn register_parser_a<'src, I>(
-    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
-) -> impl Parser<'src, I, Name, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn register_parser_a<'src, I>() -> impl Parser<'src, I, Name, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     just_match(TokenDiscriminants::Register)
-        .map(move |token| {
-            register_namespace(token.try_as_register().unwrap())
+        .map_with(move |token, extra| {
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            state.get_register(token.try_as_register().unwrap())
         })
         .labelled("register")
 }
 
-fn operand_parser<'src, I>(
-    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-) -> impl Parser<'src, I, Operand, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn operand_parser<'src, I>() -> impl Parser<'src, I, Operand, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let reg_parser = register_parser_a(register_namespace).map(Operand::Reg);
-    let const_parser = constant_parser(func_retriver)
+    let reg_parser = register_parser_a().map(Operand::Reg);
+    let const_parser = constant_parser()
         .map(Operand::Imm)
         .labelled("immediate operand");
 
     choice((reg_parser, const_parser))
 }
 
-fn parse_instruction<'src, I>(
-    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
-    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    type_registry: &'src TypeRegistry,
-) -> impl Parser<'src, I, HyInstr, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn parse_instruction<'src, I>() -> impl Parser<'src, I, HyInstr, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     let operand_parser = choice((
         /* Use by most instructions */
-        operand_parser(register_namespace.clone(), func_retriver.clone())
+        operand_parser()
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
             .map(Either::Left),
 
         /* Use by phi instructions */
-        operand_parser(register_namespace.clone(), func_retriver.clone())
+        operand_parser()
             .then(
-                label_parser(move |s| label_namespace(s))
+                label_parser()
             )
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
@@ -714,7 +840,7 @@ where
     just_match(TokenDiscriminants::Register)
         .map(|x| x.try_as_register().unwrap())
         .then_ignore(just(Token::Colon))
-        .then(type_parser(type_registry))
+        .then(type_parser())
         .then_ignore(just(Token::Equals))
         .or_not()
         .then(
@@ -745,11 +871,16 @@ where
             })
             .or_not(),
         )
-        .validate(move |(elem, align), extra, emit| {
+        .then(
+            just(Token::Comma)
+            .then(just(Token::Identifier("volatile", vec![]))).to(()).or_not(),
+        )
+        .validate(move |((elem, align), volatile), extra, emit| {
+            let state: &mut SimpleState<State<'src>> = extra.state();
             let ((destination, op), operand) = elem;
             let (op, variant) = op;
             let dest_and_ty = if let Some((dest, ty)) = destination {
-                Some((register_namespace(dest), ty))
+                Some((state.get_register(dest), ty))
             } else {
                 None
             };
@@ -763,9 +894,7 @@ where
                     )
                 ));
 
-                return 
-                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                ;
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
             }
             else if op == HyInstrOp::Phi && matches!(operand, Either::Left(_)) {
                 emit.emit(Rich::custom(
@@ -775,11 +904,47 @@ where
                     )
                 ));
 
-                return 
-                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                ;
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
             }
 
+            if op == HyInstrOp::MStore && dest_and_ty.is_some() {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "syntax error for {} instruction: destination register specified where none expected",
+                        op.opname()
+                    ),
+                ));
+
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+            }
+            else if op != HyInstrOp::Invoke && dest_and_ty.is_none() {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "syntax error for {} instruction: missing destination register",
+                        op.opname()
+                    ),
+                ));
+
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+            }
+
+            if matches!(op, HyInstrOp::MLoad | HyInstrOp::MStore) {
+                /* Load and store instructions can both have one or zero variant operands */
+                if variant.len() > 1 {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "arity mismatch for {} instruction variant: expected at most 1 variant operand, got {}",
+                            op.opname(),    
+                            variant.len()
+                        ),
+                    ));
+
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                }
+            }
             if op.has_variant() != variant.is_empty() {
                 emit.emit(Rich::custom(
                     extra.span(),
@@ -791,9 +956,7 @@ where
                     ),
                 ));
 
-                return 
-                    HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                ;
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
             }
 
             if op.has_variant() {
@@ -845,6 +1008,16 @@ where
                     extra.span(),
                     format!(
                         "alignment specifier is only valid for load, store and alloca instructions, got {} instruction",
+                        op.opname()
+                    ),
+                ));
+            }
+
+            if volatile.is_some() && !matches!(op, HyInstrOp::MLoad | HyInstrOp::MStore) {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    format!(
+                        "volatile specifier is only valid for load and store instructions, got {} instruction",
                         op.opname()
                     ),
                 ));
@@ -1017,13 +1190,68 @@ where
 
                     ICmp { dest, ty, lhs, rhs, variant }.into()
                 },
-                HyInstrOp::MLoad => todo!(),
-                HyInstrOp::MStore => todo!(),
+                HyInstrOp::MLoad => {
+                    let [addr] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    let ordering = if variant.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            match MemoryOrdering::from_str(&variant[0]) {
+                                Some(op) => op,
+                                None => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        format!(
+                                            "unknown memory ordering variant: {} (expected one of: {})",
+                                            variant[0],
+                                            MemoryOrdering::iter()
+                                                .map(|x| x.to_str())
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        ),
+                                    ));
+                                    MemoryOrdering::AcqRel
+                                }
+                            }
+                        )
+                    };
+                    
+                    MLoad { dest, ty, addr, alignement: align, ordering, volatile: volatile.is_some() }.into()
+                }
+                HyInstrOp::MStore => {
+                    let [addr, value] = operand.unwrap_left().try_into().unwrap();
+                    let ordering = if variant.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            match MemoryOrdering::from_str(&variant[0]) {
+                                Some(op) => op,
+                                None => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        format!(
+                                            "unknown memory ordering variant: {} (expected one of: {})",
+                                            variant[0],
+                                            MemoryOrdering::iter()
+                                                .map(|x| x.to_str())
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        ),
+                                    ));
+                                    MemoryOrdering::AcqRel
+                                }
+                            }
+                        )
+                    };
+
+                    MStore { addr, value, alignement: align, ordering, volatile: volatile.is_some() }.into()
+                },
                 HyInstrOp::MAlloca => {
                     let [count] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
                     
-                    MAlloca { dest, ty, count, alignment: align }.into()
+                    MAlloca { dest, ty, count, alignement: align }.into()
                 }
                 HyInstrOp::MGetElementPtr => {
                     let mut indices = operand.unwrap_left();
@@ -1038,16 +1266,37 @@ where
                             ),
                         ));
 
-                        return 
-                            HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                       ;
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                     }
 
                     let base = indices.remove(0);
 
                     MGetElementPtr { dest, ty, base, indices }.into()
                 }
-                HyInstrOp::Invoke => todo!(),
+                HyInstrOp::Invoke => {
+                    let mut operands = operand.unwrap_left();
+                    let (dest, ty) = match dest_and_ty {
+                        Some((dest, ty)) => (Some(dest), Some(ty)),
+                        None => (None, None),
+                    };
+
+                    if operands.len() < 1 {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for {} instruction: expected at least 1 operand (function pointer), got {}",
+                                op.opname(),
+                                operands.len(),
+                            ),
+                        ));
+
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+
+                    let function = operands.remove(0);
+
+                    Invoke { dest, ty, function, args: operands, cconv: None }.into()
+                },
                 HyInstrOp::Phi => {
                     let (dest, ty) = dest_and_ty.unwrap();
                     Phi { dest, ty, values: operand.unwrap_right() }.into()
@@ -1150,38 +1399,28 @@ where
         })
 }
 
-fn parse_terminator<'src, I>(
-    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
-    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-) -> impl Parser<'src, I, HyTerminator, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn parse_terminator<'src, I>() -> impl Parser<'src, I, HyTerminator, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     let branch = just(Token::TerminatorOp(HyTerminatorOp::Branch))
-        .then(operand_parser(register_namespace.clone(), func_retriver.clone())
-    )
-    .then_ignore(just(Token::Comma))
-    .then(
-        label_parser(label_namespace.clone())
-    )
-    .then(
-        label_parser(label_namespace.clone())
-    ).map(|(((op, cond), target_true), target_false)| {
-        Branch {
-            cond: cond,
-            target_true: target_true,
-            target_false: target_false,
-        }.into()
-    });
+        .then(operand_parser())
+        .then_ignore(just(Token::Comma))
+        .then(label_parser())
+        .then(label_parser())
+        .map(|(((op, cond), target_true), target_false)| {
+            Branch {
+                cond: cond,
+                target_true: target_true,
+                target_false: target_false,
+            }.into()
+        });
 
     let trap = just(Token::TerminatorOp(HyTerminatorOp::Trap))
         .to(Trap.into());
 
     let jump = just(Token::TerminatorOp(HyTerminatorOp::Jump))
-        .ignore_then(
-            label_parser(label_namespace.clone())
-        )
+        .ignore_then(label_parser())
         .map(|target| {
             Jump {
                 target: target,
@@ -1190,7 +1429,7 @@ where
     
     let ret = just(Token::TerminatorOp(HyTerminatorOp::Ret))
         .ignore_then(
-            operand_parser(register_namespace.clone(), func_retriver.clone()).map(Either::Left)
+            operand_parser().map(Either::Left)
             .or(just(Token::Void).map(Either::Right))
         )
         .map(|operand| {
@@ -1208,36 +1447,21 @@ where
 }
 
 
-fn parse_function<'src, I>(
-    register_namespace: impl Fn(&str) -> Name + Clone + 'src,
-    label_namespace: impl Fn(&str) -> Label + Clone + 'src,
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    type_registry: &'src TypeRegistry,
-    uuid_generator: impl Fn(&str) -> Uuid + Clone + 'src,
-) -> impl Parser<'src, I, Function, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn parse_function<'src, I>() -> impl Parser<'src, I, Function, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let block_label = label_parser(label_namespace.clone())
+    let block_label = label_parser()
         .then_ignore(just(Token::Colon));
 
     let block = block_label
         .then(
-            parse_instruction(
-                register_namespace.clone(),
-                label_namespace.clone(),
-                func_retriver.clone(),
-                type_registry,
-            )
+            parse_instruction()
             .repeated()
             .collect::<Vec<_>>(),
         )
         .then(
-            parse_terminator(
-                register_namespace.clone(),
-                label_namespace.clone(),
-                func_retriver.clone(),
-            ),
+            parse_terminator(),
         )
         .map(|((label, instructions), terminator)| {
             BasicBlock {
@@ -1280,9 +1504,9 @@ where
         });
 
     let arglist = 
-        register_parser_a(register_namespace.clone())
+        register_parser_a()
         .then_ignore(just(Token::Colon))
-        .then(type_parser(type_registry))
+        .then(type_parser())
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
         .delimited_by(
@@ -1291,52 +1515,55 @@ where
         );
 
     just(Token::Identifier("define", vec![]))
-    .ignore_then(type_parser(type_registry).map(Either::Left).or(just(Token::Void).map(Either::Right)))
-    .then(meta_arguments)
-    .then(
-        just_match(TokenDiscriminants::Register)
-            .map(|x| x.try_as_register().unwrap()),
-    )
-    .then(arglist)
-    .then(
-        block.repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(
-            just(Token::LBrace),
-            just(Token::RBrace),
+        .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
+        .then(meta_arguments)
+        .then(
+            just_match(TokenDiscriminants::Register)
+                .map(|x| x.try_as_register().unwrap()),
         )
-    )
-    .map(move |((((ty, meta), func_name), params), blocks)| {
-        let uuid = uuid_generator(func_name);
-        let mut cconv = None;
-        let mut visibility = None;
+        .then(arglist)
+        .then(
+            block.repeated()
+            .collect::<Vec<_>>()
+            .delimited_by(
+                just(Token::LBrace),
+                just(Token::RBrace),
+            )
+        )
+        .map_with(move |((((ty, meta), func_name), params), blocks), extra| {
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            let uuid = (state.uuid_generator)();
+            let mut cconv = None;
+            let mut visibility = None;
 
-        for meta_token in meta {
-            if meta_token.is_calling_convention() {
-                cconv = Some(meta_token.try_as_calling_convention().unwrap());
-            } else if meta_token.is_visibility() {
-                visibility = Some(meta_token.try_as_visibility().unwrap());
+            for meta_token in meta {
+                if meta_token.is_calling_convention() {
+                    cconv = Some(meta_token.try_as_calling_convention().unwrap());
+                } else if meta_token.is_visibility() {
+                    visibility = Some(meta_token.try_as_visibility().unwrap());
+                }
             }
-        }
 
-        let func = Function {
-            uuid,
-            name: Some(func_name.to_string()),
-            params,
-            return_type: ty.left(),
-            body: blocks.into_iter().map(|block| (block.label, block)).collect(),
-            visibility: visibility,
-            cconv: cconv,
-            wildcard_types: Default::default(),
-            meta_function: false,
-        };
+            let func = Function {
+                uuid,
+                name: Some(func_name.to_string()),
+                params,
+                return_type: ty.left(),
+                body: blocks.into_iter().map(|block| (block.label, block)).collect(),
+                visibility: visibility,
+                cconv: cconv,
+                wildcard_types: Default::default(),
+                meta_function: false,
+            };
 
-        func
-    })
-    .labelled("function definition")
+            // Clear state namespaces for next function
+            state.clear();
+            func
+        })
+        .labelled("function definition")
 }
 
-fn import_parser<'src, I>() -> impl Parser<'src, I, String, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
+fn import_parser<'src, I>() -> impl Parser<'src, I, String, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
@@ -1349,51 +1576,42 @@ where
         .labelled("import statement")
 }
 
-/// ===================================================================
-/// =================== OLD PARSERS BELOW THIS LINE ===================
-/// ===================================================================
-pub fn function_parser<'src>(
-    func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-    registry: &'src TypeRegistry,
-    uuid: Uuid,
-) -> impl Parser<'src, &'src str, crate::modules::Function, extra::Err<Rich<'src, char>>> {
-    todo()
-}
+pub fn debug_test(file: impl AsRef<Path>) {
+    let source = std::fs::read_to_string(&file).expect("Failed to read source file");
 
-enum ModuleItem {
-    Import(String),
-    Function(Function),
-}
+    let lexer_result = lexer().parse(&source);
 
-fn extend_module<A: Clone + Eq + Hash>(
-    module: &mut Module,
-    registry: &TypeRegistry,
-    from_string: impl Fn(&str) -> A,
-    to_string: impl Fn(A) -> String,
-    relative_to: impl Fn(A, A) -> A,
-    include: impl Fn(A) -> Result<String, Error>,
-    initial: A,
-) -> Result<(), Error> {
-    todo!()
-}
+    if lexer_result.has_errors() {
+        println!("Lexing errors encountered:");
+        for err in lexer_result.errors() {
+            println!("Error: {}", err);
 
-pub fn extend_module_from_string(
-    module: &mut Module,
-    registry: &TypeRegistry,
-    source: &str,
-) -> Result<(), Error> {
-    extend_module(
-        module,
-        registry,
-        |_| panic!("Cannot resolve relative paths from string source"),
-        |a| a,
-        |_, _| panic!("Cannot resolve relative paths from string source"),
-        |a| {
-            debug!("Reading source from string source");
-            Ok(a)
-        },
-        source.to_string(),
-    )
+            let span = err.span();
+            let error_snippet = &source[span.start..span.end];
+            println!("At {}..{}: {}", span.start, span.end, error_snippet);
+        }
+        return;
+    }
+
+    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
+        .into_output()
+        .unwrap()
+        .into_iter()
+        .unzip();
+
+    println!("Tokens:");
+
+    let mut i = 0;
+    for (token, _) in tokens.iter().zip(spans.iter()) {
+        i += 1;
+        if i % 10 == 0 {
+            println!();
+        }
+
+        print!(" {:?}", token);
+    }
+    println!();
+    println!("Total tokens: {}", tokens.len());
 }
 
 pub fn extend_module_from_path(
@@ -1405,25 +1623,99 @@ pub fn extend_module_from_path(
     let canonical_path = std::fs::canonicalize(&path).map_err(|e| Error::FileNotFound {
         path: path.as_ref().to_string_lossy().to_string(),
         cause: e,
-    })?;
+    })
+    .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))?;
+    debug!("Extending module from file: {}", canonical_path.to_string_lossy());
 
-    extend_module(
-        module,
-        registry,
-        |s: &str| PathBuf::from(s),
-        |a: PathBuf| a.to_string_lossy().to_string(),
-        |base: PathBuf, relative: PathBuf| base.parent().unwrap().join(relative),
-        |a: PathBuf| {
-            debug!("Reading source file at path: {}", a.to_string_lossy());
-            std::fs::read_to_string(&a)
-                .map_err(|e| Error::FileNotFound {
-                    path: a.to_string_lossy().to_string(),
-                    cause: e,
+    // Stack of files to process
+    let mut stack = vec![canonical_path];
+
+    while let Some(current_path) = stack.pop() {
+        // Read the source file
+        debug!("Reading source file at path: {}", current_path.to_string_lossy());
+        let source = std::fs::read_to_string(&current_path).map_err(|e| Error::FileNotFound {
+            path: current_path.to_string_lossy().to_string(),
+            cause: e,
+        })
+        .inspect_err(|e | error!("An error occurred while reading the source file: {}", e))?;
+
+        // Lex the source file
+        let lexer_result = lexer().parse(&source);
+        if lexer_result.has_errors() {
+            error!("Lexing errors encountered in file {}:", current_path.to_string_lossy());
+
+            let errors = lexer_result
+                .into_errors()
+                .into_iter()
+                .map(|e| ParserError {
+                    file: Some(current_path.to_string_lossy().to_string()),
+                    start: e.span().start,
+                    end: e.span().end,
+                    message: e.reason().to_string(),
                 })
-                .inspect_err(|e| {
-                    log::error!("An error occurred while reading the source file: {}", e);
+                .collect();
+            return Err(Error::ParserErrors { errors });
+        }
+        let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
+            .into_output()
+            .unwrap()
+            .into_iter()
+            .unzip();
+
+        // Final parser, import + function definitions
+        enum Item {
+            Import(String),
+            Function(Function),
+        }
+
+        let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
+            None
+        });
+
+        let uuid_generator = Rc::new(|| {
+            Uuid::new_v4()
+        });
+
+
+        let parser = choice((
+            import_parser().map(Item::Import),
+            parse_function()
+            .map(Item::Function),
+        ));
+
+        let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
+        let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
+        if parse_result.has_errors() {
+            error!("Parsing errors encountered in file {}:", current_path.to_string_lossy());
+
+            let errors = parse_result
+                .into_errors()
+                .into_iter()
+                .map(|e| {
+                    let span = e.span();
+                    
+                    // Convert token span to source span
+                    let source_span = SimpleSpan {
+                        start: spans[span.start].start,
+                        end: spans[span.end - 1].end,
+                        context: (),
+                    };
+
+                    ParserError {
+                        file: Some(current_path.to_string_lossy().to_string()),
+                        start: source_span.start,
+                        end: source_span.end,
+                        message: format!("{}", e.reason()),
+                    }
                 })
-        },
-        canonical_path,
-    )
+                .collect();
+            return Err(Error::ParserErrors { errors });
+        }
+
+        // Process parsed items
+    }
+
+    // Lex the source file using debug
+    // debug_test(&canonical_path);
+    Ok(())
 }

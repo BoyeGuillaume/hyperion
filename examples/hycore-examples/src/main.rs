@@ -1,7 +1,7 @@
 use chumsky::Parser;
 use hycore::specifications::utils::{remove_unused_op, simple_simplify_function};
 use hyinstr::{
-    modules::{Module, parser::function_parser, symbol::FunctionPointerType},
+    modules::{Function, Module, symbol::FunctionPointerType},
     types::TypeRegistry,
 };
 use uuid::Uuid;
@@ -34,25 +34,26 @@ fn main() {
         }
     };
 
-    let parse_result = function_parser(func_retriever, &type_registry, uuid).parse(FN_CODE);
-    if parse_result.has_errors() {
-        for err in parse_result.errors() {
-            let (start, end) = {
-                let s = err.span();
-                (s.start, s.end)
-            };
+    // let parse_result = function_parser(func_retriever, &type_registry, uuid).parse(FN_CODE);
+    // if parse_result.has_errors() {
+    //     for err in parse_result.errors() {
+    //         let (start, end) = {
+    //             let s = err.span();
+    //             (s.start, s.end)
+    //         };
 
-            eprintln!("Parse error: {}", err);
-            /* Display line with error */
-            let line_start = FN_CODE[..start].rfind('\n').map_or(0, |p| p + 1);
-            let line_end = FN_CODE[end..].find('\n').map_or(FN_CODE.len(), |p| end + p);
-            eprintln!("{}", &FN_CODE[line_start..line_end]);
-            eprintln!("{:>width$}^", "", width = start - line_start);
-        }
-        panic!("Failed to parse function code");
-    }
+    //         eprintln!("Parse error: {}", err);
+    //         /* Display line with error */
+    //         let line_start = FN_CODE[..start].rfind('\n').map_or(0, |p| p + 1);
+    //         let line_end = FN_CODE[end..].find('\n').map_or(FN_CODE.len(), |p| end + p);
+    //         eprintln!("{}", &FN_CODE[line_start..line_end]);
+    //         eprintln!("{:>width$}^", "", width = start - line_start);
+    //     }
+    //     panic!("Failed to parse function code");
+    // }
 
-    let mut func = parse_result.into_output().unwrap();
+    // let mut func = parse_result.into_output().unwrap();
+    let mut func: Function = todo!();
     func.verify().expect("Function verification failed");
 
     simple_simplify_function(&mut func).unwrap();
