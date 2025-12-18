@@ -1,25 +1,24 @@
 use std::{
-    cell::RefCell, collections::{BTreeMap, HashSet}, ffi::OsString, hash::Hash, path::{Path, PathBuf}, rc::Rc, u16, u64
+    cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, u16
 };
 
 use bigdecimal::{BigDecimal, Num};
 use chumsky::{
-    extra::{ParserExtra, SimpleState}, input::{MapExtra, ValueInput}, inspector::Inspector, label::{self, LabelError}, prelude::*, text::{Char, ascii::ident, digits}
+    container::Seq, extra::{ParserExtra, SimpleState}, input::ValueInput, label::LabelError, prelude::*, text::{Char, digits}
 };
-use either::Either::{self, Left};
-use log::{debug, info, error};
-use num_bigint::{BigInt, Sign};
-use smallvec::SmallVec;
+use either::Either;
+use log::{debug, error};
+use num_bigint::BigInt;
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
 use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
-        BasicBlock, CallingConvention, Function, Instruction, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
+        BasicBlock, CallingConvention, Function, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
     },
     types::{
-        AnyType, TypeRegistry, Typeref,
+        TypeRegistry, Typeref,
         aggregate::{ArrayType, StructType},
         primary::{FType, IType, PrimaryBasicType, PrimaryType, PtrType, VcSize, VcType},
     },
@@ -44,6 +43,7 @@ enum Token<'a> {
     Identifier(&'a str, Vec<&'a str>),
 
     /// UUID parser (prefixed with '@')
+    #[allow(dead_code)]
     Uuid(Uuid),
 
     /// Register identifier (prefixed with '%')
@@ -53,6 +53,7 @@ enum Token<'a> {
     Number(BigInt),
 
     /// Decimal floating-point literal
+    #[allow(dead_code)]
     Decimal(BigDecimal),
 
     /// String literal (enclosed in double quotes)
@@ -193,6 +194,23 @@ impl Token<'_> {
     }
 }
 
+macro_rules! fast_boxed {
+    (
+        $parser:expr
+    ) => {
+        {
+            #[cfg(debug_assertions)]
+            {
+                $parser.boxed()
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                $parser
+            }
+        }
+    };
+}
+
 fn just_match<'src, I, E>(
     token: TokenDiscriminants,
 ) -> impl Parser<'src, I, Token<'src>, E> + Clone
@@ -206,6 +224,7 @@ where
         .labelled(format!("token {:?}", token))
 }
 
+#[allow(unused)]
 fn uuid_parser<'src>() -> impl Parser<'src, &'src str, Uuid, extra::Err<Rich<'src, char>>> {
     // UUID parser in standard 8-4-4-4-12 format
     let hex_digit = any()
@@ -305,22 +324,6 @@ fn bigint_parser<'src>()
         .labelled("number")
 }
 
-fn u32_parser<'src>() -> impl Parser<'src, &'src str, u32, extra::Err<Rich<'src, char>>> + Clone {
-    digits(10)
-        .to_slice()
-        .validate(|s: &str, extra, emit| match u32::from_str_radix(s, 10) {
-            Ok(val) => val,
-            Err(e) => {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!("invalid u32 number: {}", e),
-                ));
-                0u32
-            }
-        })
-        .labelled("u32 number")
-}
-
 fn string_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
     just('"')
         .ignore_then(
@@ -341,6 +344,7 @@ fn string_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich
         .labelled("string literal")
 }
 
+#[allow(unused)]
 fn bigdecimal_parser<'src>()
 -> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> + Clone {
     // Simple floating-point parser using BigDecimal
@@ -447,36 +451,47 @@ fn identifier_parser<'src>()
             }
 
             if other.is_empty() {
-                let ftype = FType::from_str(s).map(Token::FType);
-                let ordering = MemoryOrdering::from_str(s).map(Token::Ordering);
+                if let Some(ftype) = FType::from_str(s) {
+                    return Token::FType(ftype);
+                }
 
-                ftype
-                    .or(ordering)
-                    .unwrap_or_else(|| Token::Identifier(s, other))
-            } else {
-                Token::Identifier(s, other)
+                if let Some(ordering) = MemoryOrdering::from_str(s) {
+                    return Token::Ordering(ordering);
+                }
+
+                if s.starts_with("i") && s[1..].seq_iter().all(|x| x.is_ascii_digit()) {
+                    let width_str = &s[1..];
+                    match width_str.parse::<u32>() {
+                        Ok(width) => {
+                            if let Some(itype) = IType::try_new(width) {
+                                return Token::IType(itype);
+                            } else {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "cannot create IType with width {} (must be between {} and {})",
+                                        width,
+                                        IType::MIN_BITS,
+                                        IType::MAX_BITS
+                                    ),
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("invalid integer type width '{}': {}", width_str, e),
+                            ));
+                        }
+                    }
+                }
             }
+
+            Token::Identifier(s, other)
         })
         .labelled("identifier");
 
-    let itype = just("i")
-        .ignore_then(u32_parser())
-        .try_map(|width, span| {
-            IType::try_new(width).map(Token::IType).ok_or_else(|| {
-                Rich::custom(
-                    span,
-                    format!(
-                        "cannot create IType with width {} (must be between {} and {})",
-                        width,
-                        IType::MIN_BITS,
-                        IType::MAX_BITS
-                    ),
-                )
-            })
-        })
-        .labelled("itype");
-
-    choice((base_identifier, itype))
+    fast_boxed!(base_identifier)
 }
 
 fn register_parser<'src>()
@@ -484,7 +499,7 @@ fn register_parser<'src>()
     just("%")
         .ignore_then(
             any()
-                .filter(|c: &char| c.is_ident_continue())
+                .filter(|c: &char| c.is_ident_continue() || *c == '.')
                 .repeated()
                 .to_slice(),
         )
@@ -626,71 +641,72 @@ fn type_parser<'src, I>()
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    recursive(|tree| {
-        // Primary basic types
-        let primary_type = primary_type_parser().map_with(move |prim_type, extra| {
-            extra.state().type_registry.search_or_insert(prim_type.into())
-        });
+    fast_boxed!(recursive(|tree| {
+            // Primary basic types
+            let primary_type = primary_type_parser().map_with(move |prim_type, extra| {
+                extra.state().type_registry.search_or_insert(prim_type.into())
+            });
 
-        // Array types (e.g., [10 x i32])
-        let array_type = just(Token::LBracket)
-            .ignore_then(just_match(TokenDiscriminants::Number))
-            .then_ignore(just(Token::Identifier("x", vec![])))
-            .then(tree.clone())
-            .then_ignore(just(Token::RBracket))
-            .validate(|(size_token, ty), extra, emit| {
-                let size_token = size_token.try_as_number().unwrap();
-                let num_elements = if size_token <= BigInt::ZERO {
-                    emit.emit(Rich::custom(
-                        extra.span(),
-                        "array size must be a positive non-zero integer",
-                    ));
-                    1u16
-                } else if size_token > BigInt::from(u16::MAX) {
-                    emit.emit(Rich::custom(
-                        extra.span(),
-                        format!(
-                            "array size too large: maximum allowed is {}, got {}",
-                            u16::MAX,
-                            size_token
+            // Array types (e.g., [10 x i32])
+            let array_type = just(Token::LBracket)
+                .ignore_then(just_match(TokenDiscriminants::Number))
+                .then_ignore(just(Token::Identifier("x", vec![])))
+                .then(tree.clone())
+                .then_ignore(just(Token::RBracket))
+                .validate(|(size_token, ty), extra, emit| {
+                    let size_token = size_token.try_as_number().unwrap();
+                    let num_elements = if size_token <= BigInt::ZERO {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "array size must be a positive non-zero integer",
+                        ));
+                        1u16
+                    } else if size_token > BigInt::from(u16::MAX) {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "array size too large: maximum allowed is {}, got {}",
+                                u16::MAX,
+                                size_token
+                            ),
+                        ));
+                        1u16
+                    } else {
+                        size_token.to_u32_digits().1.into_iter().next().unwrap() as u16
+                    };
+                    let array_type = ArrayType { ty, num_elements };
+                    let state: &mut SimpleState<State<'src>> = extra.state();
+                    state.type_registry.search_or_insert(array_type.into())
+                })
+                .labelled("array type");
+
+            // Structure types (e.g., { i32, fp32, [4 x i8] })
+            let struct_type = just(Token::Identifier("packed", vec![]))
+                .or_not()
+                .then(
+                    tree
+                        .clone()
+                        .separated_by(just(Token::Comma))
+                        .collect::<Vec<_>>()
+                        .delimited_by(
+                            just(Token::LBrace),
+                            just(Token::RBrace),
                         ),
-                    ));
-                    1u16
-                } else {
-                    size_token.to_u32_digits().1.into_iter().next().unwrap() as u16
-                };
-                let array_type = ArrayType { ty, num_elements };
-                let state: &mut SimpleState<State<'src>> = extra.state();
-                state.type_registry.search_or_insert(array_type.into())
-            })
-            .labelled("array type");
+                )
+                .map_with(|(packed, element_types), extra| {
+                    let struct_type = StructType {
+                        element_types,
+                        packed: packed.is_some(),
+                    };
+                    let state: &mut SimpleState<State<'src>> = extra.state();
+                    state.type_registry.search_or_insert(struct_type.into())
+                })
+                .labelled("struct type");
 
-        // Structure types (e.g., { i32, fp32, [4 x i8] })
-        let struct_type = just(Token::Identifier("packed", vec![]))
-            .or_not()
-            .then(
-                tree
-                    .clone()
-                    .separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>()
-                    .delimited_by(
-                        just(Token::LBrace),
-                        just(Token::RBrace),
-                    ),
-            )
-            .map_with(|(packed, element_types), extra| {
-                let struct_type = StructType {
-                    element_types,
-                    packed: packed.is_some(),
-                };
-                let state: &mut SimpleState<State<'src>> = extra.state();
-                state.type_registry.search_or_insert(struct_type.into())
-            })
-            .labelled("struct type");
-
-        choice((primary_type, array_type, struct_type))
-    })
-    .labelled("type")
+            choice((primary_type, array_type, struct_type))
+        })
+        .labelled("type")
+    )
 }
 
 fn constant_parser<'src, I>(
@@ -769,7 +785,7 @@ where
         })
         .labelled("function pointer");
 
-    choice((itype_const, ftype_const, func_ptr))
+    fast_boxed!(choice((itype_const, ftype_const, func_ptr)))
 }
 
 fn label_parser<'src, I>() -> impl Parser<'src, I, Label, Extra<'src>> + Clone
@@ -812,30 +828,32 @@ where
         .map(Operand::Imm)
         .labelled("immediate operand");
 
-    choice((reg_parser, const_parser))
+    fast_boxed!(choice((reg_parser, const_parser)))
 }
 
 fn parse_instruction<'src, I>() -> impl Parser<'src, I, HyInstr, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let operand_parser = choice((
+    let operand_parser = fast_boxed!(choice((
+        /* Use by phi instructions */
+        operand_parser()
+            .then_ignore(just(Token::Comma))
+            .then(label_parser())
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .separated_by(just(Token::Comma))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map(Either::Right)
+            .labelled("phi operand list"),
+
         /* Use by most instructions */
         operand_parser()
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
-            .map(Either::Left),
-
-        /* Use by phi instructions */
-        operand_parser()
-            .then(
-                label_parser()
-            )
-            .separated_by(just(Token::Comma))
-            .collect::<Vec<_>>()
-            .delimited_by(just(Token::LBracket), just(Token::RBracket))
-            .map(Either::Right),
-    ));
+            .map(Either::Left)
+            .labelled("operand list"),
+    )));
 
     just_match(TokenDiscriminants::Register)
         .map(|x| x.try_as_register().unwrap())
@@ -873,7 +891,10 @@ where
         )
         .then(
             just(Token::Comma)
-            .then(just(Token::Identifier("volatile", vec![]))).to(()).or_not(),
+                .then(
+                    just(Token::Identifier("volatile", vec![]))
+                ).to(())
+                .or_not(),
         )
         .validate(move |((elem, align), volatile), extra, emit| {
             let state: &mut SimpleState<State<'src>> = extra.state();
@@ -945,11 +966,11 @@ where
                     return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                 }
             }
-            if op.has_variant() != variant.is_empty() {
+            if op.has_variant() == variant.is_empty() {
                 emit.emit(Rich::custom(
                     extra.span(),
                     format!(
-                        "syntax error for {} instruction: expected {} variant operands, got {}",
+                        "syntax error for {} instruction: expected {}, got {}",
                         op.opname(),
                         if op.has_variant() { "variant" } else { "no variant" },
                         if variant.is_empty() { "no variant" } else { "variant" }
@@ -1396,7 +1417,7 @@ where
                     MetaProb { dest, ty, operand }.into()
                 }
             }
-        })
+        }).boxed()
 }
 
 fn parse_terminator<'src, I>() -> impl Parser<'src, I, HyTerminator, Extra<'src>> + Clone
@@ -1404,11 +1425,12 @@ where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     let branch = just(Token::TerminatorOp(HyTerminatorOp::Branch))
-        .then(operand_parser())
+        .ignore_then(operand_parser())
         .then_ignore(just(Token::Comma))
         .then(label_parser())
+        .then_ignore(just(Token::Comma))
         .then(label_parser())
-        .map(|(((op, cond), target_true), target_false)| {
+        .map(|((cond, target_true), target_false)| {
             Branch {
                 cond: cond,
                 target_true: target_true,
@@ -1514,7 +1536,7 @@ where
             just(Token::RParen),
         );
 
-    just(Token::Identifier("define", vec![]))
+    fast_boxed!(just(Token::Identifier("define", vec![]))
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
         .then(meta_arguments)
         .then(
@@ -1560,7 +1582,7 @@ where
             state.clear();
             func
         })
-        .labelled("function definition")
+        .labelled("function definition"))
 }
 
 fn import_parser<'src, I>() -> impl Parser<'src, I, String, Extra<'src>> + Clone
@@ -1614,6 +1636,19 @@ pub fn debug_test(file: impl AsRef<Path>) {
     println!("Total tokens: {}", tokens.len());
 }
 
+/// Extend a module by parsing a file at the given path, including handling imports
+/// recursively.
+/// 
+/// Notes: This function is subject to breaking changes as the parser is developed (notably
+/// the import system is yet to be stabilized).
+/// 
+/// # Arguments
+///  - `module`: The module to extend.
+///  - `registry`: The type registry to use for type resolution.
+///  - `path`: The path to the source file to parse.
+/// 
+/// # Returns
+/// - `Ok(())` if the module was successfully extended.
 pub fn extend_module_from_path(
     module: &mut Module,
     registry: &TypeRegistry,
@@ -1629,6 +1664,7 @@ pub fn extend_module_from_path(
 
     // Stack of files to process
     let mut stack = vec![canonical_path];
+    let module_mutator = RefCell::new(module);
 
     while let Some(current_path) = stack.pop() {
         // Read the source file
@@ -1654,7 +1690,7 @@ pub fn extend_module_from_path(
                     message: e.reason().to_string(),
                 })
                 .collect();
-            return Err(Error::ParserErrors { errors });
+            return Err(Error::ParserErrors { errors, tokens: vec![] } );
         }
         let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
             .into_output()
@@ -1669,19 +1705,17 @@ pub fn extend_module_from_path(
         }
 
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-            None
+            module_mutator.borrow().find_function_uuid_by_name(&name, func_type).map(|x| x.uuid())
         });
 
         let uuid_generator = Rc::new(|| {
             Uuid::new_v4()
         });
 
-
         let parser = choice((
             import_parser().map(Item::Import),
-            parse_function()
-            .map(Item::Function),
-        ));
+            parse_function().map(Item::Function),
+        )).repeated().collect::<Vec<_>>();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
@@ -1709,13 +1743,171 @@ pub fn extend_module_from_path(
                     }
                 })
                 .collect();
-            return Err(Error::ParserErrors { errors });
+            return Err(Error::ParserErrors { errors, tokens: tokens.iter().map(|t| format!("{:?}", t)).collect() } );
         }
 
         // Process parsed items
+        let items = parse_result.into_output().unwrap();
+        for item in items {
+            match item {
+                Item::Import(path) => {
+                    // Push the imported file onto the stack for processing, stop processing current file
+                    let import_path = current_path
+                        .parent()
+                        .unwrap()
+                        .join(&path);
+                    debug!("Add file to import list {}", import_path.to_string_lossy());
+
+                    let canonical_import_path = std::fs::canonicalize(&import_path).map_err(|e| Error::FileNotFound {
+                            path,
+                            cause: e,
+                        })
+                        .inspect_err(|e| error!("An error occurred while canonicalizing the import path: {}", e))?;
+                    stack.push(canonical_import_path);
+                },
+                Item::Function(mut function) => {
+                    debug!("Adding function {:?} to module", function.name);
+                    function.normalize_ssa();
+
+                    // Verify the function validity
+                    // This checks for issues like undefined labels, type mismatches, etc.
+                    if let Err(e) = module_mutator.borrow().verify_func(&function) {
+                        error!("Function verification failed for function {:?}: {}", function.name, e);
+                        return Err(e);
+                    }
+
+                    // Check that the function does not already exist
+                    if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
+                        function.name.as_ref().unwrap(),
+                        FunctionPointerType::Internal,
+                    ) {
+                        error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
+                        return Err(Error::FunctionAlreadyExists {
+                            name: function.name.as_ref().unwrap().clone(),
+                        });
+                    }
+
+                    // Insert the function into the module
+                    module_mutator.borrow_mut().functions.insert(function.uuid, function);
+                },
+            }
+        }
+    }
+ 
+    // Finally, return success
+    Ok(())
+}
+
+/// Extend a module by parsing a source string.
+/// 
+/// Notes: String does not support imports at this time.
+/// 
+/// # Arguments
+/// - `module`: The module to extend.
+/// - `registry`: The type registry to use for type resolution.
+/// - `source`: The source string to parse.
+/// 
+/// # Returns
+/// - `Ok(())` if the module was successfully extended.
+/// 
+pub fn extend_module_from_string(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    source: &str
+) -> Result<(), Error> {
+    let module_mutator = RefCell::new(module);
+
+    // Lex the source string
+    let lexer_result = lexer().parse(source);
+    if lexer_result.has_errors() {
+        error!("Lexing errors encountered in source string:");
+
+        let errors = lexer_result
+            .into_errors()
+            .into_iter()
+            .map(|e| ParserError {
+                file: None,
+                start: e.span().start,
+                end: e.span().end,
+                message: e.reason().to_string(),
+            })
+            .collect();
+        return Err(Error::ParserErrors { errors, tokens: vec![] } );
+    }
+    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
+        .into_output()
+        .unwrap()
+        .into_iter()
+        .unzip();
+
+    // Final parser, function definitions only
+    let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
+        module_mutator.borrow().find_function_uuid_by_name(&name, func_type).map(|x| x.uuid())
+    });
+
+    let uuid_generator = Rc::new(|| {
+        Uuid::new_v4()
+    });
+
+    let parser = parse_function().repeated().collect::<Vec<_>>();
+
+    let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
+    let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
+    if parse_result.has_errors() {
+        error!("Parsing errors encountered in source string:");
+
+        let errors = parse_result
+            .into_errors()
+            .into_iter()
+            .map(|e| {
+                let span = e.span();
+                
+                // Convert token span to source span
+                let source_span = SimpleSpan {
+                    start: spans[span.start].start,
+                    end: spans[span.end - 1].end,
+                    context: (),
+                };
+
+                ParserError {
+                    file: None,
+                    start: source_span.start,
+                    end: source_span.end,
+                    message: format!("{}", e.reason()),
+                }
+            })
+            .collect();
+        return Err(Error::ParserErrors { errors, tokens: tokens.iter().map(|t| format!("{:?}", t)).collect() } );
     }
 
-    // Lex the source file using debug
-    // debug_test(&canonical_path);
+    // Process parsed functions
+    let functions = parse_result.into_output().unwrap();
+    for mut function in functions {
+        debug!("Adding function {:?} to module", function.name);
+        function.normalize_ssa();
+
+        // Verify the function validity
+        // This checks for issues like undefined labels, type mismatches, etc.
+        if let Err(e) = module_mutator.borrow().verify_func(&function) {
+            error!("Function verification failed for function {:?}: {}", function.name, e);
+            return Err(e);
+        }
+
+        // Check that the function does not already exist
+        if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
+            function.name.as_ref().unwrap(),
+            FunctionPointerType::Internal,
+        ) {
+            error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
+            return Err(Error::FunctionAlreadyExists {
+                name: function.name.as_ref().unwrap().clone(),
+            });
+        }
+
+        // Insert the function into the module
+        module_mutator.borrow_mut().functions.insert(function.uuid, function);
+    }
+
+    // Finally, return success
     Ok(())
 }

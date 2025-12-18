@@ -1,5 +1,17 @@
-avion.voiture.camion %avion "a stri\"\nng" [({=,:})]
-,,,,
-0x42  ; Hexadecimal
-42    ; Decimal
-0o42  ; Octal
+define i32 %pow(%a: i32, %n: i32) {
+entry:
+    %is_null: i1 = icmp.eq %n, i32 0
+    branch %is_null, output, loop
+
+loop:
+    %current_n: i32 = phi [%n, entry], [%next_n, loop]
+    %current_res: i32 = phi [i32 1, entry], [%next_res, loop]
+    %next_n: i32 = isub.wrap %current_n, i32 1
+    %next_res: i32 = imul.usat %current_res, %a
+    %loop.is_null: i32 = icmp.eq %next_n, i32 0
+    branch %loop.is_null, output, loop
+
+output:
+    %output: i32 = phi [i32 1, entry]
+    ret %output
+}

@@ -22,7 +22,7 @@ use crate::{
     modules::{
         instructions::HyInstr,
         operand::{Label, Name, Operand},
-        symbol::{ExternalFunction, FunctionPointer},
+        symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
     },
     types::{Typeref, primary::WType},
     utils::Error,
@@ -915,6 +915,30 @@ impl Module {
         }
 
         Ok(())
+    }
+
+    /// Find the UUID of a function by its name and type (internal or external).
+    ///
+    /// This operation is in O(n) in the number of functions in the module.
+    ///
+    /// Returns `None` if no function with the given name and type exists.
+    pub fn find_function_uuid_by_name(
+        &self,
+        name: &str,
+        func_type: FunctionPointerType,
+    ) -> Option<FunctionPointer> {
+        match func_type {
+            FunctionPointerType::Internal => self
+                .functions
+                .values()
+                .find(|f| f.name.as_deref() == Some(name))
+                .map(|f| FunctionPointer::Internal(f.uuid)),
+            FunctionPointerType::External => self
+                .external_functions
+                .values()
+                .find(|f| f.name == name)
+                .map(|f| FunctionPointer::External(f.uuid)),
+        }
     }
 
     /// Check each function in the module for SSA validity.

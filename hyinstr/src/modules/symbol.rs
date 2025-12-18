@@ -48,3 +48,13 @@ pub enum FunctionPointer {
     /// Reference to an external function (ie., defined in `ExternalFunction`)
     External(Uuid),
 }
+
+impl FunctionPointer {
+    /// Get the UUID of the function pointer, regardless of its type.
+    pub fn uuid(&self) -> Uuid {
+        match self {
+            FunctionPointer::Internal(uuid) => *uuid,
+            FunctionPointer::External(uuid) => *uuid,
+        }
+    }
+}

@@ -31,8 +31,14 @@ fn main() {
             }
         }
         Err(error) => match error {
-            hyinstr::utils::Error::ParserErrors { errors } => {
+            hyinstr::utils::Error::ParserErrors { errors, tokens } => {
                 eprintln!("Failed to parse module from {}:", args.input);
+                if tokens.is_empty() {
+                    eprintln!("No tokens were produced.");
+                } else {
+                    eprintln!("Tokens: {}", tokens.join(" "));
+                }
+
                 for error in errors {
                     let file = error.file.clone().unwrap_or_else(|| "<??>".to_string());
                     let span = (file.clone(), error.start..error.end);

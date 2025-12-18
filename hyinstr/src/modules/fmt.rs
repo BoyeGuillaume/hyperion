@@ -1,10 +1,8 @@
-use bigdecimal::num_traits::sign;
-
 use crate::{
     modules::{
         Function, Instruction, Module,
         instructions::HyInstr,
-        int::{IDiv, IRem, IntegerSignedness, OverflowPolicy, OverflowSignednessPolicy},
+        int::{IDiv, IRem},
         meta::MetaProbOperand,
         operand::{Label, Operand},
         terminator::HyTerminator,
@@ -154,7 +152,7 @@ impl HyInstr {
                         Ok(true)
                     }
                     HyInstr::Phi(phi) => {
-                        write!(f, "{} ", self.registry.fmt(phi.ty))?;
+                        write!(f, " ")?;
                         let mut first = true;
                         for (operand, label) in &phi.values {
                             if first {
@@ -162,7 +160,7 @@ impl HyInstr {
                             } else {
                                 write!(f, ", ")?;
                             }
-                            write!(f, "[ {}, {} ]", label, operand.fmt(self.module))?;
+                            write!(f, "[{}, {}]", operand.fmt(self.module), label)?;
                         }
                         Ok(true)
                     }

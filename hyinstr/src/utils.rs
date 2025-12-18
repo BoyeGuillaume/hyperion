@@ -143,7 +143,10 @@ pub enum Error {
 
     #[cfg(feature = "chumsky")]
     #[error("Parser errors occurred: {errors:?}")]
-    ParserErrors { errors: Vec<ParserError> },
+    ParserErrors {
+        errors: Vec<ParserError>,
+        tokens: Vec<String>,
+    },
 
     /// A function with the given name already exists in the module.
     #[cfg(feature = "chumsky")]
@@ -156,4 +159,8 @@ pub enum Error {
         "The following internal functions were referenced but not defined within the module: {names:?}"
     )]
     UnresolvedInternalFunctions { names: Vec<String> },
+
+    /// External functions were referenced but not defined within the module.:w
+    #[error("A function with the name `{name}` already exists in the module.")]
+    FunctionAlreadyExists { name: String },
 }
