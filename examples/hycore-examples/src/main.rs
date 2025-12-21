@@ -1,9 +1,8 @@
 use hycore::specifications::utils::{remove_unused_op, simple_simplify_function};
 use hyinstr::{
-    modules::{Function, Module, parser::extend_module_from_string, symbol::FunctionPointerType},
+    modules::{Module, parser::extend_module_from_string},
     types::TypeRegistry,
 };
-use uuid::Uuid;
 
 const FN_CODE: &str = r#"
 define i32 factorial ( %n: i32 ) {
