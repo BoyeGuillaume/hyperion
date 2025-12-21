@@ -8,4 +8,3 @@ hyinstr = { workspace = true, features = ["chumsky"] }
 hycore = { workspace = true, features = ["test-utils"] }
 petgraph.workspace = true
 uuid = { workspace = true, features = ["v4"] }
-chumsky.workspace = true

@@ -941,6 +941,28 @@ impl Module {
         }
     }
 
+    /// Find the UUID of an internal function by its name.
+    ///
+    /// This operation is in O(n) in the number of functions in the module.
+    ///
+    /// Returns `None` if no internal function with the given name exists.
+    pub fn find_internal_function_uuid_by_name(&self, name: &str) -> Option<Uuid> {
+        self.functions
+            .values()
+            .find(|f| f.name.as_deref() == Some(name))
+            .map(|f| f.uuid)
+    }
+
+    /// Retrieve a particular function from its Uuid
+    pub fn get_internal_function_by_uuid(&self, uuid: Uuid) -> Option<&Function> {
+        self.functions.get(&uuid)
+    }
+
+    /// Retrieve a particular function from its Uuid (mutable)
+    pub fn get_internal_function_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Function> {
+        self.functions.get_mut(&uuid)
+    }
+
     /// Check each function in the module for SSA validity.
     pub fn verify(&self) -> Result<(), Error> {
         for function in self.functions.values() {

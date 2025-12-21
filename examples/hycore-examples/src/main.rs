@@ -1,67 +1,46 @@
-use chumsky::Parser;
 use hycore::specifications::utils::{remove_unused_op, simple_simplify_function};
 use hyinstr::{
-    modules::{Function, Module, symbol::FunctionPointerType},
+    modules::{Function, Module, parser::extend_module_from_string, symbol::FunctionPointerType},
     types::TypeRegistry,
 };
 use uuid::Uuid;
 
 const FN_CODE: &str = r#"
-define i32 %factorial ( %n: i32 ) {
+define i32 factorial ( %n: i32 ) {
 entry:
-   %cmp1 = icmp eq i1 %n, i32 0
+   %cmp1: i1 = icmp.eq %n, i32 0
    branch %cmp1, return_result, recurse
+
 recurse:
-   %n_minus_1 = isub wrap unsigned i32 %n, i32 1
-   %recursive_result = invoke i32 ptr %factorial (%n_minus_1)
-   %result2 = imul saturate unsigned i32 %n, %recursive_result
-   %result = imul wrap unsigned i32 %n, %recursive_result
+   %n_minus_1: i32 = isub.wrap %n, i32 1
+   %recursive_result: i32 = invoke ptr factorial, %n_minus_1
+   %result2: i32 = imul.usat  %n, %recursive_result
+   %result: i32 = imul.wrap %n, %recursive_result
    jump return_result
+
 return_result:
-   %final_result = phi i32 [ recurse, %result2 ], [ entry, i32 1 ]
+   %final_result: i32 = phi [ %result2, recurse ], [ i32 1, entry ]
    ret %final_result
 }
 "#;
 
 fn main() {
-    let type_registry = TypeRegistry::new([0; 6]);
-    let uuid = Uuid::new_v4();
-    let func_retriever = |name: String, func_type: FunctionPointerType| -> Option<Uuid> {
-        if name == "factorial" && func_type == FunctionPointerType::Internal {
-            Some(uuid)
-        } else {
-            None
-        }
-    };
+    let registry = TypeRegistry::new([0; 6]);
+    let mut module = Module::default();
 
-    // let parse_result = function_parser(func_retriever, &type_registry, uuid).parse(FN_CODE);
-    // if parse_result.has_errors() {
-    //     for err in parse_result.errors() {
-    //         let (start, end) = {
-    //             let s = err.span();
-    //             (s.start, s.end)
-    //         };
+    if let Err(e) = extend_module_from_string(&mut module, &registry, FN_CODE) {
+        eprintln!("Error parsing module: {}", e);
+        return;
+    }
 
-    //         eprintln!("Parse error: {}", err);
-    //         /* Display line with error */
-    //         let line_start = FN_CODE[..start].rfind('\n').map_or(0, |p| p + 1);
-    //         let line_end = FN_CODE[end..].find('\n').map_or(FN_CODE.len(), |p| end + p);
-    //         eprintln!("{}", &FN_CODE[line_start..line_end]);
-    //         eprintln!("{:>width$}^", "", width = start - line_start);
-    //     }
-    //     panic!("Failed to parse function code");
-    // }
+    let func_uuid = module
+        .find_internal_function_uuid_by_name("factorial")
+        .unwrap();
+    let func = module.get_internal_function_by_uuid_mut(func_uuid).unwrap();
 
     // let mut func = parse_result.into_output().unwrap();
-    let mut func: Function = todo!();
-    func.verify().expect("Function verification failed");
+    simple_simplify_function(func).unwrap();
+    remove_unused_op(func).unwrap();
 
-    simple_simplify_function(&mut func).unwrap();
-    remove_unused_op(&mut func).unwrap();
-
-    let mut module = Module::default();
-    module.functions.insert(func.uuid, func);
-    // module.verify().unwrap();
-
-    println!("Parsed module: {}", module.fmt(&type_registry));
+    println!("Parsed module: {}", module.fmt(&registry));
 }

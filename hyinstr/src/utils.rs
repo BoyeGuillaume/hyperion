@@ -3,6 +3,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::modules::operand::{Label, Name};
+#[cfg(feature = "chumsky")]
+use crate::modules::symbol::FunctionPointerType;
 
 #[cfg(feature = "chumsky")]
 #[derive(Debug, Clone)]
@@ -163,4 +165,14 @@ pub enum Error {
     /// External functions were referenced but not defined within the module.:w
     #[error("A function with the name `{name}` already exists in the module.")]
     FunctionAlreadyExists { name: String },
+
+    /// External or internal function was referenced but not defined within the module.
+    #[cfg(feature = "chumsky")]
+    #[error(
+        "The {func_type} function `{name}` was referenced but not defined within the module as either an internal or external function."
+    )]
+    UnresolvedFunction {
+        name: String,
+        func_type: FunctionPointerType,
+    },
 }

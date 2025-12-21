@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, u16
+    cell::RefCell, collections::{BTreeMap, HashMap}, path::Path, rc::Rc, u16
 };
 
 use bigdecimal::{BigDecimal, Num};
@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
-        BasicBlock, CallingConvention, Function, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
+        BasicBlock, CallingConvention, Function, Instruction, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
     },
     types::{
         TypeRegistry, Typeref,
@@ -1540,8 +1540,16 @@ where
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
         .then(meta_arguments)
         .then(
-            just_match(TokenDiscriminants::Register)
-                .map(|x| x.try_as_register().unwrap()),
+            just_match(TokenDiscriminants::Identifier)
+                .map(|x| {
+                    let (x, xs) = x.try_as_identifier().unwrap();
+                    let mut full_name = x.to_string();
+                    for part in xs {
+                        full_name.push('.');
+                        full_name.push_str(part);
+                    }
+                    full_name
+                }),
         )
         .then(arglist)
         .then(
@@ -1664,7 +1672,9 @@ pub fn extend_module_from_path(
 
     // Stack of files to process
     let mut stack = vec![canonical_path];
-    let module_mutator = RefCell::new(module);
+    let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
+    let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
+    let mut list_added_internal_functions = vec![];
 
     while let Some(current_path) = stack.pop() {
         // Read the source file
@@ -1705,7 +1715,17 @@ pub fn extend_module_from_path(
         }
 
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-            module_mutator.borrow().find_function_uuid_by_name(&name, func_type).map(|x| x.uuid())
+            if let Some(func_ptr) = module.find_function_uuid_by_name(&name, func_type).map(|x| x.uuid()) {
+                Some(func_ptr)
+            }
+            else {
+                let uuid = Uuid::new_v4();
+                match func_type {
+                    FunctionPointerType::External => unresolved_external_functions.borrow_mut().insert(name, uuid),
+                    FunctionPointerType::Internal => unresolved_internal_functions.borrow_mut().insert(name, uuid),
+                };
+                Some(uuid)
+            }
         });
 
         let uuid_generator = Rc::new(|| {
@@ -1769,29 +1789,89 @@ pub fn extend_module_from_path(
                     debug!("Adding function {:?} to module", function.name);
                     function.normalize_ssa();
 
-                    // Verify the function validity
-                    // This checks for issues like undefined labels, type mismatches, etc.
-                    if let Err(e) = module_mutator.borrow().verify_func(&function) {
-                        error!("Function verification failed for function {:?}: {}", function.name, e);
-                        return Err(e);
-                    }
+                    // Add it to the list functions to be added after verification
+                    list_added_internal_functions.push(function);
 
-                    // Check that the function does not already exist
-                    if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
-                        function.name.as_ref().unwrap(),
-                        FunctionPointerType::Internal,
-                    ) {
-                        error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
-                        return Err(Error::FunctionAlreadyExists {
-                            name: function.name.as_ref().unwrap().clone(),
-                        });
-                    }
+                    // // Verify the function validity
+                    // // This checks for issues like undefined labels, type mismatches, etc.
+                    // if let Err(e) = module_mutator.borrow().verify_func(&function) {
+                    //     error!("Function verification failed for function {:?}: {}", function.name, e);
+                    //     return Err(e);
+                    // }
 
-                    // Insert the function into the module
-                    module_mutator.borrow_mut().functions.insert(function.uuid, function);
+                    // // Check that the function does not already exist
+                    // if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
+                    //     function.name.as_ref().unwrap(),
+                    //     FunctionPointerType::Internal,
+                    // ) {
+                    //     error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
+                    //     return Err(Error::FunctionAlreadyExists {
+                    //         name: function.name.as_ref().unwrap().clone(),
+                    //     });
+                    // }
+
+                    // // Insert the function into the module
+                    // module_mutator.borrow_mut().functions.insert(function.uuid, function);
                 },
             }
         }
+    }
+
+    // Resolve all function, ensuring that (1) everything is resolved, and
+    // (2) unique names are enforced
+    let mut resolved_internal_functions: HashMap<Uuid, Uuid> = HashMap::new();
+    for (name, uuid) in unresolved_internal_functions.borrow().iter() {
+        // Find the function in the list_added_internal_functions
+        let matching_functions: Vec<_> = list_added_internal_functions
+            .iter()
+            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .collect();
+        if matching_functions.is_empty() {
+            error!("Unresolved internal function: {:?}", name);
+            return Err(Error::UnresolvedFunction { name: name.clone(), func_type: FunctionPointerType::Internal });
+        } else if matching_functions.len() > 1 {
+            error!("Multiple functions found with the same name: {}", name);
+            return Err(Error::FunctionAlreadyExists { name: name.clone() });    
+        }
+
+        let function = matching_functions[0];
+        resolved_internal_functions.insert(*uuid, function.uuid);
+    }
+
+    // For no external functions cannot be defined by the module as such all unresolved external is treated as an error;
+    if !unresolved_external_functions.borrow().is_empty() {
+        let names: Vec<String> = unresolved_external_functions.borrow().keys().cloned().collect();
+        error!("Unresolved external functions: {:?}", names);
+        return Err(Error::UnresolvedFunction { name: names.join(", "), func_type: FunctionPointerType::External });
+    }
+
+    // Finally update all the links internally
+    for mut func in list_added_internal_functions.into_iter() {
+        for (_, block) in func.body.iter_mut() {
+            for operands in block.terminator.operands_mut()
+                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut())) {
+                if let Some(func_ptr) = operands.try_as_imm_mut().map(|imm| imm.try_as_func_ptr_mut()).flatten() {
+                    match func_ptr {
+                        FunctionPointer::Internal(uuid) => {
+                            if let Some(new_uuid) = resolved_internal_functions.get(uuid) {
+                                *uuid = *new_uuid;
+                            }
+                        }
+                        FunctionPointer::External(_) => {}
+                    }
+                }
+
+            }
+        }
+
+        // Add it to the module
+        module.functions.insert(func.uuid, func);
+    }
+
+    // Verify module
+    if let Err(e) = module.verify() {
+        error!("Module verification failed: {}", e);
+        return Err(e);
     }
  
     // Finally, return success
@@ -1815,12 +1895,10 @@ pub fn extend_module_from_string(
     registry: &TypeRegistry,
     source: &str
 ) -> Result<(), Error> {
-    let module_mutator = RefCell::new(module);
-
     // Lex the source string
     let lexer_result = lexer().parse(source);
     if lexer_result.has_errors() {
-        error!("Lexing errors encountered in source string:");
+        error!("Lexing errors encountered in provided source string:");
 
         let errors = lexer_result
             .into_errors()
@@ -1832,82 +1910,186 @@ pub fn extend_module_from_string(
                 message: e.reason().to_string(),
             })
             .collect();
-        return Err(Error::ParserErrors { errors, tokens: vec![] } );
+        return Err(Error::ParserErrors { errors, tokens: vec![] });
     }
+
     let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
         .into_output()
         .unwrap()
         .into_iter()
         .unzip();
 
-    // Final parser, function definitions only
-    let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-        module_mutator.borrow().find_function_uuid_by_name(&name, func_type).map(|x| x.uuid())
-    });
-
-    let uuid_generator = Rc::new(|| {
-        Uuid::new_v4()
-    });
-
-    let parser = parse_function().repeated().collect::<Vec<_>>();
-
-    let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
-    let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
-    if parse_result.has_errors() {
-        error!("Parsing errors encountered in source string:");
-
-        let errors = parse_result
-            .into_errors()
-            .into_iter()
-            .map(|e| {
-                let span = e.span();
-                
-                // Convert token span to source span
-                let source_span = SimpleSpan {
-                    start: spans[span.start].start,
-                    end: spans[span.end - 1].end,
-                    context: (),
-                };
-
-                ParserError {
-                    file: None,
-                    start: source_span.start,
-                    end: source_span.end,
-                    message: format!("{}", e.reason()),
-                }
-            })
-            .collect();
-        return Err(Error::ParserErrors { errors, tokens: tokens.iter().map(|t| format!("{:?}", t)).collect() } );
+    // Final parser, import + function definitions
+    enum Item {
+        Import(String),
+        Function(Function),
     }
 
-    // Process parsed functions
-    let functions = parse_result.into_output().unwrap();
-    for mut function in functions {
-        debug!("Adding function {:?} to module", function.name);
-        function.normalize_ssa();
+    let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
+    let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
+    let mut list_added_internal_functions = vec![];
 
-        // Verify the function validity
-        // This checks for issues like undefined labels, type mismatches, etc.
-        if let Err(e) = module_mutator.borrow().verify_func(&function) {
-            error!("Function verification failed for function {:?}: {}", function.name, e);
-            return Err(e);
-        }
+    {
+        let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
+            if let Some(func_ptr) = module
+                .find_function_uuid_by_name(&name, func_type)
+                .map(|x| x.uuid())
+            {
+                Some(func_ptr)
+            } else {
+                let uuid = Uuid::new_v4();
+                match func_type {
+                    FunctionPointerType::External => {
+                        unresolved_external_functions.borrow_mut().insert(name, uuid)
+                    }
+                    FunctionPointerType::Internal => {
+                        unresolved_internal_functions.borrow_mut().insert(name, uuid)
+                    }
+                };
+                Some(uuid)
+            }
+        });
 
-        // Check that the function does not already exist
-        if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
-            function.name.as_ref().unwrap(),
-            FunctionPointerType::Internal,
-        ) {
-            error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
-            return Err(Error::FunctionAlreadyExists {
-                name: function.name.as_ref().unwrap().clone(),
+        let uuid_generator = Rc::new(|| Uuid::new_v4());
+
+        let parser = choice((
+            import_parser().map(Item::Import),
+            parse_function().map(Item::Function),
+        ))
+        .repeated()
+        .collect::<Vec<_>>();
+
+        let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
+        let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
+        if parse_result.has_errors() {
+            error!("Parsing errors encountered in provided source string:");
+
+            let errors = parse_result
+                .into_errors()
+                .into_iter()
+                .map(|e| {
+                    let span = e.span();
+
+                    // Convert token span to source span
+                    let source_span = SimpleSpan {
+                        start: spans[span.start].start,
+                        end: spans[span.end - 1].end,
+                        context: (),
+                    };
+
+                    ParserError {
+                        file: None,
+                        start: source_span.start,
+                        end: source_span.end,
+                        message: format!("{}", e.reason()),
+                    }
+                })
+                .collect();
+            return Err(Error::ParserErrors {
+                errors,
+                tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
             });
         }
 
-        // Insert the function into the module
-        module_mutator.borrow_mut().functions.insert(function.uuid, function);
+        // Process parsed items (string source does not support imports)
+        let items = parse_result.into_output().unwrap();
+        for item in items {
+            match item {
+                Item::Import(path) => {
+                    error!(
+                        "Import encountered in string source; imports unsupported in this context: {}",
+                        path
+                    );
+
+                    let errors = vec![ParserError {
+                        file: None,
+                        start: 0,
+                        end: 0,
+                        message: format!(
+                            "import statements are not supported when parsing from string: {}",
+                            path
+                        ),
+                    }];
+                    return Err(Error::ParserErrors {
+                        errors,
+                        tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
+                    });
+                }
+                Item::Function(mut function) => {
+                    debug!("Adding function {:?} to module", function.name);
+                    function.normalize_ssa();
+                    list_added_internal_functions.push(function);
+                }
+            }
+        }
+    } // end of inner scope; drop parser state and func_retriever
+
+    // Resolve all functions: ensure referenced internal functions are defined exactly once
+    let mut resolved_internal_functions: HashMap<Uuid, Uuid> = HashMap::new();
+    for (name, uuid) in unresolved_internal_functions.borrow().iter() {
+        let matching_functions: Vec<_> = list_added_internal_functions
+            .iter()
+            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .collect();
+        if matching_functions.is_empty() {
+            error!("Unresolved internal function: {:?}", name);
+            return Err(Error::UnresolvedFunction {
+                name: name.clone(),
+                func_type: FunctionPointerType::Internal,
+            });
+        } else if matching_functions.len() > 1 {
+            error!("Multiple functions found with the same name: {}", name);
+            return Err(Error::FunctionAlreadyExists { name: name.clone() });
+        }
+
+        let function = matching_functions[0];
+        resolved_internal_functions.insert(*uuid, function.uuid);
     }
 
-    // Finally, return success
+    // External functions cannot be defined in the string source; treat unresolved externals as error
+    if !unresolved_external_functions.borrow().is_empty() {
+        let names: Vec<String> = unresolved_external_functions.borrow().keys().cloned().collect();
+        error!("Unresolved external functions: {:?}", names);
+        return Err(Error::UnresolvedFunction {
+            name: names.join(", "),
+            func_type: FunctionPointerType::External,
+        });
+    }
+
+    // Update all internal function pointer links and insert functions into the module
+    // Ensure parser state is dropped to release any immutable borrows on `module`.
+    // parser state and func_retriever have been dropped by leaving scope above
+    for mut func in list_added_internal_functions.into_iter() {
+        for (_, block) in func.body.iter_mut() {
+            for operands in block
+                .terminator
+                .operands_mut()
+                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut()))
+            {
+                if let Some(func_ptr) = operands
+                    .try_as_imm_mut()
+                    .and_then(|imm| imm.try_as_func_ptr_mut())
+                {
+                    match func_ptr {
+                        FunctionPointer::Internal(uuid) => {
+                            if let Some(resolved) = resolved_internal_functions.get(uuid) {
+                                *uuid = *resolved;
+                            }
+                        }
+                        FunctionPointer::External(_) => {}
+                    }
+                }
+            }
+        }
+
+        module.functions.insert(func.uuid, func.clone());
+    }
+
+    // Verify module integrity
+    if let Err(e) = module.verify() {
+        error!("Module verification failed: {}", e);
+        return Err(e);
+    }
+
     Ok(())
 }

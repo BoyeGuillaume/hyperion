@@ -308,8 +308,8 @@ impl Function {
                     self.function
                         .name
                         .as_ref()
-                        .map(|name| format!("%{}", name))
-                        .unwrap_or(format!("%func_{}", self.function.uuid))
+                        .map(|name| format!("{}", name))
+                        .unwrap_or(format!("@{}", self.function.uuid))
                 )?;
 
                 write!(f, "(")?;

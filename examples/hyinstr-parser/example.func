@@ -1,4 +1,4 @@
-define i32 %pow(%a: i32, %n: i32) {
+define i32 pow(%a: i32, %n: i32) {
 entry:
     %is_null: i1 = icmp.eq %n, i32 0
     branch %is_null, output, loop
@@ -14,4 +14,12 @@ loop:
 output:
     %output: i32 = phi [i32 1, entry]
     ret %output
+}
+
+define i32 list.get(%xs: {ptr, i32, i32}) {
+entry:
+    ret i32 0
+
+crash:
+    trap
 }

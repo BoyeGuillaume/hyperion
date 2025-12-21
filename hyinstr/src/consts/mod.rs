@@ -9,12 +9,13 @@ use crate::{
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use strum::{EnumIs, EnumTryAs};
 
 pub mod fp;
 pub mod int;
 
 /// A constant value (integer or floating‑point) usable as an immediate.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AnyConst {
     /// Integer constant
