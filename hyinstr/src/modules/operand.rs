@@ -11,7 +11,7 @@ use strum::{EnumIs, EnumTryAs};
 /// instruction's result.
 pub type Name = u32;
 
-/// Represents a meta‑operand used internally in attributes/properties.
+/// Represents a meta operand used internally in attributes and properties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetaLabel(pub u32);
@@ -25,13 +25,11 @@ pub struct MetaLabel(pub u32);
 pub struct Label(pub u32);
 
 impl Label {
+    /// Reserved entry label used for the first basic block.
     pub const NIL: Label = Label(0);
 
     /// Returns true if this is the "nil" label (i.e., label 0).
-    ///
-    /// This label is reserved as the 'function entry' label. It should always be present.
-    /// Returns true if this is the "nil" label (i.e., label 0).
-    ///
+    /// This label is reserved as the function entry label and should always be present.
     pub fn is_nil(&self) -> bool {
         self == &Label::NIL
     }
@@ -48,7 +46,7 @@ pub enum Operand {
     /// Meta operand (only used internally in attributes/properties)
     ///
     /// Notice: Meta operands should not appear in regular instructions and
-    /// is prohibeted to appear in well-formed modules. Should only be used
+    /// are prohibited in well-formed modules. They should only be used
     /// in attributes/properties.
     Meta(MetaLabel),
 }

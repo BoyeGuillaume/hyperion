@@ -187,7 +187,9 @@ impl std::fmt::Display for FType {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ExtType {
+    /// Unique identifier describing the external type class.
     pub ext: Uuid,
+    /// Target defined parameters carried by the type.
     pub parameters: Box<[u32]>,
 }
 
@@ -222,6 +224,7 @@ impl std::fmt::Display for ExtType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WType {
+    /// Ordinal identifier used to distinguish wildcard placeholders.
     pub id: u16,
 }
 
@@ -348,7 +351,9 @@ pub enum VcSize {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct VcType {
+    /// Element type stored in the vector lanes.
     pub ty: PrimaryBasicType,
+    /// Vector lane descriptor (fixed or scalable).
     pub size: VcSize,
 }
 

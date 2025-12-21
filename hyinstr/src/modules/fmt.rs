@@ -1,3 +1,4 @@
+//! Pretty-print helpers for Hy instructions, terminators, functions, and modules.
 use crate::{
     modules::{
         Function, Instruction, Module,
@@ -21,6 +22,7 @@ impl std::fmt::Display for Label {
 }
 
 impl Operand {
+    /// Build a formatting helper that renders the operand using the given module for context.
     pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
         pub struct Fmt<'a> {
             operand: &'a Operand,
@@ -46,6 +48,7 @@ impl Operand {
 }
 
 impl HyInstr {
+    /// Build a formatting helper that renders the instruction using the supplied registries.
     pub fn fmt<'a>(
         &'a self,
         registry: &'a TypeRegistry,
@@ -239,6 +242,7 @@ impl HyInstr {
 }
 
 impl HyTerminator {
+    /// Build a formatting helper that renders the terminator using the supplied module for context.
     pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
             terminator: &'a HyTerminator,
@@ -280,6 +284,7 @@ impl HyTerminator {
 }
 
 impl Function {
+    /// Build a formatting helper that renders the function in textual form.
     pub fn fmt<'a>(
         &'a self,
         type_registry: &'a TypeRegistry,
@@ -352,6 +357,7 @@ impl Function {
 }
 
 impl Module {
+    /// Build a formatting helper that renders every function within the module.
     pub fn fmt<'a>(&'a self, type_registry: &'a TypeRegistry) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
             module: &'a Module,

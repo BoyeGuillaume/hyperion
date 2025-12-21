@@ -331,7 +331,9 @@ impl CallingConvention {
 /// and the index of the instruction within that block.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct InstructionRef {
+    /// Label of the basic block containing the instruction.
     pub block: Label,
+    /// Zero-based position of the instruction within the block.
     pub index: usize,
 }
 
@@ -358,8 +360,11 @@ impl From<InstructionRef> for (Label, usize) {
 /// of complex control flow within functions.
 #[derive(Debug, Clone, Hash)]
 pub struct BasicBlock {
+    /// Unique block label.
     pub label: Label,
+    /// Linear list of instructions executed before the terminator.
     pub instructions: Vec<HyInstr>,
+    /// Control-flow terminator ending the block.
     pub terminator: terminator::HyTerminator,
 }
 
@@ -866,7 +871,9 @@ pub struct FunctionAnalysisContext<'a> {
 /// defined locally are listed in `external_functions`.
 #[derive(Debug, Default, Clone, Hash)]
 pub struct Module {
+    /// Defined functions keyed by their UUID.
     pub functions: BTreeMap<Uuid, Function>,
+    /// Declared external functions keyed by their UUID.
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,
 }
 

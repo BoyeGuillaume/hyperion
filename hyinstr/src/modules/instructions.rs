@@ -88,6 +88,7 @@ impl HyInstrOp {
         }
     }
 
+    /// Return the canonical mnemonic used when printing this instruction.
     pub fn opname(&self) -> &'static str {
         match self {
             HyInstrOp::IAdd => "iadd",
@@ -130,6 +131,7 @@ impl HyInstrOp {
         }
     }
 
+    /// Return the fixed operand count if the instruction has one.
     pub fn arity(&self) -> Option<usize> {
         match self {
             HyInstrOp::INeg | HyInstrOp::INot | HyInstrOp::FNeg | HyInstrOp::Cast => Some(1),
@@ -163,6 +165,7 @@ impl HyInstrOp {
         }
     }
 
+    /// Return true when the instruction carries an additional variant field.
     pub fn has_variant(&self) -> bool {
         matches!(
             self,
@@ -179,12 +182,14 @@ impl HyInstrOp {
         )
     }
 
+    /// Parse a mnemonic into its corresponding discriminator.
     pub fn from_str(s: &str) -> Option<Self> {
         HyInstrOp::iter().find(|op| op.opname() == s)
     }
 }
 
 impl HyInstr {
+    /// Return the discriminant for this instruction value.
     pub fn op(&self) -> HyInstrOp {
         self.into()
     }

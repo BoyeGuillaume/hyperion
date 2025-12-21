@@ -1,3 +1,7 @@
+//! Meta-instructions used for analysis, specification, and probabilistic reasoning.
+//!
+//! These nodes never appear in executable code and are filtered out during
+//! verification when `Function::meta_function` is false.
 use crate::{
     modules::{
         Instruction,

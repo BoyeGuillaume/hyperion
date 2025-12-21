@@ -65,6 +65,7 @@ pub enum HyTerminator {
 }
 
 impl HyTerminatorOp {
+    /// Return the canonical mnemonic used when printing the terminator.
     pub fn opname(&self) -> &'static str {
         match self {
             HyTerminatorOp::Branch => "branch",
@@ -74,18 +75,21 @@ impl HyTerminatorOp {
         }
     }
 
+    /// Parse a mnemonic into its corresponding terminator kind.
     pub fn from_str(s: &str) -> Option<Self> {
         HyTerminatorOp::iter().find(|op| op.opname() == s)
     }
 }
 
 impl HyTerminator {
+    /// Return the discriminant for this terminator value.
     pub fn op(&self) -> HyTerminatorOp {
         self.into()
     }
 }
 
 impl HyTerminator {
+    /// Iterate over operands consumed by this terminator.
     #[auto_enum(Iterator)]
     pub fn operands(&self) -> impl Iterator<Item = &Operand> {
         match self {
@@ -96,6 +100,7 @@ impl HyTerminator {
         }
     }
 
+    /// Iterate over SSA dependencies referenced by this terminator.
     pub fn dependencies(&self) -> impl Iterator<Item = Name> {
         self.operands().filter_map(|op| {
             if let Operand::Reg(name) = op {
@@ -106,6 +111,7 @@ impl HyTerminator {
         })
     }
 
+    /// Iterate mutably over operands consumed by this terminator.
     #[auto_enum(Iterator)]
     pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
         match self {
@@ -116,6 +122,7 @@ impl HyTerminator {
         }
     }
 
+    /// Iterate mutably over SSA dependencies referenced by this terminator.
     pub fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
         self.operands_mut().filter_map(|op| {
             if let Operand::Reg(name) = op {
@@ -126,6 +133,7 @@ impl HyTerminator {
         })
     }
 
+    /// Iterate over branch targets along with the optional condition operand.
     #[auto_enum(Iterator)]
     pub fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&'_ Operand>)> + '_ {
         match self {

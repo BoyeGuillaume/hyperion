@@ -216,10 +216,15 @@ impl IShiftVariant {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAdd {
+    /// Destination SSA name receiving the sum.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Overflow handling policy.
     pub variant: OverflowSignednessPolicy,
 }
 
@@ -253,10 +258,15 @@ impl Instruction for IAdd {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISub {
+    /// Destination SSA name receiving the difference.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Overflow handling policy.
     pub variant: OverflowSignednessPolicy,
 }
 
@@ -290,10 +300,15 @@ impl Instruction for ISub {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IMul {
+    /// Destination SSA name receiving the product.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Overflow handling policy.
     pub variant: OverflowSignednessPolicy,
 }
 
@@ -327,10 +342,15 @@ impl Instruction for IMul {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IDiv {
+    /// Destination SSA name receiving the quotient.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Signedness governing division semantics.
     pub signedness: IntegerSignedness,
 }
 
@@ -364,10 +384,15 @@ impl Instruction for IDiv {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IRem {
+    /// Destination SSA name receiving the remainder.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Signedness governing remainder semantics.
     pub signedness: IntegerSignedness,
 }
 
@@ -401,13 +426,17 @@ impl Instruction for IRem {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ICmp {
+    /// Destination SSA name receiving the predicate result.
     pub dest: Name,
 
     /// Must be [`crate::types::primary::IType::I1`] if operands are fp, otherwise if operands
     /// are vector of fp(s), must be vector of [`crate::types::primary::IType::I1`] of same length.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Comparison predicate.
     pub variant: ICmpVariant,
 }
 
@@ -441,10 +470,15 @@ impl Instruction for ICmp {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ISht {
+    /// Destination SSA name receiving the shifted value.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Value to shift.
     pub lhs: Operand,
+    /// Shift amount.
     pub rhs: Operand,
+    /// Shift variant (logical, arithmetic, rotate, etc.).
     pub variant: IShiftVariant,
 }
 
@@ -479,8 +513,11 @@ impl Instruction for ISht {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INeg {
+    /// Destination SSA name receiving the negated value.
     pub dest: Name,
+    /// Integer type for the operand and result.
     pub ty: Typeref,
+    /// Operand to negate.
     pub value: Operand,
 }
 
@@ -515,8 +552,11 @@ impl Instruction for INeg {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct INot {
+    /// Destination SSA name receiving the inverted value.
     pub dest: Name,
+    /// Integer type for the operand and result.
     pub ty: Typeref,
+    /// Operand to invert.
     pub value: Operand,
 }
 
@@ -550,9 +590,13 @@ impl Instruction for INot {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IAnd {
+    /// Destination SSA name receiving the bitwise conjunction.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -586,9 +630,13 @@ impl Instruction for IAnd {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IOr {
+    /// Destination SSA name receiving the bitwise disjunction.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -622,9 +670,13 @@ impl Instruction for IOr {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IXor {
+    /// Destination SSA name receiving the bitwise exclusive-or.
     pub dest: Name,
+    /// Integer type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -658,9 +710,13 @@ impl Instruction for IXor {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IImplies {
+    /// Destination SSA name receiving the implication result.
     pub dest: Name,
+    /// Integer type shared by the operands and result (normally i1).
     pub ty: Typeref,
+    /// Antecedent operand (if part).
     pub lhs: Operand,
+    /// Consequent operand (then part).
     pub rhs: Operand,
 }
 
@@ -694,9 +750,13 @@ impl Instruction for IImplies {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IEquiv {
+    /// Destination SSA name receiving the equivalence result.
     pub dest: Name,
+    /// Integer type shared by the operands and result (normally i1).
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 

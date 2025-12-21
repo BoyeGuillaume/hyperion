@@ -78,9 +78,13 @@ impl FCmpVariant {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FAdd {
+    /// Destination SSA name receiving the sum.
     pub dest: Name,
+    /// Floating-point type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -114,9 +118,13 @@ impl Instruction for FAdd {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FSub {
+    /// Destination SSA name receiving the difference.
     pub dest: Name,
+    /// Floating-point type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -150,9 +158,13 @@ impl Instruction for FSub {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FMul {
+    /// Destination SSA name receiving the product.
     pub dest: Name,
+    /// Floating-point type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -186,9 +198,13 @@ impl Instruction for FMul {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FDiv {
+    /// Destination SSA name receiving the quotient.
     pub dest: Name,
+    /// Floating-point type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -222,9 +238,13 @@ impl Instruction for FDiv {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FRem {
+    /// Destination SSA name receiving the remainder.
     pub dest: Name,
+    /// Floating-point type shared by the operands and result.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
 }
 
@@ -258,8 +278,11 @@ impl Instruction for FRem {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FNeg {
+    /// Destination SSA name receiving the negated value.
     pub dest: Name,
+    /// Floating-point type shared by the operand and result.
     pub ty: Typeref,
+    /// Operand to negate.
     pub value: Operand,
 }
 
@@ -293,12 +316,16 @@ impl Instruction for FNeg {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FCmp {
+    /// Destination SSA name receiving the comparison result.
     pub dest: Name,
     /// Must be [`crate::types::primary::IType::I1`] if operands are fp, otherwise if operands
     /// are vector of fp(s), must be vector of [`crate::types::primary::IType::I1`] of same length.
     pub ty: Typeref,
+    /// Left-hand operand.
     pub lhs: Operand,
+    /// Right-hand operand.
     pub rhs: Operand,
+    /// Comparison predicate.
     pub variant: FCmpVariant,
 }
 

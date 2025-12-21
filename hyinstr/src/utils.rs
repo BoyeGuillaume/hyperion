@@ -1,3 +1,4 @@
+//! Shared utilities and error types used across the hyinstr crate.
 use strum::{EnumIs, EnumTryAs};
 use thiserror::Error;
 use uuid::Uuid;
@@ -8,14 +9,20 @@ use crate::modules::symbol::FunctionPointerType;
 
 #[cfg(feature = "chumsky")]
 #[derive(Debug, Clone)]
+/// Error detail returned by the optional text parser front-end.
 pub struct ParserError {
+    /// Path of the parsed file when available.
     pub file: Option<String>,
+    /// Start byte offset of the offending span.
     pub start: usize,
+    /// End byte offset (exclusive) of the offending span.
     pub end: usize,
+    /// Human readable message describing the parse failure.
     pub message: String,
 }
 
 #[derive(Debug, EnumIs, EnumTryAs, Error)]
+/// Generic error enumeration surfaced by hyinstr operations.
 pub enum Error {
     /// An operand refers to a name that has not been defined.
     #[error(

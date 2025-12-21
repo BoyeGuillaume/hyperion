@@ -9,7 +9,9 @@ use crate::types::primary::IType;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IConst {
+    /// Integer type describing the bit-width of the literal.
     pub ty: IType,
+    /// Literal payload stored with unbounded precision.
     pub value: BigInt,
 }
 

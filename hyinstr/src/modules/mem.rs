@@ -36,10 +36,12 @@ pub enum MemoryOrdering {
 }
 
 impl MemoryOrdering {
+    /// Parse a textual memory ordering mnemonic (for example `acq_rel`).
     pub fn from_str(s: &str) -> Option<Self> {
         MemoryOrdering::iter().find(|ord| ord.to_str() == s)
     }
 
+    /// Return the canonical mnemonic for this memory ordering.
     pub fn to_str(&self) -> &'static str {
         match self {
             MemoryOrdering::Unordered => "unordered",
@@ -60,15 +62,22 @@ impl MemoryOrdering {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MLoad {
+    /// Destination SSA name receiving the loaded value.
     pub dest: Name,
+    /// Type of the loaded value.
     pub ty: Typeref,
+    /// Pointer operand describing the source address.
     pub addr: Operand,
+    /// Optional byte alignment hint for the access.
     pub alignement: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
     /// are assumed to be cross‑thread unless the access is non‑atomic.
+    ///
+    /// When present, the load is treated as atomic with the supplied ordering.
     pub ordering: Option<MemoryOrdering>,
+    /// When true, the load is considered volatile.
     pub volatile: bool,
 }
 
@@ -106,14 +115,20 @@ impl Instruction for MLoad {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MStore {
+    /// Pointer operand describing the destination address.
     pub addr: Operand,
+    /// Value to store.
     pub value: Operand,
+    /// Optional byte alignment hint for the access.
     pub alignement: Option<u32>,
 
     /// A notable distinction with LLVM's memory model is that Hyperion does
     /// not allow syncscope('singlethread') operations; all atomic operations
     /// are assumed to be cross‑thread unless the access is non‑atomic.
+    ///
+    /// When present, the store is treated as atomic with the supplied ordering.
     pub ordering: Option<MemoryOrdering>,
+    /// When true, the store is considered volatile.
     pub volatile: bool,
 }
 
@@ -145,9 +160,13 @@ impl Instruction for MStore {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MAlloca {
+    /// Destination SSA name receiving the pointer to the allocated storage.
     pub dest: Name,
+    /// Type of each element in the allocation.
     pub ty: Typeref,
+    /// Number of elements to allocate (evaluated at run time).
     pub count: Operand,
+    /// Optional byte alignment for the allocation.
     pub alignement: Option<u32>,
 }
 
@@ -184,9 +203,13 @@ impl Instruction for MAlloca {
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MGetElementPtr {
+    /// Destination SSA name receiving the computed address.
     pub dest: Name,
+    /// Resulting pointer type.
     pub ty: Typeref,
+    /// Base pointer operand.
     pub base: Operand,
+    /// Index operands applied successively to `base`.
     pub indices: Vec<Operand>,
 }
 

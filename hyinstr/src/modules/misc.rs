@@ -1,3 +1,6 @@
+//! Miscellaneous instructions that do not fit in arithmetic or memory groups.
+//!
+//! These include function calls, phi nodes, select operations, and casts.
 use crate::{
     modules::{
         CallingConvention, Instruction,

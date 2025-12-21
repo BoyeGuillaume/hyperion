@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FConst {
+    /// Floating-point type describing how to interpret `value`.
     pub ty: FType,
+    /// Literal payload stored as an arbitrary-precision decimal.
     pub value: BigDecimal,
 }
 
