@@ -7,7 +7,7 @@ use chumsky::{
     container::Seq, extra::{ParserExtra, SimpleState}, input::ValueInput, label::LabelError, prelude::*, text::{Char, digits}
 };
 use either::Either;
-use log::{debug, error};
+use log::{debug, error, warn};
 use num_bigint::BigInt;
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
@@ -41,6 +41,7 @@ enum Token<'a> {
     Void,
     Import,
     Identifier(&'a str, Vec<&'a str>),
+    MetaIdentifier(&'a str, Vec<&'a str>), // Prefixed with '!'
 
     /// UUID parser (prefixed with '@')
     #[allow(dead_code)]
@@ -116,6 +117,13 @@ impl std::fmt::Display for Token<'_> {
                     write!(f, "{}", s)
                 } else {
                     write!(f, "{}.{}", s, variants.join("."))
+                }
+            }
+            Token::MetaIdentifier(s, variants) => {
+                if variants.is_empty() {
+                    write!(f, "!{}", s)
+                } else {
+                    write!(f, "!{}.{}", s, variants.join("."))
                 }
             }
             Token::Uuid(uuid) => write!(f, "{}", uuid),
@@ -395,21 +403,38 @@ fn bigdecimal_parser<'src>()
 
 fn identifier_parser<'src>()
 -> impl Parser<'src, &'src str, Token<'src>, extra::Err<Rich<'src, char>>> + Clone {
-    let base_identifier = chumsky::text::ident()
+    let meta_identifier = just("!")
+        .or_not()
+        .then(
+            any()
+                .filter(|c: &char| c.is_ident_continue())
+                .repeated()
+                .at_least(1)
+        )
+        .to_slice()
         .then(
             just(".")
-                .ignore_then(chumsky::text::ident().to_slice())
+                .ignore_then(
+                    any()
+                        .filter(|c: &char| c.is_ident_continue())
+                        .repeated()
+                        .to_slice()
+                )
                 .repeated()
-                .collect::<Vec<_>>(),
+                .collect::<Vec<_>>()
         )
-        .validate(|(s, other), extra, emit| {
-            if s == "void" && other.is_empty() {
-                return Token::Void;
+        .validate(|(s, other): (&str, Vec<&str>), extra, emit| {
+            let is_meta = s.starts_with('!');
+
+            if !is_meta && other.is_empty() {
+                match s {
+                    "void" => return Token::Void,
+                    "import" => return Token::Import,
+                    _ => {}
+                }
             }
-            if s == "import" && other.is_empty() {
-                return Token::Import;
-            }
-            if let Some(visibility) = Visibility::from_str(s) {
+
+            if !is_meta && let Some(visibility) = Visibility::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -421,7 +446,8 @@ fn identifier_parser<'src>()
                 }
                 return Token::Visibility(visibility);
             }
-            if let Some(cc) = CallingConvention::from_str(s) {
+
+            if !is_meta && let Some(cc) = CallingConvention::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -433,9 +459,11 @@ fn identifier_parser<'src>()
                 }
                 return Token::CallingConvention(cc);
             }
-            if let Some(hyinstr_op) = HyInstrOp::from_str(s) {
-                return Token::InstrOp(hyinstr_op, other);
+
+            if let Some(instr_op) = HyInstrOp::from_str(s) {
+                return Token::InstrOp(instr_op, other);
             }
+
             if let Some(terminator_op) = HyTerminatorOp::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
@@ -450,7 +478,7 @@ fn identifier_parser<'src>()
                 return Token::TerminatorOp(terminator_op);
             }
 
-            if other.is_empty() {
+            if other.is_empty() && !is_meta {
                 if let Some(ftype) = FType::from_str(s) {
                     return Token::FType(ftype);
                 }
@@ -487,11 +515,14 @@ fn identifier_parser<'src>()
                 }
             }
 
-            Token::Identifier(s, other)
-        })
-        .labelled("identifier");
+            if is_meta {
+                Token::MetaIdentifier(&s[1..], other)
+            } else {
+                Token::Identifier(s, other)
+            }
+        });
 
-    fast_boxed!(base_identifier)
+    fast_boxed!(meta_identifier.labelled("identifier or keyword or itype"))
 }
 
 fn register_parser<'src>()
@@ -928,16 +959,18 @@ where
                 return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
             }
 
-            if op == HyInstrOp::MStore && dest_and_ty.is_some() {
-                emit.emit(Rich::custom(
-                    extra.span(),
-                    format!(
-                        "syntax error for {} instruction: destination register specified where none expected",
-                        op.opname()
-                    ),
-                ));
+            if matches!(op, HyInstrOp::MStore | HyInstrOp::MetaAssert | HyInstrOp::MetaAssume) {
+                if dest_and_ty.is_some() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: destination register specified where none expected",
+                            op.opname()
+                        ),
+                    ));
 
-                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                }
             }
             else if op != HyInstrOp::Invoke && dest_and_ty.is_none() {
                 emit.emit(Rich::custom(
@@ -1540,16 +1573,24 @@ where
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
         .then(meta_arguments)
         .then(
-            just_match(TokenDiscriminants::Identifier)
+            any()
+                .filter(|x: &Token| x.is_identifier() || x.is_meta_identifier())
                 .map(|x| {
-                    let (x, xs) = x.try_as_identifier().unwrap();
-                    let mut full_name = x.to_string();
+                    let ((full_name, xs), is_meta) = {
+                        if x.is_identifier() {
+                            (x.try_as_identifier().unwrap(), false)
+                        } else {
+                            (x.try_as_meta_identifier().unwrap(), true)
+                        }
+                    };
+                    let mut full_name = full_name.to_string();
+
                     for part in xs {
                         full_name.push('.');
                         full_name.push_str(part);
                     }
-                    full_name
-                }),
+                    (full_name, is_meta)
+                })
         )
         .then(arglist)
         .then(
@@ -1560,7 +1601,7 @@ where
                 just(Token::RBrace),
             )
         )
-        .map_with(move |((((ty, meta), func_name), params), blocks), extra| {
+        .map_with(move |((((ty, meta), (func_name, is_meta_func)), params), blocks), extra| {
             let state: &mut SimpleState<State<'src>> = extra.state();
             let uuid = (state.uuid_generator)();
             let mut cconv = None;
@@ -1583,8 +1624,24 @@ where
                 visibility: visibility,
                 cconv: cconv,
                 wildcard_types: Default::default(),
-                meta_function: false,
+                meta_function: is_meta_func,
             };
+
+            // Check if function should be meta-function
+            let should_be_meta = func.should_be_meta_function();
+            let is_meta = func.meta_function;
+
+            if should_be_meta && !is_meta {
+                error!(
+                    "Function '{}' should be declared as a meta-function (it uses meta-instructions or has wildcard types)",
+                    func.name.as_ref().unwrap()
+                );
+            } else if !should_be_meta && is_meta {
+                warn!(
+                    "Function '{}' is declared as a meta-function but does not use any meta-instructions or wildcard types",
+                    func.name.as_ref().unwrap()
+                );
+            }
 
             // Clear state namespaces for next function
             state.clear();
@@ -1597,51 +1654,13 @@ fn import_parser<'src, I>() -> impl Parser<'src, I, String, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    // spanned_match_identifier("import")
+    // spanned_match_identifie$("import")
     just_match(TokenDiscriminants::Import)
         .ignore_then(
             just_match(TokenDiscriminants::StringLiteral)
                 .map(|token| token.try_as_string_literal().unwrap()),
         )
         .labelled("import statement")
-}
-
-pub fn debug_test(file: impl AsRef<Path>) {
-    let source = std::fs::read_to_string(&file).expect("Failed to read source file");
-
-    let lexer_result = lexer().parse(&source);
-
-    if lexer_result.has_errors() {
-        println!("Lexing errors encountered:");
-        for err in lexer_result.errors() {
-            println!("Error: {}", err);
-
-            let span = err.span();
-            let error_snippet = &source[span.start..span.end];
-            println!("At {}..{}: {}", span.start, span.end, error_snippet);
-        }
-        return;
-    }
-
-    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
-        .into_output()
-        .unwrap()
-        .into_iter()
-        .unzip();
-
-    println!("Tokens:");
-
-    let mut i = 0;
-    for (token, _) in tokens.iter().zip(spans.iter()) {
-        i += 1;
-        if i % 10 == 0 {
-            println!();
-        }
-
-        print!(" {:?}", token);
-    }
-    println!();
-    println!("Total tokens: {}", tokens.len());
 }
 
 /// Extend a module by parsing a file at the given path, including handling imports
@@ -1937,13 +1956,16 @@ pub fn extend_module_from_string(
             {
                 Some(func_ptr)
             } else {
-                let uuid = Uuid::new_v4();
-                match func_type {
+                let uuid = match func_type {
                     FunctionPointerType::External => {
-                        unresolved_external_functions.borrow_mut().insert(name, uuid)
+                        *unresolved_external_functions.borrow_mut()
+                            .entry(name)
+                            .or_insert_with(|| Uuid::new_v4())
                     }
                     FunctionPointerType::Internal => {
-                        unresolved_internal_functions.borrow_mut().insert(name, uuid)
+                        *unresolved_internal_functions.borrow_mut()
+                            .entry(name)
+                            .or_insert_with(|| Uuid::new_v4())
                     }
                 };
                 Some(uuid)

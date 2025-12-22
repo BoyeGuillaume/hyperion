@@ -632,6 +632,20 @@ impl Function {
         Ok(())
     }
 
+    /// Check whether the function should be treated as a meta-function.
+    pub fn should_be_meta_function(&self) -> bool {
+        // If any instruction is a meta-instruction, the function is meta
+        for bb in self.body.values() {
+            for instr in &bb.instructions {
+                if instr.is_meta_instruction() {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Generate wildcard types from parameters and instructions.
     pub fn generate_wildcards(&mut self) {
         let mut placeholder = BTreeSet::new(); // Doesn't allocate anything on its own
@@ -681,11 +695,11 @@ impl Function {
         self.verify_wildcards_soundness()?;
         if !self.meta_function {
             self.verify_no_meta_operands()?;
+            self.verify_no_meta_instruction()?;
         }
         self.verify_phi_first_instr_of_block()?;
         self.verify_target_soundness()?;
         self.verify_ssa_soundness()?;
-        self.verify_no_meta_instruction()?;
         self.verify_size_constraints()?;
 
         // Ensure existence of entry block

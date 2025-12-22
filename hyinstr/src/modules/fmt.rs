@@ -179,21 +179,14 @@ impl HyInstr {
                     }
                     HyInstr::Invoke(invoke) => {
                         if let Some(cconv) = &invoke.cconv {
-                            write!(f, " {} ", cconv.to_string())?;
+                            write!(f, " {}", cconv.to_string())?;
                         }
 
-                        write!(f, "{}(", invoke.function.fmt(self.module))?;
+                        write!(f, " {}", invoke.function.fmt(self.module))?;
 
-                        let mut first = true;
                         for arg in &invoke.args {
-                            if first {
-                                first = false;
-                            } else {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{}", arg.fmt(self.module))?;
+                            write!(f, ", {}", arg.fmt(self.module))?;
                         }
-                        write!(f, ")")?;
                         Ok(true)
                     }
                     _ => Ok(false),
@@ -300,7 +293,7 @@ impl Function {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(
                     f,
-                    "define{} {} {}",
+                    "define{} {} {}{}",
                     self.function
                         .cconv
                         .as_ref()
@@ -310,6 +303,7 @@ impl Function {
                         .return_type
                         .map(|ty| self.type_registry.fmt(ty).to_string())
                         .unwrap_or("void".to_string()),
+                    if self.function.meta_function { "!" } else { "" },
                     self.function
                         .name
                         .as_ref()
@@ -337,10 +331,10 @@ impl Function {
                 for (block_label, block) in &self.function.body {
                     writeln!(f, "{}:", block_label)?;
                     for instr in &block.instructions {
-                        writeln!(f, "    {}", instr.fmt(self.type_registry, self.module))?;
+                        writeln!(f, "  {}", instr.fmt(self.type_registry, self.module))?;
                     }
 
-                    writeln!(f, "    {}", block.terminator.fmt(self.module))?;
+                    writeln!(f, "  {}", block.terminator.fmt(self.module))?;
                 }
 
                 writeln!(f, "}}")?;

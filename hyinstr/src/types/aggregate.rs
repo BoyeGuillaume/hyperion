@@ -1,11 +1,11 @@
 //! Aggregate types
 //!
-//! This file provides composite types built from `Typeref` references stored
-//! in the central `TypeRegistry`:
-//! - `ArrayType`: a fixed-size array of elements referenced by `Typeref`.
-//! - `StructType`: a packed sequence of element `Typeref`s.
+//! This file provides composite types built from [`Typeref`] references stored
+//! in the central [`TypeRegistry`]:
+//! - [`ArrayType`]: a fixed-size array of elements referenced by [`Typeref`].
+//! - [`StructType`]: a packed sequence of element [`Typeref`]s.
 //!
-//! Both types carry lightweight `fmt` helpers that accept a `&TypeRegistry` so
+//! Both types carry lightweight `fmt` helpers that accept a `&TypeRegistry`] so
 //! that elements can be resolved for display purposes.
 use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug, ops::Deref};
 

@@ -154,10 +154,14 @@ pub enum FType {
 }
 
 impl FType {
+    /// Parses a floating-point type from its string representation.
+    ///
+    /// Returns [`None`] if the string does not correspond to a valid floating-point type.
     pub fn from_str(str: &str) -> Option<Self> {
         FType::iter().find(|ftype| ftype.to_str() == str)
     }
 
+    /// Returns the string representation of the floating-point type.
     pub fn to_str(&self) -> &'static str {
         match self {
             FType::Fp16 => "fp16",
@@ -167,6 +171,18 @@ impl FType {
             FType::Fp128 => "fp128",
             FType::X86Fp80 => "x86_fp80",
             FType::PPCFp128 => "ppc_fp128",
+        }
+    }
+
+    /// Returns the number of bytes required to store the floating-point type.
+    #[inline]
+    pub fn byte_size(&self) -> u32 {
+        match self {
+            FType::Fp16 | FType::Bf16 => 2,
+            FType::Fp32 => 4,
+            FType::Fp64 => 8,
+            FType::Fp128 | FType::PPCFp128 => 16,
+            FType::X86Fp80 => 10,
         }
     }
 }

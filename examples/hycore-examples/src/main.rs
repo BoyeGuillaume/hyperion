@@ -21,6 +21,34 @@ return_result:
    %final_result: i32 = phi [ %result2, recurse ], [ i32 1, entry ]
    ret %final_result
 }
+
+; Free variable n <=> forall n
+define void !factorial_test_a (%n: i32) {
+entry:
+    %n_less_1: i32 = isub.wrap %n, i32 1
+    %n_greater_0: i1 = icmp.ugt %n, i32 0
+    !assume %n_greater_0
+    %fact_n: i32 = invoke ptr factorial, %n
+    %fact_n_minus_0: i32 = invoke ptr factorial, %n_less_1
+
+    ; This meta-function is the properties that fact(n) = n * fact(n - 1) for n > 0
+    %prod: i32 = imul.wrap %n, %fact_n_minus_0
+    %eq: i1 = icmp.eq %fact_n, %prod
+    !assert %eq
+
+    ret void
+}
+
+define void !factorial_test_b () {
+entry:
+    %fact_0: i32 = invoke ptr factorial, i32 0
+    %fact_1: i32 = invoke ptr factorial, i32 1
+    %eq0: i1 = icmp.eq %fact_0, i32 1
+    %eq1: i1 = icmp.eq %fact_1, i32 1
+    %eq_final: i1 = and %eq0, %eq1
+    !assert %eq_final
+    ret void
+}
 "#;
 
 fn main() {
@@ -41,5 +69,8 @@ fn main() {
     simple_simplify_function(func).unwrap();
     remove_unused_op(func).unwrap();
 
-    println!("Parsed module: {}", module.fmt(&registry));
+    println!("Parsed module:");
+    println!("====================");
+    println!("{}", module.fmt(&registry));
+    println!("====================");
 }
