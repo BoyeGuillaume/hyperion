@@ -66,6 +66,9 @@ pub struct Specification {
     /// condition under which the associated [`HaltingBehavior`] is assumed to hold.
     /// Operands are expected to be mutually exclusive where possible, but they do
     /// not need to exhaust all possibilities.
+    ///
+    /// TODO: Write this as a meta-instruction (something like `invoke_behavior` that takes value in 0..2 with
+    /// 0 = terminates, 1 = crashes, 2 = loops) rather than a map.
     pub behavior: EnumMap<HaltingBehavior, Operand>,
 
     /// Collected references to all assert-style meta-instructions found in `function`.

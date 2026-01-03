@@ -34,11 +34,7 @@ use strum::{EnumIter, IntoEnumIterator};
 use uuid::Uuid;
 
 pub mod fmt;
-pub mod fp;
 pub mod instructions;
-pub mod int;
-pub mod mem;
-pub mod meta;
 pub mod misc;
 pub mod operand;
 #[cfg(feature = "chumsky")]

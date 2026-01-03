@@ -3,11 +3,12 @@ use auto_enums::auto_enum;
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
-use crate::modules::{
-    Instruction, Operand, fp,
-    int::{self},
-    mem, meta, misc,
-};
+use crate::modules::{Instruction, Operand, misc};
+
+pub mod fp;
+pub mod int;
+pub mod mem;
+pub mod meta;
 
 /// Discriminated union covering all public instruction kinds.
 ///

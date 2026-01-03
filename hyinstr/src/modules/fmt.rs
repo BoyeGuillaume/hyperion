@@ -2,9 +2,11 @@
 use crate::{
     modules::{
         Function, Instruction, Module,
-        instructions::HyInstr,
-        int::{IDiv, IRem},
-        meta::MetaProbOperand,
+        instructions::{
+            HyInstr,
+            int::{IDiv, IRem},
+            meta::MetaProbOperand,
+        },
         operand::{Label, Operand},
         terminator::HyTerminator,
     },
