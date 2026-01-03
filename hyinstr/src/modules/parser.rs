@@ -1,10 +1,19 @@
 use std::{
-    cell::RefCell, collections::{BTreeMap, HashMap}, path::Path, rc::Rc, u16
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    path::Path,
+    rc::Rc,
+    u16,
 };
 
 use bigdecimal::{BigDecimal, Num};
 use chumsky::{
-    container::Seq, extra::{ParserExtra, SimpleState}, input::ValueInput, label::LabelError, prelude::*, text::{Char, digits}
+    container::Seq,
+    extra::{ParserExtra, SimpleState},
+    input::ValueInput,
+    label::LabelError,
+    prelude::*,
+    text::{Char, digits},
 };
 use either::Either;
 use log::{debug, error, warn};
@@ -15,7 +24,16 @@ use uuid::Uuid;
 use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
-        BasicBlock, CallingConvention, Function, Instruction, Module, Visibility, fp::*, instructions::{HyInstr, HyInstrOp}, int::*, mem::*, meta::*, misc::*, operand::{Label, Name, Operand}, symbol::{FunctionPointer, FunctionPointerType}, terminator::*
+        BasicBlock, CallingConvention, Function, Instruction, Module, Visibility,
+        fp::*,
+        instructions::{HyInstr, HyInstrOp},
+        int::*,
+        mem::*,
+        meta::*,
+        misc::*,
+        operand::{Label, Name, Operand},
+        symbol::{FunctionPointer, FunctionPointerType},
+        terminator::*,
     },
     types::{
         TypeRegistry, Typeref,
@@ -159,7 +177,7 @@ impl<'a> State<'a> {
     pub fn new(
         type_registry: &'a TypeRegistry,
         func_retriever: Rc<dyn Fn(String, FunctionPointerType) -> Option<Uuid> + 'a>,
-        uuid_generator: Rc<dyn Fn() -> Uuid + 'a>
+        uuid_generator: Rc<dyn Fn() -> Uuid + 'a>,
     ) -> Self {
         Self {
             label_namespace: BTreeMap::new(),
@@ -205,23 +223,19 @@ impl Token<'_> {
 macro_rules! fast_boxed {
     (
         $parser:expr
-    ) => {
+    ) => {{
+        #[cfg(debug_assertions)]
         {
-            #[cfg(debug_assertions)]
-            {
-                $parser.boxed()
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                $parser
-            }
+            $parser.boxed()
         }
-    };
+        #[cfg(not(debug_assertions))]
+        {
+            $parser
+        }
+    }};
 }
 
-fn just_match<'src, I, E>(
-    token: TokenDiscriminants,
-) -> impl Parser<'src, I, Token<'src>, E> + Clone
+fn just_match<'src, I, E>(token: TokenDiscriminants) -> impl Parser<'src, I, Token<'src>, E> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
     E: ParserExtra<'src, I>,
@@ -281,50 +295,30 @@ fn bigint_parser<'src>()
             };
 
             match two_char {
-                "0x" => {
-                    match BigInt::from_str_radix(&element[2..], 16) {
-                        Ok(val) => return val,
-                        Err(e) => {
-                            emit.emit(Rich::custom(
-                                extra.span(),
-                                format!("{} (hexadecimal)", e),
-                            ));
-                        }
+                "0x" => match BigInt::from_str_radix(&element[2..], 16) {
+                    Ok(val) => return val,
+                    Err(e) => {
+                        emit.emit(Rich::custom(extra.span(), format!("{} (hexadecimal)", e)));
                     }
-                }
-                "0o" => {
-                    match BigInt::from_str_radix(&element[2..], 8) {
-                        Ok(val) => return val,
-                        Err(e) => {
-                            emit.emit(Rich::custom(
-                                extra.span(),
-                                format!("{} (octal)", e),
-                            ));
-                        }
+                },
+                "0o" => match BigInt::from_str_radix(&element[2..], 8) {
+                    Ok(val) => return val,
+                    Err(e) => {
+                        emit.emit(Rich::custom(extra.span(), format!("{} (octal)", e)));
                     }
-                }
-                "0b" => {
-                    match BigInt::from_str_radix(&element[2..], 2) {
-                        Ok(val) => return val,
-                        Err(e) => {
-                            emit.emit(Rich::custom(
-                                extra.span(),
-                                format!("{} (binary)", e),
-                            ));
-                        }
+                },
+                "0b" => match BigInt::from_str_radix(&element[2..], 2) {
+                    Ok(val) => return val,
+                    Err(e) => {
+                        emit.emit(Rich::custom(extra.span(), format!("{} (binary)", e)));
                     }
-                }
-                _ => {
-                    match BigInt::from_str_radix(element, 10) {
-                        Ok(val) => return val,
-                        Err(e) => {
-                            emit.emit(Rich::custom(
-                                extra.span(),
-                                format!("{} (decimal)", e),
-                            ));
-                        }
+                },
+                _ => match BigInt::from_str_radix(element, 10) {
+                    Ok(val) => return val,
+                    Err(e) => {
+                        emit.emit(Rich::custom(extra.span(), format!("{} (decimal)", e)));
                     }
-                }
+                },
             }
 
             BigInt::from(0)
@@ -332,7 +326,8 @@ fn bigint_parser<'src>()
         .labelled("number")
 }
 
-fn string_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
+fn string_parser<'src>()
+-> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
     just('"')
         .ignore_then(
             any()
@@ -346,7 +341,7 @@ fn string_parser<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich
                     other => other,
                 })))
                 .repeated()
-                .collect::<String>()
+                .collect::<String>(),
         )
         .then_ignore(just('"'))
         .labelled("string literal")
@@ -584,7 +579,6 @@ fn lexer<'src>()
 type Extra<'src> = extra::Full<Rich<'src, Token<'src>, Span>, SimpleState<State<'src>>, ()>;
 
 fn primary_basic_type_parser<'src, I>()
-// -> impl Parser<'src, I, PrimaryBasicType, extra::Err<Rich<'src, Token<'src>, Span>>> + Clone
 -> impl Parser<'src, I, PrimaryBasicType, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
@@ -593,61 +587,53 @@ where
         .filter(|x: &Token| {
             x.is_i_type()
                 || x.is_f_type()
-                || x
-                    .try_as_identifier_ref()
+                || x.try_as_identifier_ref()
                     .map(|x| x.1.is_empty() && *x.0 == "ptr")
                     .unwrap_or(false)
         })
-        .map(|token| {
-            match token {
-                Token::IType(itype) => PrimaryBasicType::Int(itype).into(),
-                Token::FType(ftype) => PrimaryBasicType::Float(ftype).into(),
-                Token::Identifier(s, v) if s == "ptr" && v.is_empty() => {
-                    PrimaryBasicType::Ptr(PtrType).into()
-                }
-                _ => unreachable!(),
+        .map(|token| match token {
+            Token::IType(itype) => PrimaryBasicType::Int(itype).into(),
+            Token::FType(ftype) => PrimaryBasicType::Float(ftype).into(),
+            Token::Identifier(s, v) if s == "ptr" && v.is_empty() => {
+                PrimaryBasicType::Ptr(PtrType).into()
             }
+            _ => unreachable!(),
         })
 }
 
-fn primary_type_parser<'src, I>()
--> impl Parser<'src, I, PrimaryType, Extra<'src>> + Clone
+fn primary_type_parser<'src, I>() -> impl Parser<'src, I, PrimaryType, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let primary_type =
-        primary_basic_type_parser().map(|prim_type| prim_type.into());
+    let primary_type = primary_basic_type_parser().map(|prim_type| prim_type.into());
 
     // Vector types (e.g., <4 x i32> or <vscale 4 x i32>)
     let vector_type = just(Token::Identifier("vscale", vec![]))
         .or_not()
         .then(
-            just_match(TokenDiscriminants::Number)
-            .validate(
-                |num_span, extra, emit| {
-                    let num = num_span.try_as_number().unwrap();
+            just_match(TokenDiscriminants::Number).validate(|num_span, extra, emit| {
+                let num = num_span.try_as_number().unwrap();
 
-                    if num <= BigInt::ZERO {
-                        emit.emit(Rich::custom(
-                            extra.span(),
-                            "vector size must be a positive non-zero integer",
-                        ));
-                        1u16
-                    } else if num > BigInt::from(u16::MAX) {
-                        emit.emit(Rich::custom(
-                            extra.span(),
-                            format!(
-                                "vector size too large: maximum allowed is {}, got {}",
-                                u16::MAX,
-                                num
-                            ),
-                        ));
-                        1u16
-                    } else {
-                        num.to_u32_digits().1.into_iter().next().unwrap() as u16
-                    }
-                },
-            ),
+                if num <= BigInt::ZERO {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        "vector size must be a positive non-zero integer",
+                    ));
+                    1u16
+                } else if num > BigInt::from(u16::MAX) {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "vector size too large: maximum allowed is {}, got {}",
+                            u16::MAX,
+                            num
+                        ),
+                    ));
+                    1u16
+                } else {
+                    num.to_u32_digits().1.into_iter().next().unwrap() as u16
+                }
+            }),
             // .map(|(num_token, num_span)| num_token.try_as_number().unwrap()),
         )
         .then_ignore(just(Token::Identifier("x", vec![])))
@@ -667,15 +653,18 @@ where
     choice((primary_type, vector_type)).labelled("primary type")
 }
 
-fn type_parser<'src, I>() 
--> impl Parser<'src, I, Typeref, Extra<'src>> + Clone
+fn type_parser<'src, I>() -> impl Parser<'src, I, Typeref, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    fast_boxed!(recursive(|tree| {
+    fast_boxed!(
+        recursive(|tree| {
             // Primary basic types
             let primary_type = primary_type_parser().map_with(move |prim_type, extra| {
-                extra.state().type_registry.search_or_insert(prim_type.into())
+                extra
+                    .state()
+                    .type_registry
+                    .search_or_insert(prim_type.into())
             });
 
             // Array types (e.g., [10 x i32])
@@ -715,14 +704,10 @@ where
             let struct_type = just(Token::Identifier("packed", vec![]))
                 .or_not()
                 .then(
-                    tree
-                        .clone()
+                    tree.clone()
                         .separated_by(just(Token::Comma))
                         .collect::<Vec<_>>()
-                        .delimited_by(
-                            just(Token::LBrace),
-                            just(Token::RBrace),
-                        ),
+                        .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
                 .map_with(|(packed, element_types), extra| {
                     let struct_type = StructType {
@@ -740,9 +725,7 @@ where
     )
 }
 
-fn constant_parser<'src, I>(
-    // func_retriver: impl Fn(String, FunctionPointerType) -> Option<Uuid> + Clone + 'src,
-) -> impl Parser<'src, I, AnyConst, Extra<'src>> + Clone
+fn constant_parser<'src, I>() -> impl Parser<'src, I, AnyConst, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
@@ -790,16 +773,15 @@ where
             let state: &mut SimpleState<State<'src>> = extra.state();
             state.func_retriever.as_ref()(name.clone(), ftype);
             match (state.func_retriever.as_ref())(name.clone(), ftype) {
-                Some(uuid) => 
-                    match ftype {
-                        FunctionPointerType::Internal => {
-                            AnyConst::FuncPtr(FunctionPointer::Internal(uuid))
-                        }
-                        FunctionPointerType::External => {
-                            AnyConst::FuncPtr(FunctionPointer::External(uuid))
-                        }
-                    },
-                
+                Some(uuid) => match ftype {
+                    FunctionPointerType::Internal => {
+                        AnyConst::FuncPtr(FunctionPointer::Internal(uuid))
+                    }
+                    FunctionPointerType::External => {
+                        AnyConst::FuncPtr(FunctionPointer::External(uuid))
+                    }
+                },
+
                 None => {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -809,7 +791,7 @@ where
                             name
                         ),
                     ));
-                    
+
                     AnyConst::FuncPtr(FunctionPointer::Internal(Uuid::nil()))
                 }
             }
@@ -877,7 +859,6 @@ where
             .collect::<Vec<_>>()
             .map(Either::Right)
             .labelled("phi operand list"),
-
         /* Use by most instructions */
         operand_parser()
             .separated_by(just(Token::Comma))
@@ -991,7 +972,7 @@ where
                         extra.span(),
                         format!(
                             "arity mismatch for {} instruction variant: expected at most 1 variant operand, got {}",
-                            op.opname(),    
+                            op.opname(),
                             variant.len()
                         ),
                     ));
@@ -1029,9 +1010,7 @@ where
                         ),
                     ));
 
-                    return 
-                        HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                    ;
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                 }
             }
 
@@ -1051,9 +1030,7 @@ where
                         ),
                     ));
 
-                    return 
-                        HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
-                    
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                 }
             }
 
@@ -1270,7 +1247,7 @@ where
                             }
                         )
                     };
-                    
+
                     MLoad { dest, ty, addr, alignement: align, ordering, volatile: volatile.is_some() }.into()
                 }
                 HyInstrOp::MStore => {
@@ -1304,13 +1281,13 @@ where
                 HyInstrOp::MAlloca => {
                     let [count] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    
+
                     MAlloca { dest, ty, count, alignement: align }.into()
                 }
                 HyInstrOp::MGetElementPtr => {
                     let mut indices = operand.unwrap_left();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    
+
                     if indices.is_empty() {
                         emit.emit(Rich::custom(
                             extra.span(),
@@ -1425,9 +1402,7 @@ where
                             ),
                         ));
 
-                        return 
-                            HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) })
-                        ;
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                     }
 
                     let operand = match variant {
@@ -1468,62 +1443,45 @@ where
                 cond: cond,
                 target_true: target_true,
                 target_false: target_false,
-            }.into()
+            }
+            .into()
         });
 
-    let trap = just(Token::TerminatorOp(HyTerminatorOp::Trap))
-        .to(Trap.into());
+    let trap = just(Token::TerminatorOp(HyTerminatorOp::Trap)).to(Trap.into());
 
     let jump = just(Token::TerminatorOp(HyTerminatorOp::Jump))
         .ignore_then(label_parser())
-        .map(|target| {
-            Jump {
-                target: target,
-            }.into()
-        });
-    
+        .map(|target| Jump { target: target }.into());
+
     let ret = just(Token::TerminatorOp(HyTerminatorOp::Ret))
         .ignore_then(
-            operand_parser().map(Either::Left)
-            .or(just(Token::Void).map(Either::Right))
+            operand_parser()
+                .map(Either::Left)
+                .or(just(Token::Void).map(Either::Right)),
         )
         .map(|operand| {
             Ret {
                 value: operand.left(),
-            }.into()
+            }
+            .into()
         });
 
-    choice((
-        branch,
-        trap,
-        jump,
-        ret,
-    )).boxed()
+    choice((branch, trap, jump, ret)).boxed()
 }
-
 
 fn parse_function<'src, I>() -> impl Parser<'src, I, Function, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let block_label = label_parser()
-        .then_ignore(just(Token::Colon));
+    let block_label = label_parser().then_ignore(just(Token::Colon));
 
     let block = block_label
-        .then(
-            parse_instruction()
-            .repeated()
-            .collect::<Vec<_>>(),
-        )
-        .then(
-            parse_terminator(),
-        )
-        .map(|((label, instructions), terminator)| {
-            BasicBlock {
-                label: label,
-                instructions,
-                terminator: terminator,
-            }
+        .then(parse_instruction().repeated().collect::<Vec<_>>())
+        .then(parse_terminator())
+        .map(|((label, instructions), terminator)| BasicBlock {
+            label: label,
+            instructions,
+            terminator: terminator,
         });
 
     let meta_arguments = any()
@@ -1546,10 +1504,7 @@ where
                     seen_cconv = true;
                 } else if token.is_visibility() {
                     if seen_visibility {
-                        emit.emit(Rich::custom(
-                            extra.span(),
-                            "duplicate visibility metadata",
-                        ));
+                        emit.emit(Rich::custom(extra.span(), "duplicate visibility metadata"));
                     }
                     seen_visibility = true;
                 }
@@ -1558,16 +1513,12 @@ where
             meta_args
         });
 
-    let arglist = 
-        register_parser_a()
+    let arglist = register_parser_a()
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
-        .delimited_by(
-            just(Token::LParen),
-            just(Token::RParen),
-        );
+        .delimited_by(just(Token::LParen), just(Token::RParen));
 
     fast_boxed!(just(Token::Identifier("define", vec![]))
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
@@ -1665,15 +1616,15 @@ where
 
 /// Extend a module by parsing a file at the given path, including handling imports
 /// recursively.
-/// 
+///
 /// Notes: This function is subject to breaking changes as the parser is developed (notably
 /// the import system is yet to be stabilized).
-/// 
+///
 /// # Arguments
 ///  - `module`: The module to extend.
 ///  - `registry`: The type registry to use for type resolution.
 ///  - `path`: The path to the source file to parse.
-/// 
+///
 /// # Returns
 /// - `Ok(())` if the module was successfully extended.
 pub fn extend_module_from_path(
@@ -1682,12 +1633,16 @@ pub fn extend_module_from_path(
     path: impl AsRef<Path>,
 ) -> Result<(), Error> {
     // Canonicalize the path
-    let canonical_path = std::fs::canonicalize(&path).map_err(|e| Error::FileNotFound {
-        path: path.as_ref().to_string_lossy().to_string(),
-        cause: e,
-    })
-    .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))?;
-    debug!("Extending module from file: {}", canonical_path.to_string_lossy());
+    let canonical_path = std::fs::canonicalize(&path)
+        .map_err(|e| Error::FileNotFound {
+            path: path.as_ref().to_string_lossy().to_string(),
+            cause: e,
+        })
+        .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))?;
+    debug!(
+        "Extending module from file: {}",
+        canonical_path.to_string_lossy()
+    );
 
     // Stack of files to process
     let mut stack = vec![canonical_path];
@@ -1697,17 +1652,24 @@ pub fn extend_module_from_path(
 
     while let Some(current_path) = stack.pop() {
         // Read the source file
-        debug!("Reading source file at path: {}", current_path.to_string_lossy());
-        let source = std::fs::read_to_string(&current_path).map_err(|e| Error::FileNotFound {
-            path: current_path.to_string_lossy().to_string(),
-            cause: e,
-        })
-        .inspect_err(|e | error!("An error occurred while reading the source file: {}", e))?;
+        debug!(
+            "Reading source file at path: {}",
+            current_path.to_string_lossy()
+        );
+        let source = std::fs::read_to_string(&current_path)
+            .map_err(|e| Error::FileNotFound {
+                path: current_path.to_string_lossy().to_string(),
+                cause: e,
+            })
+            .inspect_err(|e| error!("An error occurred while reading the source file: {}", e))?;
 
         // Lex the source file
         let lexer_result = lexer().parse(&source);
         if lexer_result.has_errors() {
-            error!("Lexing errors encountered in file {}:", current_path.to_string_lossy());
+            error!(
+                "Lexing errors encountered in file {}:",
+                current_path.to_string_lossy()
+            );
 
             let errors = lexer_result
                 .into_errors()
@@ -1719,13 +1681,13 @@ pub fn extend_module_from_path(
                     message: e.reason().to_string(),
                 })
                 .collect();
-            return Err(Error::ParserErrors { errors, tokens: vec![] } );
+            return Err(Error::ParserErrors {
+                errors,
+                tokens: vec![],
+            });
         }
-        let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
-            .into_output()
-            .unwrap()
-            .into_iter()
-            .unzip();
+        let (tokens, spans): (Vec<_>, Vec<_>) =
+            lexer_result.into_output().unwrap().into_iter().unzip();
 
         // Final parser, import + function definitions
         enum Item {
@@ -1734,39 +1696,48 @@ pub fn extend_module_from_path(
         }
 
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-            if let Some(func_ptr) = module.find_function_uuid_by_name(&name, func_type).map(|x| x.uuid()) {
+            if let Some(func_ptr) = module
+                .find_function_uuid_by_name(&name, func_type)
+                .map(|x| x.uuid())
+            {
                 Some(func_ptr)
-            }
-            else {
+            } else {
                 let uuid = Uuid::new_v4();
                 match func_type {
-                    FunctionPointerType::External => unresolved_external_functions.borrow_mut().insert(name, uuid),
-                    FunctionPointerType::Internal => unresolved_internal_functions.borrow_mut().insert(name, uuid),
+                    FunctionPointerType::External => unresolved_external_functions
+                        .borrow_mut()
+                        .insert(name, uuid),
+                    FunctionPointerType::Internal => unresolved_internal_functions
+                        .borrow_mut()
+                        .insert(name, uuid),
                 };
                 Some(uuid)
             }
         });
 
-        let uuid_generator = Rc::new(|| {
-            Uuid::new_v4()
-        });
+        let uuid_generator = Rc::new(|| Uuid::new_v4());
 
         let parser = choice((
             import_parser().map(Item::Import),
             parse_function().map(Item::Function),
-        )).repeated().collect::<Vec<_>>();
+        ))
+        .repeated()
+        .collect::<Vec<_>>();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
         if parse_result.has_errors() {
-            error!("Parsing errors encountered in file {}:", current_path.to_string_lossy());
+            error!(
+                "Parsing errors encountered in file {}:",
+                current_path.to_string_lossy()
+            );
 
             let errors = parse_result
                 .into_errors()
                 .into_iter()
                 .map(|e| {
                     let span = e.span();
-                    
+
                     // Convert token span to source span
                     let source_span = SimpleSpan {
                         start: spans[span.start].start,
@@ -1782,7 +1753,10 @@ pub fn extend_module_from_path(
                     }
                 })
                 .collect();
-            return Err(Error::ParserErrors { errors, tokens: tokens.iter().map(|t| format!("{:?}", t)).collect() } );
+            return Err(Error::ParserErrors {
+                errors,
+                tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
+            });
         }
 
         // Process parsed items
@@ -1791,47 +1765,26 @@ pub fn extend_module_from_path(
             match item {
                 Item::Import(path) => {
                     // Push the imported file onto the stack for processing, stop processing current file
-                    let import_path = current_path
-                        .parent()
-                        .unwrap()
-                        .join(&path);
+                    let import_path = current_path.parent().unwrap().join(&path);
                     debug!("Add file to import list {}", import_path.to_string_lossy());
 
-                    let canonical_import_path = std::fs::canonicalize(&import_path).map_err(|e| Error::FileNotFound {
-                            path,
-                            cause: e,
-                        })
-                        .inspect_err(|e| error!("An error occurred while canonicalizing the import path: {}", e))?;
+                    let canonical_import_path = std::fs::canonicalize(&import_path)
+                        .map_err(|e| Error::FileNotFound { path, cause: e })
+                        .inspect_err(|e| {
+                            error!(
+                                "An error occurred while canonicalizing the import path: {}",
+                                e
+                            )
+                        })?;
                     stack.push(canonical_import_path);
-                },
+                }
                 Item::Function(mut function) => {
                     debug!("Adding function {:?} to module", function.name);
                     function.normalize_ssa();
 
                     // Add it to the list functions to be added after verification
                     list_added_internal_functions.push(function);
-
-                    // // Verify the function validity
-                    // // This checks for issues like undefined labels, type mismatches, etc.
-                    // if let Err(e) = module_mutator.borrow().verify_func(&function) {
-                    //     error!("Function verification failed for function {:?}: {}", function.name, e);
-                    //     return Err(e);
-                    // }
-
-                    // // Check that the function does not already exist
-                    // if let Some(existing_uuid) = module_mutator.borrow().find_function_uuid_by_name(
-                    //     function.name.as_ref().unwrap(),
-                    //     FunctionPointerType::Internal,
-                    // ) {
-                    //     error!("Function {:?} already exists in module with UUID {}", function.name, existing_uuid.uuid());
-                    //     return Err(Error::FunctionAlreadyExists {
-                    //         name: function.name.as_ref().unwrap().clone(),
-                    //     });
-                    // }
-
-                    // // Insert the function into the module
-                    // module_mutator.borrow_mut().functions.insert(function.uuid, function);
-                },
+                }
             }
         }
     }
@@ -1847,10 +1800,13 @@ pub fn extend_module_from_path(
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
-            return Err(Error::UnresolvedFunction { name: name.clone(), func_type: FunctionPointerType::Internal });
+            return Err(Error::UnresolvedFunction {
+                name: name.clone(),
+                func_type: FunctionPointerType::Internal,
+            });
         } else if matching_functions.len() > 1 {
             error!("Multiple functions found with the same name: {}", name);
-            return Err(Error::FunctionAlreadyExists { name: name.clone() });    
+            return Err(Error::FunctionAlreadyExists { name: name.clone() });
         }
 
         let function = matching_functions[0];
@@ -1859,17 +1815,31 @@ pub fn extend_module_from_path(
 
     // For no external functions cannot be defined by the module as such all unresolved external is treated as an error;
     if !unresolved_external_functions.borrow().is_empty() {
-        let names: Vec<String> = unresolved_external_functions.borrow().keys().cloned().collect();
+        let names: Vec<String> = unresolved_external_functions
+            .borrow()
+            .keys()
+            .cloned()
+            .collect();
         error!("Unresolved external functions: {:?}", names);
-        return Err(Error::UnresolvedFunction { name: names.join(", "), func_type: FunctionPointerType::External });
+        return Err(Error::UnresolvedFunction {
+            name: names.join(", "),
+            func_type: FunctionPointerType::External,
+        });
     }
 
     // Finally update all the links internally
     for mut func in list_added_internal_functions.into_iter() {
         for (_, block) in func.body.iter_mut() {
-            for operands in block.terminator.operands_mut()
-                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut())) {
-                if let Some(func_ptr) = operands.try_as_imm_mut().map(|imm| imm.try_as_func_ptr_mut()).flatten() {
+            for operands in block
+                .terminator
+                .operands_mut()
+                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut()))
+            {
+                if let Some(func_ptr) = operands
+                    .try_as_imm_mut()
+                    .map(|imm| imm.try_as_func_ptr_mut())
+                    .flatten()
+                {
                     match func_ptr {
                         FunctionPointer::Internal(uuid) => {
                             if let Some(new_uuid) = resolved_internal_functions.get(uuid) {
@@ -1879,7 +1849,6 @@ pub fn extend_module_from_path(
                         FunctionPointer::External(_) => {}
                     }
                 }
-
             }
         }
 
@@ -1892,27 +1861,27 @@ pub fn extend_module_from_path(
         error!("Module verification failed: {}", e);
         return Err(e);
     }
- 
+
     // Finally, return success
     Ok(())
 }
 
 /// Extend a module by parsing a source string.
-/// 
+///
 /// Notes: String does not support imports at this time.
-/// 
+///
 /// # Arguments
 /// - `module`: The module to extend.
 /// - `registry`: The type registry to use for type resolution.
 /// - `source`: The source string to parse.
-/// 
+///
 /// # Returns
 /// - `Ok(())` if the module was successfully extended.
-/// 
+///
 pub fn extend_module_from_string(
     module: &mut Module,
     registry: &TypeRegistry,
-    source: &str
+    source: &str,
 ) -> Result<(), Error> {
     // Lex the source string
     let lexer_result = lexer().parse(source);
@@ -1929,14 +1898,13 @@ pub fn extend_module_from_string(
                 message: e.reason().to_string(),
             })
             .collect();
-        return Err(Error::ParserErrors { errors, tokens: vec![] });
+        return Err(Error::ParserErrors {
+            errors,
+            tokens: vec![],
+        });
     }
 
-    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result
-        .into_output()
-        .unwrap()
-        .into_iter()
-        .unzip();
+    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result.into_output().unwrap().into_iter().unzip();
 
     // Final parser, import + function definitions
     enum Item {
@@ -1957,16 +1925,14 @@ pub fn extend_module_from_string(
                 Some(func_ptr)
             } else {
                 let uuid = match func_type {
-                    FunctionPointerType::External => {
-                        *unresolved_external_functions.borrow_mut()
-                            .entry(name)
-                            .or_insert_with(|| Uuid::new_v4())
-                    }
-                    FunctionPointerType::Internal => {
-                        *unresolved_internal_functions.borrow_mut()
-                            .entry(name)
-                            .or_insert_with(|| Uuid::new_v4())
-                    }
+                    FunctionPointerType::External => *unresolved_external_functions
+                        .borrow_mut()
+                        .entry(name)
+                        .or_insert_with(|| Uuid::new_v4()),
+                    FunctionPointerType::Internal => *unresolved_internal_functions
+                        .borrow_mut()
+                        .entry(name)
+                        .or_insert_with(|| Uuid::new_v4()),
                 };
                 Some(uuid)
             }
@@ -2070,7 +2036,11 @@ pub fn extend_module_from_string(
 
     // External functions cannot be defined in the string source; treat unresolved externals as error
     if !unresolved_external_functions.borrow().is_empty() {
-        let names: Vec<String> = unresolved_external_functions.borrow().keys().cloned().collect();
+        let names: Vec<String> = unresolved_external_functions
+            .borrow()
+            .keys()
+            .cloned()
+            .collect();
         error!("Unresolved external functions: {:?}", names);
         return Err(Error::UnresolvedFunction {
             name: names.join(", "),
