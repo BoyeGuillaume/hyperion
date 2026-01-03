@@ -1,4 +1,5 @@
 # Hyperion
+
 Hyperion is a framework for analyzing and transforming logical programs into optimized, potentially distributed versions. It provides tools for reasoning about program equivalence, optimizing code, and ensuring correctness through formal methods.
 
 ## Documentation

@@ -12,7 +12,7 @@ loop:
     branch %loop.is_null, output, loop
 
 output:
-    %output: i32 = phi [i32 1, entry]
+    %output: i32 = phi [i32 1, entry], [%next_res, loop]
     ret %output
 }
 

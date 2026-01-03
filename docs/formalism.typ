@@ -247,22 +247,21 @@ Suppose we have the following function
 
 #text(size: 0.8em)[
   ```ll
-  define i32 @pow(i32 %base, i32 %exp) {
+  define i32 pow(%a: i32, %n: i32) {
   entry:
-    %is_zero = icmp eq i32 %exp, 0 ; Check if exponent is zero
-    br i1 %is_zero, label %output, label %loop ; Branch based on exponent
-
-  loop: ; Main loop for exponentiation
-    %current = phi i32 [1, %entry], [%next, %loop]
-    %current_exp = phi i32 [%exp, %entry], [%next_exp, %loop]
-    %next_exp = sub i32 %current_exp, 1 ; Decrement exponent
-    %next = mul i32 %current, %base ; Multiply current result by base
-    %is_done = icmp eq i32 %next_exp, 0 ; Check if exponentiation is done
-    br i1 %is_done, label %output, label %loop ; Branch based on completion
+    %is_null: i1 = icmp.eq %n, i32 0
+    branch %is_null, output, loop
+  loop:
+    %current_n: i32 = phi [ %n, entry ], [ %next_n, loop ]
+    %current_result: i32 = phi [ i32 1, entry ], [ %next_result, loop ]
+    %next_n: i32 = sub.usat %current_n, i32 1
+    %next_result: i32 = mul.usat %current_result, %a
+    %loop_is_null: i1 = icmp.eq %next_n, i32 0
+    branch %loop_is_null, output, loop
 
   output:
-    %result = phi i32 [1, %entry], [%next, %loop] ; Final result
-    ret i32 %result ; Return the result
+    %output: i32 = phi [ i32 1, entry ], [ %next_result, loop ]
+    return %output
   }
   ```
 ]
@@ -282,52 +281,38 @@ We perform a *simple-disjunction* to determine based on the follow CFG~:
     blob((1, 0), [Loop], tint: orange),
     blob((2, 0), [Output], tint: green, shape: fletcher.shapes.hexagon),
 
-    edge((0, 0), (1, 0), text($"%exp" != 0$), "-|>"),
-    edge((1, 0), (2, 0), text($"%next_exp" = 0$), "-|>"),
-    edge((1, 0), (1, 0), text($"%next_exp" != 0$), "-|>", bend: 135deg),
-    edge((0, 0), (2, 0), text($"%exp" = 0$), "-|>", bend: -13deg),
+    edge((0, 0), (1, 0), text($"%n" != 0$), "-|>"),
+    edge((1, 0), (2, 0), text($"%next_n" = 0$), "-|>"),
+    edge((1, 0), (1, 0), text($"%next_n" != 0$), "-|>", bend: 135deg),
+    edge((0, 0), (2, 0), text($"%n" = 0$), "-|>", bend: -13deg),
   )
-  // raw-render(
-  //   ```dot
-  //   digraph {
-  //     node [shape=circle, style=filled, fillcolor=lightgrey];
-  //     rankdir="LR";
-
-  //     entry -> loop;
-  //     loop -> loop;
-  //     loop -> output;
-  //     entry -> output;
-  //   }
-  //   ```,
-  // )
 })
 
 We split the function into two possible paths~:
-- Path 1: `entry -> output` when `exp == 0`
-- Path 2: `entry -> loop* -> output` when `exp != 0`
+- Path 1: `entry -> output` when `%n == 0`
+- Path 2: `entry -> loop* -> output` when `%n != 0`
 This mean we add two entries with two sets of precondition. *We merge them later*.
 
 #diapositive-break()
 Path 1 is trivial, as such we will only analyse path 2.
 
 *Step 1*: Determine reachability of condition `is_done`:
-- Reachability same as `%next_expr == 0`
-- Relise that `%next_expr` is a `loop covariant` and depend on `%exp`
-- Simplify it (only consider element directly dependent and relize that `%next_expr` is decremented by `1` each loop)
-- Arithmetic progression, we relize that `is_done` is reachable when `%exp >= 1`
+- Reachability same as `%n == 0`
+- Relise that `%next_n` is a `loop covariant` and depend on `%n`
+- Simplify it (only consider element directly dependent and relize that `%next_n` is decremented by `1` each loop)
+- Arithmetic progression, we relize that `is_done` is reachable when `%n >= 1`
 Conclusion of *step 1*:
-1. $1 <= %"current_exp" <= %"exp"$
-2. `is_done` is *always* reachable when $%"exp" >= 1$
-3. Number of loop iteration is exactly $%"exp"$
-4. At loop exit, we have that $%"next_exp" == 0$
+1. $1 <= %"current_n" <= %"n"$
+2. `is_done` is *always* reachable when $%"n" >= 1$
+3. Number of loop iteration is exactly $%"n"$
+4. At loop exit, we have that $%"next_n" == 0$
 
 #diapositive-break()
-*Step 2*: Determine value of `%current` at loop exit:
-- We relize that `%current` is multiplied by `%base` each loop iteration
-- We have that `%current` starts at `1` and is multiplied by `%base` exactly `%exp` times
+*Step 2*: Determine value of `%current_result` at loop exit:
+- We relize that `%current_result` is multiplied by `%a` each loop iteration
+- We have that `%current_result` starts at `1` and is multiplied by `%a` exactly `%n` times
 Conclusion of *step 2*:
-1. At loop exit, we have that `%current == %base * %base * ... * %base` (`%exp` times)
-
+1. At loop exit, we have that `%current_result == %a * %a * ... * %a` (`%n` times)
 *Step 3*: Additional properties derivation (*WIP*):
 - We can derive that `%pow(%base, %a + %b) == %pow(%base, %a) * %pow(%base, %b)`
 - We can derive that `%pow(%a * %b, %exp) == %pow(%a, %exp) * %pow(%b, %exp)`
@@ -482,30 +467,42 @@ Here is a diagram illustrating the propose architecture that satisfy the above r
     edge((0, 2), (0.6, 3), "-|>"),
 
     // Meta-analysis blobs
-    blob((2, 0), [ModuleSpec], tint: green.lighten(20%)),
-    blob((2, 1), [Specification], tint: green.lighten(21%)),
-    blob((3, 1), [FuncAnalysis], tint: red.lighten(21%)),
-    blob((4, 1), [Abstraction], tint: orange.lighten(21%)),
+    blob((2, 0), [SpecLibrary], tint: yellow),
+    blob((2, 1), [Specification], tint: yellow),
+    blob((3, 0), [Analyzer], tint: orange),
+    blob((3, 1), [Strategy], tint: orange),
+    blob((3, 2), [State], tint: green.lighten(30%)),
 
-    blob((2, 2), [Pre/Post-condition], tint: yellow),
-    blob((3, 2), [State Based Analysis], tint: aqua),
-    blob((4, 2), [Internals], tint: yellow),
+    edge((2, 0), (2, 1), "-<>"),
+    edge((2, 1), (0, 1), crossing: true, "-|>"),
+    edge((3, 0), (3, 1), "-<>"),
+    edge((3, 1), (3, 2), "-|>"),
+    edge((3, 1), (2, 1), "--<>"),
 
-    blob((2, 3), [TBehavior], tint: yellow),
-    blob((3, 3), [MemAliasing], tint: yellow),
+    // blob((2, 0), [ModuleSpec], tint: green.lighten(20%)),
+    // blob((2, 1), [Specification], tint: green.lighten(21%)),
+    // blob((3, 1), [FuncAnalysis], tint: red.lighten(21%)),
+    // blob((4, 1), [Abstraction], tint: orange.lighten(21%)),
 
-    edge((2, 0), (2, 1), "-|>"),
-    edge((2, 0), (3, 1), "-<>"),
+    // blob((2, 2), [Pre/Post-condition], tint: yellow),
+    // blob((3, 2), [State Based Analysis], tint: aqua),
+    // blob((4, 2), [Internals], tint: yellow),
 
-    edge((2, 1), (2, 2), "-<>"),
-    edge((2, 1), (3, 2), "-<>"),
-    edge((2, 2), (2, 3), "-|>"),
-    edge((3, 2), (2, 3), "-|>"),
-    edge((2, 2), (3, 3), "-|>"),
-    edge((3, 2), (3, 3), "-|>"),
+    // blob((2, 3), [TBehavior], tint: yellow),
+    // blob((3, 3), [MemAliasing], tint: yellow),
 
-    edge((3, 1), (4, 2), "-<>"),
-    edge((3, 1), (3, 2), "-<>"),
+    // edge((2, 0), (2, 1), "-|>"),
+    // edge((2, 0), (3, 1), "-<>"),
+
+    // edge((2, 1), (2, 2), "-<>"),
+    // edge((2, 1), (3, 2), "-<>"),
+    // edge((2, 2), (2, 3), "-|>"),
+    // edge((3, 2), (2, 3), "-|>"),
+    // edge((2, 2), (3, 3), "-|>"),
+    // edge((3, 2), (3, 3), "-|>"),
+
+    // edge((3, 1), (4, 2), "-<>"),
+    // edge((3, 1), (3, 2), "-<>"),
 
     // blob((2, 2), [Postcondition]),
     // blob((3, 2), [Internals]),
