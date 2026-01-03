@@ -1,9 +1,9 @@
 //! Pretty-print helpers for Hy instructions, terminators, functions, and modules.
 use crate::{
     modules::{
-        Function, Instruction, Module,
+        Function, Module,
         instructions::{
-            HyInstr,
+            HyInstr, Instruction,
             int::{IDiv, IRem},
             meta::MetaProbOperand,
         },

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use bit_set::BitSet;
 use hyinstr::modules::{
-    Function, Instruction, InstructionRef,
-    instructions::{HyInstr, HyInstrOp},
+    Function, InstructionRef,
+    instructions::{HyInstr, HyInstrOp, Instruction},
     operand::{Label, Name},
 };
 use petgraph::graph::DiGraph;

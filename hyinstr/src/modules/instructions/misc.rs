@@ -3,7 +3,8 @@
 //! These include function calls, phi nodes, select operations, and casts.
 use crate::{
     modules::{
-        CallingConvention, Instruction,
+        CallingConvention,
+        instructions::{Instruction, InstructionFlags},
         operand::{Label, Name, Operand},
     },
     types::Typeref,
@@ -40,6 +41,10 @@ pub struct Invoke {
 }
 
 impl Instruction for Invoke {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::MEMORY
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.function).chain(self.args.iter())
     }
@@ -87,6 +92,10 @@ pub struct Phi {
 }
 
 impl Instruction for Phi {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         self.values.iter().map(|(op, _)| op)
     }
@@ -131,6 +140,10 @@ pub struct Select {
 }
 
 impl Instruction for Select {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.condition)
             .chain(std::iter::once(&self.true_value))
@@ -274,6 +287,10 @@ pub struct Cast {
 }
 
 impl Instruction for Cast {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.value)
     }

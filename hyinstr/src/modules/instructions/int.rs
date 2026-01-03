@@ -10,7 +10,7 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     modules::{
-        Instruction,
+        instructions::{Instruction, InstructionFlags},
         operand::{Name, Operand},
     },
     types::Typeref,
@@ -229,6 +229,10 @@ pub struct IAdd {
 }
 
 impl Instruction for IAdd {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -271,6 +275,10 @@ pub struct ISub {
 }
 
 impl Instruction for ISub {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -313,6 +321,10 @@ pub struct IMul {
 }
 
 impl Instruction for IMul {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -355,6 +367,10 @@ pub struct IDiv {
 }
 
 impl Instruction for IDiv {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -397,6 +413,10 @@ pub struct IRem {
 }
 
 impl Instruction for IRem {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -441,6 +461,10 @@ pub struct ICmp {
 }
 
 impl Instruction for ICmp {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -483,6 +507,10 @@ pub struct ISht {
 }
 
 impl Instruction for ISht {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -522,6 +550,10 @@ pub struct INeg {
 }
 
 impl Instruction for INeg {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.value)
     }
@@ -561,6 +593,10 @@ pub struct INot {
 }
 
 impl Instruction for INot {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.value)
     }
@@ -601,6 +637,10 @@ pub struct IAnd {
 }
 
 impl Instruction for IAnd {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -641,6 +681,10 @@ pub struct IOr {
 }
 
 impl Instruction for IOr {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -681,6 +725,10 @@ pub struct IXor {
 }
 
 impl Instruction for IXor {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -721,6 +769,10 @@ pub struct IImplies {
 }
 
 impl Instruction for IImplies {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -761,6 +813,10 @@ pub struct IEquiv {
 }
 
 impl Instruction for IEquiv {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_INT
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }

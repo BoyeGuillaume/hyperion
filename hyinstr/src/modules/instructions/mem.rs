@@ -10,7 +10,7 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::{
     modules::{
-        Instruction,
+        instructions::{Instruction, InstructionFlags},
         operand::{Name, Operand},
     },
     types::Typeref,
@@ -82,6 +82,10 @@ pub struct MLoad {
 }
 
 impl Instruction for MLoad {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::MEMORY
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.addr)
     }
@@ -133,6 +137,10 @@ pub struct MStore {
 }
 
 impl Instruction for MStore {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::MEMORY
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.addr, &self.value].into_iter()
     }
@@ -171,6 +179,10 @@ pub struct MAlloca {
 }
 
 impl Instruction for MAlloca {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::empty()
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.count)
     }
@@ -214,6 +226,10 @@ pub struct MGetElementPtr {
 }
 
 impl Instruction for MGetElementPtr {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.base).chain(self.indices.iter())
     }

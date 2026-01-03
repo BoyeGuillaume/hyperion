@@ -16,6 +16,7 @@ auto_enums.workspace = true
 thiserror.workspace = true
 petgraph.workspace = true
 either.workspace = true
+bitflags = { workspace = true }
 chumsky = { workspace = true, optional = true }
 
 [features]
@@ -27,5 +28,6 @@ serde = [
     "num-bigint/serde",
     "bigdecimal/serde",
     "petgraph/serde",
+    "bitflags/serde",
 ]
 chumsky = ["dep:chumsky"]

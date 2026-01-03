@@ -8,11 +8,10 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 use strum::IntoEnumIterator;
 
+use crate::modules::instructions::Instruction;
+use crate::modules::instructions::InstructionFlags;
 use crate::{
-    modules::{
-        Instruction,
-        operand::{Name, Operand},
-    },
+    modules::operand::{Name, Operand},
     types::Typeref,
 };
 
@@ -89,6 +88,10 @@ pub struct FAdd {
 }
 
 impl Instruction for FAdd {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -129,6 +132,10 @@ pub struct FSub {
 }
 
 impl Instruction for FSub {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -169,6 +176,10 @@ pub struct FMul {
 }
 
 impl Instruction for FMul {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -209,6 +220,10 @@ pub struct FDiv {
 }
 
 impl Instruction for FDiv {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -249,6 +264,10 @@ pub struct FRem {
 }
 
 impl Instruction for FRem {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }
@@ -287,6 +306,10 @@ pub struct FNeg {
 }
 
 impl Instruction for FNeg {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         std::iter::once(&self.value)
     }
@@ -330,6 +353,10 @@ pub struct FCmp {
 }
 
 impl Instruction for FCmp {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE | InstructionFlags::ARITHMETIC_FP
+    }
+
     fn operands(&self) -> impl Iterator<Item = &Operand> {
         [&self.lhs, &self.rhs].into_iter()
     }

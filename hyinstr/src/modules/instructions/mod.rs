@@ -1,14 +1,140 @@
 use auto_enums::auto_enum;
+use bitflags::bitflags;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
-use crate::modules::{Instruction, Operand, misc};
+use crate::{
+    modules::{Operand, operand::Name},
+    types::Typeref,
+};
 
 pub mod fp;
 pub mod int;
 pub mod mem;
 pub mod meta;
+pub mod misc;
+
+bitflags! {
+    /// Flags providing additional information about instructions, this can
+    /// be whether an instruction is a meta-instruction, whether it has side-effects, etc.
+    pub struct InstructionFlags: u32 {
+        /// Instruction is a meta-instruction (e.g., assertions, assumptions, ...)
+        ///
+        /// Those instructions are not meant to appear in executable code. They are
+        /// used for verification, analysis, or optimization purposes.
+        const META = 1 << 0;
+
+        /// Instruction defined are simple which is a weaker form of having no side-effects.
+        ///
+        /// A "simple" instruction is one that does not have side-effects except for potential
+        /// trap due to overflow or invalid operations (e.g., division by zero).
+        ///
+        /// The intuition behind is that it could be freely duplicated (e.g., inlining) and
+        /// that removing duplicated simple instructions would not change the program semantics.
+        /// It cannot be fully removed as trapping behavior must be preserved.
+        ///
+        /// 1. Memory instructions are *never* "simple" even if technically non-volatile loads
+        ///    could be considered as such.
+        /// 2. meta assert/assume/prob are considered simple as they can be duplicated without
+        ///    changing semantics.
+        /// 3. Invoke instructions are not simple as they may have side-effects.
+        /// 4. Phi instructions are considered simple as they are just SSA value selectors.
+        /// 5. All arithmetic and logical instructions are considered simple.
+        /// 6. Select instructions are considered simple as they are just SSA value selectors.
+        const SIMPLE = 1 << 1;
+
+        /// This instruction is an arithmetic operation
+        ///
+        /// Used to group both integer and floating-point arithmetic instructions.
+        const ARITHMETIC = 1 << 6;
+
+        /// This instruction is a integer arithmetic operation
+        ///
+        /// This includes all integer arithmetic and integer comparison instructions (e.g., iadd, isub, imul, idiv, icmp)
+        const ARITHMETIC_INT = Self::ARITHMETIC.bits() | (1 << 7);
+
+        /// This instruction is a floating-point arithmetic operation
+        ///
+        /// This includes all FP arithmetic and FP comparison instructions (e.g., fadd, fsub, fmul, fdiv, fcmp)
+        const ARITHMETIC_FP = Self::ARITHMETIC.bits() | (1 << 8);
+
+        /// This instruction is *potentially* affecting or accessing memory state. This
+        /// regroups loads, stores, and function calls.
+        const MEMORY = 1 << 9;
+    }
+}
+
+/// Common interface implemented by every instruction node.
+///
+/// This trait provides lightweight, zero‑allocation iteration over an
+/// instruction's input operands and exposes its optional destination SSA
+/// name when present.
+pub trait Instruction {
+    fn flags(&self) -> InstructionFlags;
+
+    /// Returns true if this instruction is a meta-instruction.
+    #[inline]
+    fn is_meta_instruction(&self) -> bool {
+        self.flags().contains(InstructionFlags::META)
+    }
+
+    /// Returns true if this instruction is "simple", see [`InstructionFlags::SIMPLE`].
+    #[inline]
+    fn is_simple(&self) -> bool {
+        self.flags().contains(InstructionFlags::SIMPLE)
+    }
+
+    /// Iterate over all input operands for this instruction.
+    fn operands(&self) -> impl Iterator<Item = &Operand>;
+
+    /// Return the destination SSA name if the instruction produces a result.
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    /// Type of the destination SSA name if the instruction produces a result.
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+
+    /// Any types referenced by this instruction.
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref>;
+
+    /// Update the destination SSA name for this instruction. No-op if the
+    /// instruction does not produce a result.
+    fn set_destination(&mut self, _name: Name) {}
+
+    /// Mutably iterate over all input operands for this instruction.
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand>;
+
+    /// Convenience iterator over referenced SSA names (i.e., register
+    /// operands). Immediates and labels are ignored.
+    fn dependencies(&self) -> impl Iterator<Item = Name> {
+        self.operands().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(*reg),
+            _ => None,
+        })
+    }
+
+    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(reg),
+            _ => None,
+        })
+    }
+
+    // Remap operands according to a mapping
+    fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
+        for operand in self.operands_mut() {
+            if let Operand::Reg(name) = operand {
+                if let Some(new_name) = mapping(*name) {
+                    *name = new_name;
+                }
+            }
+        }
+    }
+}
 
 /// Discriminated union covering all public instruction kinds.
 ///
@@ -82,12 +208,12 @@ impl HyInstrOp {
     /// 4. Phi instructions are considered simple as they are just SSA value selectors.
     /// 5. All arithmetic and logical instructions are considered simple.
     /// 6. Select instructions are considered simple as they are just SSA value selectors.
-    pub fn is_simple(&self) -> bool {
-        match self {
-            HyInstrOp::MLoad | HyInstrOp::MStore | HyInstrOp::MAlloca | HyInstrOp::Invoke => false,
-            _ => true,
-        }
-    }
+    // pub fn is_simple(&self) -> bool {
+    //     match self {
+    //         HyInstrOp::MLoad | HyInstrOp::MStore | HyInstrOp::MAlloca | HyInstrOp::Invoke => false,
+    //         _ => true,
+    //     }
+    // }
 
     /// Return the canonical mnemonic used when printing this instruction.
     pub fn opname(&self) -> &'static str {
@@ -194,27 +320,6 @@ impl HyInstr {
     pub fn op(&self) -> HyInstrOp {
         self.into()
     }
-
-    /// Returns true if this instruction is "simple", weaker that has side-effects.
-    ///
-    /// A simple instruction is one that does not have side-effects except for potential
-    /// trap due to overflow or invalid operations (e.g., division by zero).
-    ///
-    /// The intuition behind is that it could be freely duplicated (e.g., inlining) and
-    /// that removing duplicated simple instructions would not change the program semantics.
-    /// It cannot be fully removed as trapping behavior must be preserved.
-    ///
-    /// 1. Memory instructions are *never* "simple" even if technically non-volatile loads
-    ///    could be considered as such.
-    /// 2. meta assert/assume/prob are considered simple as they can be duplicated without
-    ///    changing semantics.
-    /// 3. Invoke instructions are not simple as they may have side-effects.
-    /// 4. Phi instructions are considered simple as they are just SSA value selectors.
-    /// 5. All arithmetic and logical instructions are considered simple.
-    /// 6. Select instructions are considered simple as they are just SSA value selectors.
-    pub fn is_simple(&self) -> bool {
-        self.op().is_simple()
-    }
 }
 
 macro_rules! define_instr_any_instr {
@@ -222,10 +327,10 @@ macro_rules! define_instr_any_instr {
         $($variant:ident),* $(,)?
     ) => {
         impl Instruction for HyInstr {
-            fn is_meta_instruction(&self) -> bool {
+            fn flags(&self) -> InstructionFlags {
                 match self {
                     $(
-                        HyInstr::$variant(instr) => instr.is_meta_instruction(),
+                        HyInstr::$variant(instr) => instr.flags(),
                     )*
                 }
             }

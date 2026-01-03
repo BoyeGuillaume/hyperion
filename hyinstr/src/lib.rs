@@ -13,6 +13,7 @@
 //! You typically construct instructions directly by populating their public
 //! fields, then place them in basic blocks (`BasicBlock`) and functions
 //! (`Function`). A `Module` groups functions and external symbols.
+pub mod analysis;
 pub mod consts;
 pub mod modules;
 pub mod types;

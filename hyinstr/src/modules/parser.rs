@@ -25,8 +25,7 @@ use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
         BasicBlock, CallingConvention, Function, Instruction, Module, Visibility,
-        instructions::{HyInstr, HyInstrOp, fp::*, int::*, mem::*, meta::*},
-        misc::*,
+        instructions::{HyInstr, HyInstrOp, fp::*, int::*, mem::*, meta::*, misc::*},
         operand::{Label, Name, Operand},
         symbol::{FunctionPointer, FunctionPointerType},
         terminator::*,

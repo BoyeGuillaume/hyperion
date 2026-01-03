@@ -20,7 +20,7 @@ use std::{
 use crate::{
     consts::AnyConst,
     modules::{
-        instructions::HyInstr,
+        instructions::{HyInstr, Instruction},
         operand::{Label, Name, Operand},
         symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
     },
@@ -35,76 +35,11 @@ use uuid::Uuid;
 
 pub mod fmt;
 pub mod instructions;
-pub mod misc;
 pub mod operand;
 #[cfg(feature = "chumsky")]
 pub mod parser;
 pub mod symbol;
 pub mod terminator;
-
-/// Common interface implemented by every instruction node.
-///
-/// This trait provides lightweight, zero‑allocation iteration over an
-/// instruction's input operands and exposes its optional destination SSA
-/// name when present.
-pub trait Instruction {
-    /// Returns true if this is a meta-instruction (i.e., used for verification or analysis purposes).
-    ///
-    /// Meta-instructions should never appear in executable code.
-    fn is_meta_instruction(&self) -> bool {
-        false
-    }
-
-    /// Iterate over all input operands for this instruction.
-    fn operands(&self) -> impl Iterator<Item = &Operand>;
-
-    /// Return the destination SSA name if the instruction produces a result.
-    fn destination(&self) -> Option<Name> {
-        None
-    }
-
-    /// Type of the destination SSA name if the instruction produces a result.
-    fn destination_type(&self) -> Option<Typeref> {
-        None
-    }
-
-    /// Any types referenced by this instruction.
-    fn referenced_types(&self) -> impl Iterator<Item = Typeref>;
-
-    /// Update the destination SSA name for this instruction. No-op if the
-    /// instruction does not produce a result.
-    fn set_destination(&mut self, _name: Name) {}
-
-    /// Mutably iterate over all input operands for this instruction.
-    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand>;
-
-    /// Convenience iterator over referenced SSA names (i.e., register
-    /// operands). Immediates and labels are ignored.
-    fn dependencies(&self) -> impl Iterator<Item = Name> {
-        self.operands().filter_map(|op| match op {
-            Operand::Reg(reg) => Some(*reg),
-            _ => None,
-        })
-    }
-
-    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
-        self.operands_mut().filter_map(|op| match op {
-            Operand::Reg(reg) => Some(reg),
-            _ => None,
-        })
-    }
-
-    // Remap operands according to a mapping
-    fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
-        for operand in self.operands_mut() {
-            if let Operand::Reg(name) = operand {
-                if let Some(new_name) = mapping(*name) {
-                    *name = new_name;
-                }
-            }
-        }
-    }
-}
 
 /// All Global Variables and Functions have one of the following types of linkage:
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]

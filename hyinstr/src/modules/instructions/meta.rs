@@ -4,7 +4,7 @@
 //! verification when `Function::meta_function` is false.
 use crate::{
     modules::{
-        Instruction,
+        instructions::{Instruction, InstructionFlags},
         operand::{Name, Operand},
     },
     types::Typeref,
@@ -29,8 +29,8 @@ pub struct MetaAssert {
 }
 
 impl Instruction for MetaAssert {
-    fn is_meta_instruction(&self) -> bool {
-        true
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META | InstructionFlags::SIMPLE
     }
 
     fn operands(&self) -> impl Iterator<Item = &Operand> {
@@ -86,8 +86,8 @@ pub struct MetaAssume {
 }
 
 impl Instruction for MetaAssume {
-    fn is_meta_instruction(&self) -> bool {
-        true
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META | InstructionFlags::SIMPLE
     }
 
     fn operands(&self) -> impl Iterator<Item = &Operand> {
@@ -219,8 +219,8 @@ pub struct MetaProb {
 }
 
 impl Instruction for MetaProb {
-    fn is_meta_instruction(&self) -> bool {
-        true
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META | InstructionFlags::SIMPLE
     }
 
     fn operands(&self) -> impl Iterator<Item = &Operand> {
