@@ -16,6 +16,7 @@ output:
     ret %output
 }
 
+; Simple list implementation for testing
 define i32 list.get(%xs: {ptr, i32, i32}) {
 entry:
     ret i32 0
@@ -23,3 +24,12 @@ entry:
 crash:
     trap
 }
+
+define void list.set(%xs: {ptr, i32, i32}, %index: i32, %value: i32) {
+entry:
+    ret void
+
+crash:
+    trap
+}
+
