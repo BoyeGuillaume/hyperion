@@ -191,30 +191,6 @@ pub enum HyInstr {
 }
 
 impl HyInstrOp {
-    /// Returns true if this instruction is "simple", weaker that has side-effects.
-    ///
-    /// A simple instruction is one that does not have side-effects except for potential
-    /// trap due to overflow or invalid operations (e.g., division by zero).
-    ///
-    /// The intuition behind is that it could be freely duplicated (e.g., inlining) and
-    /// that removing duplicated simple instructions would not change the program semantics.
-    /// It cannot be fully removed as trapping behavior must be preserved.
-    ///
-    /// 1. Memory instructions are *never* "simple" even if technically non-volatile loads
-    ///    could be considered as such.
-    /// 2. meta assert/assume/prob are considered simple as they can be duplicated without
-    ///    changing semantics.
-    /// 3. Invoke instructions are not simple as they may have side-effects.
-    /// 4. Phi instructions are considered simple as they are just SSA value selectors.
-    /// 5. All arithmetic and logical instructions are considered simple.
-    /// 6. Select instructions are considered simple as they are just SSA value selectors.
-    // pub fn is_simple(&self) -> bool {
-    //     match self {
-    //         HyInstrOp::MLoad | HyInstrOp::MStore | HyInstrOp::MAlloca | HyInstrOp::Invoke => false,
-    //         _ => true,
-    //     }
-    // }
-
     /// Return the canonical mnemonic used when printing this instruction.
     pub fn opname(&self) -> &'static str {
         match self {
