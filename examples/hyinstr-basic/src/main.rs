@@ -14,26 +14,6 @@ use uuid::Uuid;
 
 fn main() {
     // Create a simple script that uses hyinstr to define a function (factorial)
-    // Psoeudo code:
-    //   fn factorial(n: i32) -> i32 {
-    //       if n <= 1 {
-    //           return 1;
-    //       } else {
-    //           return n * factorial(n - 1);
-    //       }
-    //   }
-    //
-    //  %1 = icmp sle i32 %n, 1
-    //  br i1 %1, label %base_case, label %recurse
-    //
-    // base_case:
-    //  ret i32 1
-    // recurse_a:
-    //  %2 = sub i32 %n, 1
-    //  %3 = call i32 @factorial(i32 %2)
-    // recurse_b:
-    //  %4 = mul i32 %n, %3
-    //  ret i32 %4
     let type_registry = TypeRegistry::new([0; 6]);
     let i32_ty = type_registry.search_or_insert(IType::I32.into());
     let factorial_func_uuid = Uuid::new_v4();
