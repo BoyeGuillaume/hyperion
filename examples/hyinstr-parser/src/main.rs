@@ -64,43 +64,4 @@ fn main() {
             }
         },
     }
-
-    // Convert
-
-    // match function_parser.parse(input_code.as_str()).into_result() {
-    //     Ok(func) => {
-    //         println!("Parsed function: {}", func.fmt(&type_registry, None));
-    //     }
-    //     Err(errors) => {
-    //         eprintln!("Failed to parse function:");
-    //         for error in errors {
-    //             let span = error.span();
-    //             Report::build(ariadne::ReportKind::Error, span.into_range())
-    //                 .with_message(format!("{}", error))
-    //                 .with_label(
-    //                     Label::new(span.into_range())
-    //                         .with_message("The error occurred here")
-    //                         .with_color(a),
-    //                 )
-    //                 .finish()
-    //                 .print(Source::from(input_code.as_str()))
-    //                 .unwrap();
-    //         }
-    //         std::process::exit(1);
-    //     }
-    // }
-
-    // let operand_parser = parse_operand(|_, _| Some(Uuid::nil()), |_| 0, |_| Label::NIL);
-    // match operand_parser.parse(input_code.as_str()).into_result() {
-    //     Ok(operand) => {
-    //         println!("Parsed operand: {:?}", operand);
-    //     }
-    //     Err(errors) => {
-    //         eprintln!("Failed to parse operand:");
-    //         for error in errors {
-    //             eprintln!("  {}", error);
-    //         }
-    //         std::process::exit(1);
-    //     }
-    // }
 }
