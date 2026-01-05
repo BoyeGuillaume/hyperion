@@ -18,6 +18,8 @@ pub mod misc;
 bitflags! {
     /// Flags providing additional information about instructions, this can
     /// be whether an instruction is a meta-instruction, whether it has side-effects, etc.
+    #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct InstructionFlags: u32 {
         /// Instruction is a meta-instruction (e.g., assertions, assumptions, ...)
         ///
@@ -59,9 +61,20 @@ bitflags! {
         /// This includes all FP arithmetic and FP comparison instructions (e.g., fadd, fsub, fmul, fdiv, fcmp)
         const ARITHMETIC_FP = Self::ARITHMETIC.bits() | (1 << 8);
 
-        /// This instruction is *potentially* affecting or accessing memory state. This
-        /// regroups loads, stores, and function calls.
-        const MEMORY = 1 << 9;
+        /// This flag is reserved for invoke instructions as `invoke` have behavior
+        /// depending on function external to the current function/module. As such
+        /// it should be understand as "maybe has side-effects".
+        const INVOKE = 1 << 9;
+
+        /// This instruction is affecting or accessing memory state. This
+        /// regroups loads, stores
+        const MEMORY = 1 << 10;
+
+        /// Control flow instruction (e.g., function calls, branches) also for every terminator instruction.
+        const CONTROL_FLOW = 1 << 11;
+
+        /// Terminator instruction (ending a basic block)
+        const TERMINATOR = 1 << 12 | Self::CONTROL_FLOW.bits();
     }
 }
 
@@ -71,6 +84,7 @@ bitflags! {
 /// instruction's input operands and exposes its optional destination SSA
 /// name when present.
 pub trait Instruction {
+    /// Get the instruction flags for this instruction.
     fn flags(&self) -> InstructionFlags;
 
     /// Returns true if this instruction is a meta-instruction.

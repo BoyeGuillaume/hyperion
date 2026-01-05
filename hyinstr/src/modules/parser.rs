@@ -1413,8 +1413,6 @@ where
                             let [value] = operand.unwrap_left().try_into().unwrap();
                             MetaProbOperand::Variance(value)
                         }
-                        MetaProbVariant::ProbabilityReachability => MetaProbOperand::ProbabilityReachability,
-                        MetaProbVariant::ExpectedIterations => MetaProbOperand::ExpectedIterations,
                     };
 
                     MetaProb { dest, ty, operand }.into()

@@ -42,7 +42,7 @@ pub struct Invoke {
 
 impl Instruction for Invoke {
     fn flags(&self) -> InstructionFlags {
-        InstructionFlags::MEMORY
+        InstructionFlags::INVOKE | InstructionFlags::CONTROL_FLOW
     }
 
     fn operands(&self) -> impl Iterator<Item = &Operand> {

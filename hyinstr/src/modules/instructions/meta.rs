@@ -9,7 +9,6 @@ use crate::{
     },
     types::Typeref,
 };
-use either::Either;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
@@ -149,20 +148,6 @@ pub enum MetaProbOperand {
     /// Operand should be a numeric value (integer or floating-point), this represents the variance
     /// of that operand defined as Var(X) = E[(X - E[X])^2].
     Variance(Operand),
-
-    /// Probability of reachability
-    ///
-    /// If this meta-instruction is used within a certain control-flow path, then this indicates
-    /// the probability of reaching this point in the program.
-    ///
-    /// *Note*: The assumption that whenever a block is reached all instructions within it are
-    /// also reached is false due to crashes. Imagine a %load instruction that may fail due to
-    /// an invalid pointer dereference. *This function does not check that all instructions are
-    /// reached but only that the block containing them is reached.*
-    ProbabilityReachability,
-
-    /// Expected number of iterations for loops
-    ExpectedIterations,
 }
 
 impl MetaProbVariant {
@@ -177,7 +162,6 @@ impl MetaProbVariant {
             MetaProbVariant::Probability
             | MetaProbVariant::ExpectedValue
             | MetaProbVariant::Variance => 1,
-            MetaProbVariant::ProbabilityReachability | MetaProbVariant::ExpectedIterations => 0,
         }
     }
 
@@ -187,8 +171,6 @@ impl MetaProbVariant {
             MetaProbVariant::Probability => "prb",   /* boolean */
             MetaProbVariant::ExpectedValue => "xpt", /* numeric */
             MetaProbVariant::Variance => "var",      /* numeric */
-            MetaProbVariant::ProbabilityReachability => "rch", /* no operand */
-            MetaProbVariant::ExpectedIterations => "eit", /* no operand */
         }
     }
 
@@ -227,10 +209,7 @@ impl Instruction for MetaProb {
         match &self.operand {
             MetaProbOperand::Probability(op)
             | MetaProbOperand::ExpectedValue(op)
-            | MetaProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
-            MetaProbOperand::ProbabilityReachability | MetaProbOperand::ExpectedIterations => {
-                Either::Right(std::iter::empty())
-            }
+            | MetaProbOperand::Variance(op) => std::iter::once(op),
         }
     }
 
@@ -238,10 +217,7 @@ impl Instruction for MetaProb {
         match &mut self.operand {
             MetaProbOperand::Probability(op)
             | MetaProbOperand::ExpectedValue(op)
-            | MetaProbOperand::Variance(op) => Either::Left(std::iter::once(op)),
-            MetaProbOperand::ProbabilityReachability | MetaProbOperand::ExpectedIterations => {
-                Either::Right(std::iter::empty())
-            }
+            | MetaProbOperand::Variance(op) => std::iter::once(op),
         }
     }
 

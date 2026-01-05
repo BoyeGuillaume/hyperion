@@ -8,7 +8,22 @@ use auto_enums::auto_enum;
 use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
-use crate::modules::operand::{Label, Name, Operand};
+use crate::{
+    modules::{
+        instructions::{Instruction, InstructionFlags},
+        operand::{Label, Name, Operand},
+    },
+    types::Typeref,
+};
+
+/// Common interface for terminator instructions
+///
+/// A terminator instruction is one that alters the control flow of execution,
+/// typically by transferring control to one or more target labels. Examples
+/// include branches, jumps, and returns.
+pub trait Terminator: Instruction {
+    fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)>;
+}
 
 /// Conditional branch instruction
 ///
@@ -27,6 +42,42 @@ pub struct Branch {
     pub target_false: Label,
 }
 
+impl Instruction for Branch {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::TERMINATOR
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.cond)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.cond)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+}
+
+impl Terminator for Branch {
+    fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)> {
+        [
+            (self.target_true, Some(&self.cond)),
+            (self.target_false, None),
+        ]
+        .into_iter()
+    }
+}
+
 /// Unconditional jump instruction
 ///
 /// See `Label` in `operand.rs` for more information about code labels.
@@ -35,6 +86,38 @@ pub struct Branch {
 pub struct Jump {
     /// The label to jump to.
     pub target: Label,
+}
+
+impl Instruction for Jump {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::TERMINATOR
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+}
+
+impl Terminator for Jump {
+    fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)> {
+        std::iter::once((self.target, None))
+    }
 }
 
 /// Return from function instruction. Optionally returns a value.
@@ -46,10 +129,74 @@ pub struct Ret {
     pub value: Option<Operand>,
 }
 
+impl Instruction for Ret {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::TERMINATOR
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        self.value.iter()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        self.value.iter_mut()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+}
+
+impl Terminator for Ret {
+    fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)> {
+        std::iter::empty()
+    }
+}
+
 /// Trap instruction to indicate an unrecoverable error or exceptional condition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Trap;
+
+impl Instruction for Trap {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::TERMINATOR
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        None
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        None
+    }
+}
+
+impl Terminator for Trap {
+    fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)> {
+        std::iter::empty()
+    }
+}
 
 /// Control flow terminator instructions
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumTryAs, EnumIs, EnumDiscriminants)]
@@ -89,50 +236,6 @@ impl HyTerminator {
 }
 
 impl HyTerminator {
-    /// Iterate over operands consumed by this terminator.
-    #[auto_enum(Iterator)]
-    pub fn operands(&self) -> impl Iterator<Item = &Operand> {
-        match self {
-            HyTerminator::Branch(cbranch) => std::iter::once(&cbranch.cond),
-            HyTerminator::Jump(_) => std::iter::empty(),
-            HyTerminator::Ret(ret) => ret.value.iter(),
-            HyTerminator::Trap(_) => std::iter::empty(),
-        }
-    }
-
-    /// Iterate over SSA dependencies referenced by this terminator.
-    pub fn dependencies(&self) -> impl Iterator<Item = Name> {
-        self.operands().filter_map(|op| {
-            if let Operand::Reg(name) = op {
-                Some(*name)
-            } else {
-                None
-            }
-        })
-    }
-
-    /// Iterate mutably over operands consumed by this terminator.
-    #[auto_enum(Iterator)]
-    pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
-        match self {
-            HyTerminator::Branch(cbranch) => std::iter::once(&mut cbranch.cond),
-            HyTerminator::Jump(_) => std::iter::empty(),
-            HyTerminator::Ret(ret) => ret.value.iter_mut(),
-            HyTerminator::Trap(_) => std::iter::empty(),
-        }
-    }
-
-    /// Iterate mutably over SSA dependencies referenced by this terminator.
-    pub fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
-        self.operands_mut().filter_map(|op| {
-            if let Operand::Reg(name) = op {
-                Some(name)
-            } else {
-                None
-            }
-        })
-    }
-
     /// Iterate over branch targets along with the optional condition operand.
     #[auto_enum(Iterator)]
     pub fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&'_ Operand>)> + '_ {
@@ -147,6 +250,69 @@ impl HyTerminator {
             HyTerminator::Trap(_) => std::iter::empty(),
         }
     }
+}
+
+macro_rules! define_instr_any_instr {
+    (
+        $($variant:ident),* $(,)?
+    ) => {
+        impl Instruction for HyTerminator {
+            fn flags(&self) -> InstructionFlags {
+                match self {
+                    $(HyTerminator::$variant(inst) => inst.flags(),)*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn operands(&self) -> impl Iterator<Item = &Operand> {
+                match self {
+                    $(HyTerminator::$variant(inst) => inst.operands(),)*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.operands_mut(),)*
+                }
+            }
+
+            fn destination(&self) -> Option<Name> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.destination(),)*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.referenced_types(),)*
+                }
+            }
+
+            fn destination_type(&self) -> Option<Typeref> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.destination_type(),)*
+                }
+            }
+        }
+
+        impl Terminator for HyTerminator {
+            #[auto_enum(Iterator)]
+            fn iter_targets(&self) -> impl Iterator<Item = (Label, Option<&Operand>)> {
+                match self {
+                    $(HyTerminator::$variant(inst) => inst.iter_targets(),)*
+                }
+            }
+        }
+    };
+}
+
+define_instr_any_instr! {
+    Branch,
+    Jump,
+    Ret,
+    Trap,
 }
 
 macro_rules! define_terminator_from {

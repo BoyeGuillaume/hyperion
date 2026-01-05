@@ -174,8 +174,6 @@ impl HyInstr {
                             MetaProbOperand::Probability(_) => write!(f, ".prob")?,
                             MetaProbOperand::ExpectedValue(_) => write!(f, ".ev")?,
                             MetaProbOperand::Variance(_) => write!(f, ".var")?,
-                            MetaProbOperand::ProbabilityReachability => write!(f, ".rch")?,
-                            MetaProbOperand::ExpectedIterations => write!(f, ".eit")?,
                         };
                         Ok(false)
                     }
