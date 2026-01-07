@@ -50,6 +50,7 @@ impl TerminationBehavior {
 
 /// Analysis statistics that can be used to gather information about behavior of
 /// an block of instructions/function during execution or simulation.
+///
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[strum_discriminants(name(AnalysisStatisticOp))]
@@ -66,23 +67,16 @@ pub enum AnalysisStatistic {
     /// memory instructions were executed.
     InstructionCount(InstructionFlags),
 
-    /// Termination behavior observed at the given point. This returns an integer similar
+    /// Number of times this function was executed (useful for loop counts, recursion depth, etc).
+    ExecutionCount,
+
+    /// Termination behavior observed at the block/label. This returns an integer similar
     /// to [`TerminationBehavior::to_u8()`].
     ///
-    /// Note: This is the termination/behavior of the current function/block. For instance the following
-    /// ```llvm
-    /// block_0:
-    ///   %0: i2 = !statistic.termination_behavior
-    ///   !assert.eq %0, i2 0                      ; assert normal termination, this asserts that the some_function below terminates normally
-    ///   %1: i32 = invoke %some_function, %2, i32 0
-    ///   !assert.eq %0, i2 0                      ; this doesn't do anything because either invoke succeeded but if trapped, or diverged, assert is not reached
-    /// ```
+    /// This evaluate the termination of the **whole** block of instructions/function not the at the
+    /// given point. This is motivated by the fact that assertion about termination behavior should be
+    /// made prior to executing the block/function.
     TerminationBehavior,
-
-    /// Number of times this function was executed (useful for loop counts, recursion depth, etc).
-    ///
-    /// Note: Combine with `phi` nodes to assert loop iteration counts (outside the loop body).
-    ExecutionCount,
 }
 
 impl AnalysisStatistic {

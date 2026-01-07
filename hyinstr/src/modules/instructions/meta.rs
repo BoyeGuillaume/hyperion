@@ -3,6 +3,7 @@
 //! These nodes never appear in executable code and are filtered out during
 //! verification when `Function::meta_function` is false.
 use crate::{
+    analysis::AnalysisStatistic,
     modules::{
         instructions::{Instruction, InstructionFlags},
         operand::{Name, Operand},
@@ -219,6 +220,54 @@ impl Instruction for MetaProb {
             | MetaProbOperand::ExpectedValue(op)
             | MetaProbOperand::Variance(op) => std::iter::once(op),
         }
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Instruction used to query analysis statistics during execution or simulation.
+///
+/// Note: Some of those analysis statistics are tied to some architectural features or
+/// hardware capabilities (e.g. performance counters, etc). Therefore, any statement/proof
+/// containing those analysis must be tied to a specific architecture or hardware model.
+///
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaAnalysisStat {
+    /// The destination SSA name for the result of the analysis statistic instruction.
+    pub dest: Name,
+    /// The output type of the analysis statistic.
+    /// This should always be an integer type representing a count or measurement.
+    pub ty: Typeref,
+    /// The analysis statistic to query.
+    pub statistic: AnalysisStatistic,
+}
+
+impl Instruction for MetaAnalysisStat {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META | InstructionFlags::SIMPLE
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
     }
 
     fn destination(&self) -> Option<Name> {
