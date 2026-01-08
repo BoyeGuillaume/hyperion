@@ -38,9 +38,9 @@ pub fn simple_simplify_function(func: &mut Function) -> HyResult<()> {
                 return true;
             }
 
-            // Clone the element and set its destination to None for comparison
+            // Clone the element and set its destination to the same value (so we can compare)
             let mut cloned_elem = elem.clone();
-            cloned_elem.set_destination(0);
+            cloned_elem.set_destination(Name(0));
 
             match previous_operand_map.get(&cloned_elem) {
                 Some(existing_name) => {

@@ -197,7 +197,7 @@ impl<'a> State<'a> {
         if let Some(reg) = self.register_namespace.get(name) {
             *reg
         } else {
-            let reg = self.register_namespace.len() as u32;
+            let reg = Name(self.register_namespace.len() as u32);
             self.register_namespace.insert(name.to_string(), reg);
             reg
         }

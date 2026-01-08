@@ -2,6 +2,8 @@
 //!
 //! An instruction operand can be a reference to another SSA value (`Reg`),
 //! an immediate constant (`Imm`) or a code label (`Lbl`).
+use std::fmt::Debug;
+
 use crate::consts::AnyConst;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -9,7 +11,35 @@ use strum::{EnumIs, EnumTryAs};
 
 /// SSA value identifier used to name the destination or reference another
 /// instruction's result.
-pub type Name = u32;
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Name(pub u32);
+
+impl std::ops::Add<u32> for Name {
+    type Output = Name;
+
+    fn add(self, rhs: u32) -> Self::Output {
+        Name(self.0 + rhs)
+    }
+}
+
+impl std::ops::AddAssign<u32> for Name {
+    fn add_assign(&mut self, rhs: u32) {
+        self.0 += rhs;
+    }
+}
+
+impl std::fmt::Display for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "%{}", self.0)
+    }
+}
+
+impl Debug for Name {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "%{}", self.0)
+    }
+}
 
 /// Represents a meta operand used internally in attributes and properties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
