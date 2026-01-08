@@ -67,6 +67,12 @@ pub struct LazyContainer<T> {
     state: AtomicUsize,
 }
 
+impl Default for LazyContainer<()> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> LazyContainer<T> {
     pub const fn new() -> Self {
         Self {
