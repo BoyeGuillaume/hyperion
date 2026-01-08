@@ -8,22 +8,7 @@ use hyinstr::modules::{
 };
 use petgraph::graph::DiGraph;
 
-// /// Merge two meta functions into one
-// pub fn merge_meta_functions(a: Function, b: Function) -> anyhow::Result<()> {
-//     #[cfg(debug_assertions)]
-//     {
-//         a.verify().expect("Function must be valid before merging");
-//         b.verify().expect("Function must be valid before merging");
-//     }
-
-//     if !a.meta_function || !b.meta_function {
-//         bail!("Both functions must be meta functions to be merged");
-//     }
-
-//     todo!();
-
-//     Ok(())
-//
+use crate::utils::error::HyResult;
 
 /// A simple simplification pass for functions
 ///
@@ -33,7 +18,7 @@ use petgraph::graph::DiGraph;
 /// # Arguments
 /// * `func` - The function to simplify
 ///
-pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
+pub fn simple_simplify_function(func: &mut Function) -> HyResult<()> {
     #[cfg(debug_assertions)]
     func.verify()
         .expect("Function must be valid before simplifying");
@@ -99,7 +84,7 @@ pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
 /// # Arguments
 /// * `func` - The function to process
 ///
-pub fn remove_unused_op(func: &mut Function) -> anyhow::Result<()> {
+pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     #[cfg(debug_assertions)]
     func.verify()
         .expect("Function must be valid before removing unused operands");

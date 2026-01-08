@@ -33,7 +33,6 @@ thiserror = "^2"
 bitflags = "^2"
 nalgebra = "^0.34"
 enum-map = ">=2.4"
-anyhow = ">=1.0.71"
 bit-set = ">=0.5"
 ariadne = "0.6"
 
