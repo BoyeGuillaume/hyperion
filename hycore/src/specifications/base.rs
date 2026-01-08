@@ -76,9 +76,14 @@ impl SpecificationAccelerationStructures {
     }
 }
 
-/// A specification is a wrapper around a meta-function that
-/// describes certain properties that are expected or proven
-/// to be true.
+/// Specification are a set of external properties attached to functions, expressed as meta-functions.
+///
+/// These meta-functions can contain meta-instructions such as assertions and assumptions,
+/// which can be used by provers to verify that the target function adheres to its specification.
+///
+/// They are external as they do not provide information about the internal workings of the function,
+/// only about its external state and behavior.
+///
 pub struct Specification {
     /// Uuid (should stay static after creation)
     uuid: Uuid,
