@@ -8,7 +8,10 @@ members = [
 ]
 
 [workspace.dependencies]
+semver = "^1"
 smallvec = "2.0.0-alpha.12"
+build-info = "0.0.42"
+build-info-build = "0.0.42"
 strum = ">=0.25.0"
 either = "*"
 termcolor = "^1.1.1"

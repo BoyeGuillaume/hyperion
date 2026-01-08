@@ -8,35 +8,13 @@
 
 use std::collections::BTreeSet;
 
-use enum_map::{Enum, EnumMap};
+use enum_map::EnumMap;
 use hyinstr::{
+    analysis::TerminationBehavior,
     consts::AnyConst,
     modules::{Function, InstructionRef, operand::Operand, symbol::FunctionPointer},
 };
 use uuid::Uuid;
-
-/// Approximation of a function's halting behavior under a given condition.
-///
-/// These variants are intended as coarse, mutually exclusive labels that can be
-/// used by analyses and checks. They are not a formal proof of behavior for
-/// arbitrary code (the Halting Problem is undecidable), but serve as pragmatic
-/// categories for reasoning about termination:
-///
-/// - `Terminates`: under the linked condition the function is expected to finish
-///   in finite time.
-/// - `Crashes`: under the linked condition the function is expected to abort
-///   abnormally (e.g. due to an unhandled trap or explicit panic).
-/// - `Loops`: under the linked condition the function is expected to run forever
-///   (non-terminating) without crashing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum)]
-pub enum HaltingBehavior {
-    /// The function (under provided condition) is guaranteed to terminate in finite time.
-    Terminates,
-    /// The function (under provided condition) always crashes (e.g., due to an unhandled exception or illegal operation).
-    Crashes,
-    /// The function (under provided condition) never terminates and does not crash (e.g., enters an infinite loop).
-    Loops,
-}
 
 /// A specification attached to a function that collects assertions, assumptions,
 /// and references needed for modular verification or analysis.
@@ -69,7 +47,7 @@ pub struct Specification {
     ///
     /// TODO: Write this as a meta-instruction (something like `invoke_behavior` that takes value in 0..2 with
     /// 0 = terminates, 1 = crashes, 2 = loops) rather than a map.
-    pub behavior: EnumMap<HaltingBehavior, Operand>,
+    pub behavior: EnumMap<TerminationBehavior, Operand>,
 
     /// Collected references to all assert-style meta-instructions found in `function`.
     ///

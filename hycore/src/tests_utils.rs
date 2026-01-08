@@ -13,22 +13,6 @@ pub fn example_a(registry: &mut TypeRegistry, module: &mut Module) {
     "#,
     )
     .unwrap();
-    todo!()
-    // extend_module_from_string(
-    //     module,
-    //     registry,
-    //     r#"
-    // define i32 %pow(%x: i32) {
-    // entry:
-    //     %is_zero = icmp eq i1 %n, i32 0
-    //     branch %is_zero, return, return
-    // return:
-    //     %ret_val = phi i32 [i32 1, entry]
-    //     ret %ret_val
-    // }
-    // "#,
-    // )
-    // .unwrap();
 }
 
 #[cfg(test)]

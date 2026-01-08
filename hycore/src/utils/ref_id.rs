@@ -1,5 +1,9 @@
 use std::{ops::Deref, sync::Arc};
 
+/// A reference identifier that uniquely identifies a reference to a value of type `U`.
+///
+/// This struct wraps a reference-like type `T` (e.g., `Arc<U>`, `&U`) and provides
+/// pointer-based equality and ordering based on the address of the underlying `U`.
 #[derive(Debug, Clone)]
 pub struct RefId<U, T: AsRef<U>> {
     inner: T,

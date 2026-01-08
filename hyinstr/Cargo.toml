@@ -16,7 +16,8 @@ auto_enums.workspace = true
 thiserror.workspace = true
 petgraph.workspace = true
 either.workspace = true
-bitflags = { workspace = true }
+enum-map.workspace = true
+bitflags.workspace = true
 chumsky = { workspace = true, optional = true }
 
 [features]

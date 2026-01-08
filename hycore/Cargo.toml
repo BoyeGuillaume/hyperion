@@ -8,6 +8,9 @@ hyinstr.workspace = true
 uuid.workspace = true
 petgraph.workspace = true
 smallvec.workspace = true
+semver.workspace = true
+thiserror.workspace = true
+build-info.workspace = true
 strum = { workspace = true, features = ["derive"] }
 bitflags = { workspace = true }
 nalgebra = { workspace = true, features = ["sparse"] }
@@ -16,6 +19,9 @@ log = { workspace = true }
 either.workspace = true
 anyhow = { workspace = true }
 bit-set = { workspace = true }
+
+[build-dependencies]
+build-info-build.workspace = true
 
 [features]
 default = []

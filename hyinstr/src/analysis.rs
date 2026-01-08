@@ -1,3 +1,4 @@
+use enum_map::Enum;
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
 use crate::modules::instructions::InstructionFlags;
@@ -7,7 +8,7 @@ use crate::modules::instructions::InstructionFlags;
 /// Of course, halting behavior is undecidable in the general case however we can
 /// provide proof and analysis for a subset of cases.
 ///
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Enum)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TerminationBehavior {
     /// Normal termination behavior.
