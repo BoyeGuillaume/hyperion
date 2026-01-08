@@ -315,3 +315,103 @@ impl Instruction for Cast {
         Some(self.ty)
     }
 }
+
+/// Insert a value into an aggregate.
+///
+/// Mirrors LLVM's `insertvalue`: takes an aggregate SSA value and returns a new SSA value of the
+/// same aggregate type with the element at the given index path replaced. The `indices` vector is
+/// a path into potentially nested aggregates (e.g., struct-of-array: first index selects the
+/// struct field, second index selects the array element). All indices must be constant integers.
+/// This is purely a value transform; no memory is touched.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct InsertValue {
+    /// Destination SSA name receiving the updated aggregate.
+    pub dest: Name,
+    /// Resulting aggregate type.
+    pub ty: Typeref,
+    /// Source aggregate operand.
+    pub aggregate: Operand,
+    /// Value to insert.
+    pub value: Operand,
+    /// Path of indices identifying the insertion point.
+    pub indices: Vec<u32>,
+}
+
+impl Instruction for InsertValue {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.aggregate).chain(std::iter::once(&self.value))
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.aggregate).chain(std::iter::once(&mut self.value))
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
+/// Extract a value from an aggregate.
+///
+/// Mirrors LLVM's `extractvalue`: takes an aggregate SSA value and yields the element at the given
+/// index path. The `indices` vector walks through nested aggregates exactly like `InsertValue`, and
+/// all indices must be constant integers. This is a pure value operation (no memory access).
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ExtractValue {
+    /// Destination SSA name receiving the extracted element.
+    pub dest: Name,
+    /// Resulting element type.
+    pub ty: Typeref,
+    /// Source aggregate operand.
+    pub aggregate: Operand,
+    /// Path of indices identifying the extraction point.
+    pub indices: Vec<u32>,
+}
+
+impl Instruction for ExtractValue {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::SIMPLE
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.aggregate)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.aggregate)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}

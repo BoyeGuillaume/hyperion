@@ -6,18 +6,18 @@ use std::{
     u16,
 };
 
-use bigdecimal::{BigDecimal, Num};
+use bigdecimal::BigDecimal;
 use chumsky::{
     container::Seq,
     extra::{ParserExtra, SimpleState},
     input::ValueInput,
     label::LabelError,
     prelude::*,
-    text::{Char, digits},
+    text::Char,
 };
 use either::Either;
 use log::{debug, error, warn};
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
@@ -67,7 +67,6 @@ enum Token<'a> {
     Number(BigInt),
 
     /// Decimal floating-point literal
-    #[allow(dead_code)]
     Decimal(BigDecimal),
 
     /// String literal (enclosed in double quotes)
@@ -273,54 +272,6 @@ fn uuid_parser<'src>() -> impl Parser<'src, &'src str, Uuid, extra::Err<Rich<'sr
         .labelled("UUID")
 }
 
-fn bigint_parser<'src>()
--> impl Parser<'src, &'src str, BigInt, extra::Err<Rich<'src, char>>> + Clone {
-    digits(10)
-        .then(
-            any()
-                .filter(|&c: &char| c.is_ascii_alphanumeric())
-                .repeated(),
-        )
-        .to_slice()
-        .validate(|element: &str, extra, emit| {
-            let two_char = if element.len() >= 2 {
-                &element[0..2]
-            } else {
-                ""
-            };
-
-            match two_char {
-                "0x" => match BigInt::from_str_radix(&element[2..], 16) {
-                    Ok(val) => return val,
-                    Err(e) => {
-                        emit.emit(Rich::custom(extra.span(), format!("{} (hexadecimal)", e)));
-                    }
-                },
-                "0o" => match BigInt::from_str_radix(&element[2..], 8) {
-                    Ok(val) => return val,
-                    Err(e) => {
-                        emit.emit(Rich::custom(extra.span(), format!("{} (octal)", e)));
-                    }
-                },
-                "0b" => match BigInt::from_str_radix(&element[2..], 2) {
-                    Ok(val) => return val,
-                    Err(e) => {
-                        emit.emit(Rich::custom(extra.span(), format!("{} (binary)", e)));
-                    }
-                },
-                _ => match BigInt::from_str_radix(element, 10) {
-                    Ok(val) => return val,
-                    Err(e) => {
-                        emit.emit(Rich::custom(extra.span(), format!("{} (decimal)", e)));
-                    }
-                },
-            }
-
-            BigInt::from(0)
-        })
-        .labelled("number")
-}
-
 fn string_parser<'src>()
 -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
     just('"')
@@ -342,53 +293,185 @@ fn string_parser<'src>()
         .labelled("string literal")
 }
 
-#[allow(unused)]
-fn bigdecimal_parser<'src>()
--> impl Parser<'src, &'src str, BigDecimal, extra::Err<Rich<'src, char>>> + Clone {
-    // Simple floating-point parser using BigDecimal
-    let sign = any()
-        .filter(|&x: &char| x == '+' || x == '-')
-        .or_not()
-        .map(|opt_sign| opt_sign.unwrap_or('+'))
-        .labelled("sign");
-    let integer_part = any()
+fn numeral_parser<'src>()
+-> impl Parser<'src, &'src str, Token<'src>, extra::Err<Rich<'src, char>>> + Clone {
+    let sign = just('+').or(just('-')).or_not();
+    let decimal_digits = any()
         .filter(|c: &char| c.is_ascii_digit())
         .repeated()
-        .labelled("integer part");
-    let fractional_part = just('.')
-        .ignore_then(any().filter(|c: &char| c.is_ascii_digit()).repeated())
-        .labelled("fractional part")
-        .or_not();
-    let exponent_part = just('e')
-        .or(just('E'))
-        .ignore_then(
-            sign.clone().then(
-                any()
-                    .filter(|c: &char| c.is_ascii_digit())
-                    .repeated()
-                    .at_least(1)
-                    .labelled("exponent digits"),
-            ),
-        )
-        .labelled("exponent part")
-        .or_not();
-    sign.then(integer_part)
-        .then(fractional_part)
-        .then(exponent_part)
+        .at_least(1);
+    let signed_exponent = (just('e').or(just('E')))
+        .ignore_then(sign.clone())
+        .ignore_then(decimal_digits.clone());
+
+    let float_with_fraction = sign
+        .clone()
+        .ignore_then(decimal_digits.clone())
+        .then_ignore(just('.'))
+        .then(decimal_digits.clone())
+        .then(signed_exponent.clone().or_not())
         .to_slice()
         .validate(
-            |s: &str, extra, emit| match BigDecimal::from_str_radix(s, 10) {
-                Ok(val) => val,
+            |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
+                Ok(value) => Token::Decimal(value),
                 Err(e) => {
                     emit.emit(Rich::custom(
                         extra.span(),
-                        format!("invalid floating-point number: {}", e),
+                        format!("invalid decimal literal '{}': {}", literal, e),
                     ));
-                    BigDecimal::from(0)
+                    Token::Decimal(BigDecimal::from(0))
                 }
             },
+        );
+
+    let float_with_exponent = sign
+        .clone()
+        .ignore_then(decimal_digits.clone())
+        .then(signed_exponent.clone())
+        .to_slice()
+        .validate(
+            |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
+                Ok(value) => Token::Decimal(value),
+                Err(e) => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!("invalid decimal literal '{}': {}", literal, e),
+                    ));
+                    Token::Decimal(BigDecimal::from(0))
+                }
+            },
+        );
+
+    let hex_int = sign
+        .clone()
+        .ignore_then(just("0x").or(just("0X")))
+        .ignore_then(
+            any()
+                .filter(|c: &char| c.is_ascii_hexdigit())
+                .repeated()
+                .at_least(1),
         )
-        .labelled("decimal floating-point number")
+        .to_slice()
+        .validate(|s: &str, extra, emit| {
+            let (signum, rest) = if let Some(stripped) = s.strip_prefix('-') {
+                (-1i32, stripped)
+            } else if let Some(stripped) = s.strip_prefix('+') {
+                (1i32, stripped)
+            } else {
+                (1i32, s)
+            };
+
+            let number_body = &rest[2..];
+            match BigInt::parse_bytes(number_body.as_bytes(), 16) {
+                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                None => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!("invalid base 16 integer '{}'", s),
+                    ));
+                    Token::Number(BigInt::from(0))
+                }
+            }
+        });
+
+    let octal_int = sign
+        .clone()
+        .ignore_then(just("0o").or(just("0O")))
+        .ignore_then(
+            any()
+                .filter(|c: &char| c.is_ascii_digit() && *c < '8')
+                .repeated()
+                .at_least(1),
+        )
+        .to_slice()
+        .validate(|s: &str, extra, emit| {
+            let (signum, rest) = if let Some(stripped) = s.strip_prefix('-') {
+                (-1i32, stripped)
+            } else if let Some(stripped) = s.strip_prefix('+') {
+                (1i32, stripped)
+            } else {
+                (1i32, s)
+            };
+
+            let number_body = &rest[2..];
+            match BigInt::parse_bytes(number_body.as_bytes(), 8) {
+                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                None => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!("invalid base 8 integer '{}'", s),
+                    ));
+                    Token::Number(BigInt::from(0))
+                }
+            }
+        });
+
+    let binary_int = sign
+        .clone()
+        .ignore_then(just("0b").or(just("0B")))
+        .ignore_then(
+            any()
+                .filter(|c: &char| *c == '0' || *c == '1')
+                .repeated()
+                .at_least(1),
+        )
+        .to_slice()
+        .validate(|s: &str, extra, emit| {
+            let (signum, rest) = if let Some(stripped) = s.strip_prefix('-') {
+                (-1i32, stripped)
+            } else if let Some(stripped) = s.strip_prefix('+') {
+                (1i32, stripped)
+            } else {
+                (1i32, s)
+            };
+
+            let number_body = &rest[2..];
+            match BigInt::parse_bytes(number_body.as_bytes(), 2) {
+                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                None => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!("invalid base 2 integer '{}'", s),
+                    ));
+                    Token::Number(BigInt::from(0))
+                }
+            }
+        });
+
+    let decimal_int =
+        sign.ignore_then(decimal_digits)
+            .to_slice()
+            .validate(|s: &str, extra, emit| {
+                let (signum, rest) = if let Some(stripped) = s.strip_prefix('-') {
+                    (-1i32, stripped)
+                } else if let Some(stripped) = s.strip_prefix('+') {
+                    (1i32, stripped)
+                } else {
+                    (1i32, s)
+                };
+
+                let number_body = rest;
+                match BigInt::parse_bytes(number_body.as_bytes(), 10) {
+                    Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                    None => {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!("invalid base 10 integer '{}'", s),
+                        ));
+                        Token::Number(BigInt::from(0))
+                    }
+                }
+            });
+
+    choice((
+        float_with_fraction,
+        float_with_exponent,
+        hex_int,
+        octal_int,
+        binary_int,
+        decimal_int,
+    ))
+    .labelled("numeral")
 }
 
 fn identifier_parser<'src>()
@@ -548,8 +631,7 @@ fn ignoring_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'
 fn lexer<'src>()
 -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
     choice((
-        bigint_parser().map(Token::Number),
-        // bigdecimal_parser().map(Token::Decimal),
+        numeral_parser(),
         string_parser().map(Token::StringLiteral),
         just("(").to(Token::LParen),
         just(")").to(Token::RParen),
@@ -832,11 +914,15 @@ where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
     let reg_parser = register_parser_a().map(Operand::Reg);
+    let undef_parser = type_parser()
+        .then_ignore(just(Token::Identifier("undef", vec![])))
+        .map(Operand::Undef)
+        .labelled("undef operand");
     let const_parser = constant_parser()
         .map(Operand::Imm)
         .labelled("immediate operand");
 
-    fast_boxed!(choice((reg_parser, const_parser)))
+    fast_boxed!(choice((reg_parser, undef_parser, const_parser)))
 }
 
 fn parse_instruction<'src, I>() -> impl Parser<'src, I, HyInstr, Extra<'src>> + Clone
@@ -892,7 +978,7 @@ where
                     ));
                 }
 
-                align.to_u32_digits().1.into_iter().next().unwrap()
+                align.to_u32_digits().1.into_iter().next().unwrap_or_default()
             })
             .or_not(),
         )
@@ -1356,6 +1442,103 @@ where
 
                     Cast { dest, ty, value, variant }.into()
                 }
+                HyInstrOp::InsertValue => {
+                    let mut operands = operand.unwrap_left();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    if operands.len() < 3 {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for {} instruction: expected aggregate, value, and at least one index, got {}",
+                                op.opname(),
+                                operands.len()
+                            ),
+                        ));
+
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+
+                    let aggregate = operands.remove(0);
+                    let value = operands.remove(0);
+
+                    let mut indices = Vec::with_capacity(operands.len());
+                    for (idx, op_idx) in operands.into_iter().enumerate() {
+                        if let Operand::Imm(AnyConst::Int(iconst)) = op_idx {
+                            let (sign, digits) = iconst.value.to_u32_digits();
+                            if sign == Sign::Minus {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!("index {} must be non-negative", idx),
+                                ));
+                                continue;
+                            }
+                            if digits.len() > 1 {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!("index {} is too large to fit in u32", idx),
+                                ));
+                                continue;
+                            }
+                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                        } else {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("index {} must be an integer immediate", idx),
+                            ));
+                        }
+                    }
+
+                    InsertValue { dest, ty, aggregate, value, indices }.into()
+                }
+                HyInstrOp::ExtractValue => {
+                    let mut operands = operand.unwrap_left();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    if operands.len() < 2 {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for {} instruction: expected aggregate and at least one index, got {}",
+                                op.opname(),
+                                operands.len()
+                            ),
+                        ));
+
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+
+                    let aggregate = operands.remove(0);
+
+                    let mut indices = Vec::with_capacity(operands.len());
+                    for (idx, op_idx) in operands.into_iter().enumerate() {
+                        if let Operand::Imm(AnyConst::Int(iconst)) = op_idx {
+                            let (sign, digits) = iconst.value.to_u32_digits();
+                            if sign == Sign::Minus {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!("index {} must be non-negative", idx),
+                                ));
+                                continue;
+                            }
+                            if digits.len() > 1 {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!("index {} is too large to fit in u32", idx),
+                                ));
+                                continue;
+                            }
+                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                        } else {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!("index {} must be an integer immediate", idx),
+                            ));
+                        }
+                    }
+
+                    ExtractValue { dest, ty, aggregate, indices }.into()
+                }
                 HyInstrOp::MetaAssert => {
                     let [condition] = operand.unwrap_left().try_into().unwrap();
 
@@ -1366,10 +1549,16 @@ where
 
                     MetaAssume { condition }.into()
                 }
+                HyInstrOp::MetaIsDef => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    MetaIsDef { dest, ty, operand: value }.into()
+                }
                 HyInstrOp::MetaProb => {
                     let (dest, ty) = dest_and_ty.unwrap();
                     let variant = match MetaProbVariant::from_str(&variant[0]) {
-                        Some(op) => op,
+                        Some(variant) => variant,
                         None => {
                             emit.emit(Rich::custom(
                                 extra.span(),

@@ -1,10 +1,12 @@
 //! Shared operand types for instructions.
 //!
 //! An instruction operand can be a reference to another SSA value (`Reg`),
-//! an immediate constant (`Imm`) or a code label (`Lbl`).
+//! an immediate constant (`Imm`), a type-tagged undefined value (`Undef`) or a
+//! code label (`Lbl`).
 use std::fmt::Debug;
 
 use crate::consts::AnyConst;
+use crate::types::Typeref;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
@@ -73,6 +75,8 @@ pub enum Operand {
     Reg(Name),
     /// Immediate literal (integer or floating‑point).
     Imm(AnyConst),
+    /// Type-tagged undefined SSA value.
+    Undef(Typeref),
     /// Meta operand (only used internally in attributes/properties)
     ///
     /// Notice: Meta operands should not appear in regular instructions and

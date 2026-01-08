@@ -25,17 +25,29 @@ impl std::fmt::Display for Label {
 
 impl Operand {
     /// Build a formatting helper that renders the operand using the given module for context.
-    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
+    pub fn fmt_with<'a>(
+        &'a self,
+        registry: Option<&'a TypeRegistry>,
+        module: Option<&'a Module>,
+    ) -> impl std::fmt::Display + 'a {
         pub struct Fmt<'a> {
             operand: &'a Operand,
+            registry: Option<&'a TypeRegistry>,
             module: Option<&'a Module>,
         }
 
         impl<'a> std::fmt::Display for Fmt<'a> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.operand {
-                    Operand::Reg(name) => write!(f, "%{}", name),
+                    Operand::Reg(name) => write!(f, "{}", name),
                     Operand::Imm(constant) => write!(f, "{}", constant.fmt(self.module)),
+                    Operand::Undef(ty) => {
+                        if let Some(registry) = self.registry {
+                            write!(f, "{} undef", registry.fmt(*ty))
+                        } else {
+                            write!(f, "undef")
+                        }
+                    }
                     // Operand::Lbl(label) => write!(f, "{:#}", label),
                     Operand::Meta(meta) => write!(f, "M_{}", meta.0),
                 }
@@ -44,8 +56,14 @@ impl Operand {
 
         Fmt {
             operand: self,
+            registry,
             module,
         }
+    }
+
+    /// Backward compatible helper that only supplies module context.
+    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
+        self.fmt_with(None, module)
     }
 }
 
@@ -105,9 +123,8 @@ impl HyInstr {
 
                         write!(
                             f,
-                            "{} {}",
-                            self.registry.fmt(load.ty),
-                            load.addr.fmt(self.module),
+                            " {}",
+                            load.addr.fmt_with(Some(self.registry), self.module),
                         )?;
 
                         if let Some(ordering) = &load.ordering {
@@ -128,8 +145,8 @@ impl HyInstr {
                         write!(
                             f,
                             "{}, {}",
-                            store.addr.fmt(self.module),
-                            store.value.fmt(self.module)
+                            store.addr.fmt_with(Some(self.registry), self.module),
+                            store.value.fmt_with(Some(self.registry), self.module)
                         )?;
 
                         if let Some(ordering) = &store.ordering {
@@ -147,11 +164,38 @@ impl HyInstr {
                             f,
                             "{} {}",
                             self.registry.fmt(malloca.ty),
-                            malloca.count.fmt(self.module)
+                            malloca.count.fmt_with(Some(self.registry), self.module)
                         )?;
 
                         if let Some(alignment) = malloca.alignement {
                             write!(f, ", align {} ", alignment)?;
+                        }
+
+                        Ok(true)
+                    }
+                    HyInstr::InsertValue(insert) => {
+                        write!(
+                            f,
+                            " {}, {}",
+                            insert.aggregate.fmt_with(Some(self.registry), self.module),
+                            insert.value.fmt_with(Some(self.registry), self.module)
+                        )?;
+
+                        for idx in &insert.indices {
+                            write!(f, ", i32 {}", idx)?;
+                        }
+
+                        Ok(true)
+                    }
+                    HyInstr::ExtractValue(extract) => {
+                        write!(
+                            f,
+                            " {}",
+                            extract.aggregate.fmt_with(Some(self.registry), self.module)
+                        )?;
+
+                        for idx in &extract.indices {
+                            write!(f, ", i32 {}", idx)?;
                         }
 
                         Ok(true)
@@ -165,7 +209,12 @@ impl HyInstr {
                             } else {
                                 write!(f, ", ")?;
                             }
-                            write!(f, "[{}, {}]", operand.fmt(self.module), label)?;
+                            write!(
+                                f,
+                                "[{}, {}]",
+                                operand.fmt_with(Some(self.registry), self.module),
+                                label
+                            )?;
                         }
                         Ok(true)
                     }
@@ -182,10 +231,14 @@ impl HyInstr {
                             write!(f, " {}", cconv.to_string())?;
                         }
 
-                        write!(f, " {}", invoke.function.fmt(self.module))?;
+                        write!(
+                            f,
+                            " {}",
+                            invoke.function.fmt_with(Some(self.registry), self.module)
+                        )?;
 
                         for arg in &invoke.args {
-                            write!(f, ", {}", arg.fmt(self.module))?;
+                            write!(f, ", {}", arg.fmt_with(Some(self.registry), self.module))?;
                         }
                         Ok(true)
                     }
@@ -200,7 +253,7 @@ impl HyInstr {
 
                 if let Some(dest) = self.instr.destination() {
                     let ty = self.instr.destination_type().unwrap();
-                    write!(f, "%{}: {} = ", dest, self.registry.fmt(ty))?;
+                    write!(f, "{}: {} = ", dest, self.registry.fmt(ty))?;
                 }
                 write!(f, "{}", opname)?;
 
@@ -219,7 +272,7 @@ impl HyInstr {
                     } else {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", operand.fmt(self.module))?;
+                    write!(f, "{}", operand.fmt_with(Some(self.registry), self.module))?;
                 }
 
                 Ok(())
@@ -236,9 +289,14 @@ impl HyInstr {
 
 impl HyTerminator {
     /// Build a formatting helper that renders the terminator using the supplied module for context.
-    pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
+    pub fn fmt<'a>(
+        &'a self,
+        registry: Option<&'a TypeRegistry>,
+        module: Option<&'a Module>,
+    ) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
             terminator: &'a HyTerminator,
+            registry: Option<&'a TypeRegistry>,
             module: Option<&'a Module>,
         }
 
@@ -248,7 +306,7 @@ impl HyTerminator {
                     HyTerminator::Branch(cbranch) => write!(
                         f,
                         "branch {}, {}, {}",
-                        cbranch.cond.fmt(self.module),
+                        cbranch.cond.fmt_with(self.registry, self.module),
                         cbranch.target_true,
                         cbranch.target_false
                     ),
@@ -257,7 +315,7 @@ impl HyTerminator {
                     }
                     HyTerminator::Ret(ret) => {
                         if let Some(value) = &ret.value {
-                            write!(f, "ret {:#}", value.fmt(self.module))
+                            write!(f, "ret {:#}", value.fmt_with(self.registry, self.module))
                         } else {
                             write!(f, "ret void")
                         }
@@ -271,6 +329,7 @@ impl HyTerminator {
 
         Fmt {
             terminator: self,
+            registry,
             module,
         }
     }
@@ -334,7 +393,11 @@ impl Function {
                         writeln!(f, "  {}", instr.fmt(self.type_registry, self.module))?;
                     }
 
-                    writeln!(f, "  {}", block.terminator.fmt(self.module))?;
+                    writeln!(
+                        f,
+                        "  {}",
+                        block.terminator.fmt(Some(self.type_registry), self.module)
+                    )?;
                 }
 
                 writeln!(f, "}}")?;
