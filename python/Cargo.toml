@@ -1,0 +1,16 @@
+[package]
+name = "hypi-sys"
+version = "0.1.0"
+description = "Python system-bindings for hyperion"
+homepage = "https://github.com/BoyeGuillaume/hyperion"
+repository = "https://github.com/BoyeGuillaume/hyperion"
+license-file = "LICENSE"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "hypi_sys"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.27.0"
