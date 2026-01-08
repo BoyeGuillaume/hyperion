@@ -9,7 +9,11 @@ pub fn example_a(registry: &mut TypeRegistry, module: &mut Module) {
         module,
         registry,
         r#"
-    
+    define i32 foo(%a: i32, %b: i32) {
+    entry:
+        %result: i32 = iadd.usat %a, %b
+        ret %result
+    }
     "#,
     )
     .unwrap();
