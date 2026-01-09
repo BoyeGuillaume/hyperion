@@ -14,7 +14,8 @@ fn main() {
         println!("- {} (UUID: {}) at {}", ext.name, ext.uuid, ext.path);
     }
 
-    let plugin = load_plugin_by_name(&meta_info, "__EXT_PLUGIN_EXAMPLE", version).unwrap();
+    let plugin =
+        unsafe { load_plugin_by_name(&meta_info, "__EXT_PLUGIN_EXAMPLE", version).unwrap() };
     println!(
         "Loaded plugin: {} (UUID: {}, Version: {})",
         plugin.name(),

@@ -7,9 +7,15 @@
 //! library is loaded. See `docs/PluginSystem.md` for the broader integration
 //! guide.
 
-use std::{ops::Deref, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::{Arc, Weak},
+};
 
 use libloading::Library;
+use parking_lot::{Mutex, RwLock};
 use semver::{Version, VersionReq};
 use uuid::Uuid;
 
@@ -132,13 +138,63 @@ impl Deref for PluginExtWrapper {
     }
 }
 
+/// Global internal table referencing weak pointers to loaded libraries
+/// to prevent redundant loads.
+static PLUGIN_LIBRARY_TABLE: RwLock<BTreeMap<PathBuf, Weak<Library>>> =
+    RwLock::new(BTreeMap::new());
+/// Global mutex used to serialize dynamic library loading operations.
+pub static GLOBAL_LD_LIB_LOCK: Mutex<()> = Mutex::new(());
+
+/// SAFETY: dlloading operations are not thread-safe on all platforms. On certain platforms,
+/// loading the libraries is not thread-safe if used in conjunction with `DllSetSearchPath` or
+/// `LD_LIBRARY_PATH` manipulations. To ensure safety, we use a global mutex
+/// [`GLOBAL_LD_LIB_LOCK`] to serialize library loading operations and prevent such issues.
+pub unsafe fn _get_plugin_from_path(path: &Path) -> HyResult<Arc<Library>> {
+    // Convert path to absolute path
+    let abs_path = std::fs::canonicalize(path).map_err(|e| HyError::IoError(e))?;
+
+    // Check the global table for an existing load
+    {
+        let table = PLUGIN_LIBRARY_TABLE.read();
+        if let Some(lib) = table.get(&abs_path) {
+            if let Some(lib) = lib.upgrade() {
+                return Ok(lib);
+            }
+        }
+    }
+
+    // Load the dynamic library
+    unsafe {
+        let lock = GLOBAL_LD_LIB_LOCK.lock();
+        let library = Library::new(&abs_path).map_err(|e| HyError::ExtensionLoadError {
+            source: e,
+            file: abs_path.to_string_lossy().to_string(),
+            name: String::new(),
+        })?;
+
+        // Insert into the global table
+        let arc_lib = Arc::new(library);
+        let mut table = PLUGIN_LIBRARY_TABLE.write();
+        table.insert(abs_path.clone(), Arc::downgrade(&arc_lib));
+        drop(table);
+
+        // Release the lock
+        drop(lock);
+
+        // Return the loaded library
+        Ok(arc_lib)
+    }
+}
+
 /// Loads and instantiates a plugin by name.
 ///
 /// The function searches the supplied [`HyperionMetaInfo`] for a matching name,
 /// dlopens the corresponding library, validates compatibility via the exported
 /// version requirement, and finally instantiates the plugin via the loader
 /// symbol. Any failure along the way is surfaced as [`HyError`].
-pub fn load_plugin_by_name(
+///
+/// SAFETY: Similar to [`_get_plugin_from_path`]
+pub unsafe fn load_plugin_by_name(
     meta_info: &HyperionMetaInfo,
     name: &str,
     library_version: Version,
@@ -152,11 +208,7 @@ pub fn load_plugin_by_name(
 
     // Load the dynamic library
     unsafe {
-        let library = Library::new(&ext_info.path).map_err(|e| HyError::ExtensionLoadError {
-            source: e,
-            file: ext_info.path.clone(),
-            name: ext_info.name.clone(),
-        })?;
+        let library = _get_plugin_from_path(Path::new(&ext_info.path))?;
 
         // Get the compatibility check function
         let compat_check_fn: libloading::Symbol<ExtCompatibilityCheckFn> = library
@@ -190,9 +242,6 @@ pub fn load_plugin_by_name(
         // Load the extension
         let ext = loader_fn(ext_info.uuid)?;
 
-        Ok(PluginExtWrapper {
-            _lib: Arc::new(library),
-            ext,
-        })
+        Ok(PluginExtWrapper { ext, _lib: library })
     }
 }
