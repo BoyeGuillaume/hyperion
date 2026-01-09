@@ -6,10 +6,14 @@ members = [
     "python",
     "examples/hycore-examples",
     "examples/hyinstr-parser",
+    "examples/hycore-plugin/main",
+    "examples/hycore-plugin/plugin",
 ]
+default-members = ["hyinstr", "hycore"]
 
 [workspace.dependencies]
 semver = "^1"
+toml = "0.9.10"
 smallvec = "2.0.0-alpha.12"
 build-info = "0.0.42"
 build-info-build = "0.0.42"
@@ -37,6 +41,7 @@ nalgebra = "^0.34"
 enum-map = ">=2.4"
 bit-set = ">=0.5"
 ariadne = "0.6"
+libloading = "0.9"
 
 criterion = "0.5"
 rand = "0.9.2"

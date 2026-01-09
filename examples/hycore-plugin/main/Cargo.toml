@@ -1,0 +1,10 @@
+[package]
+name = "hycore-plugin-main"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hyinstr = { workspace = true, features = ["chumsky"] }
+hycore = { workspace = true, features = ["test-utils"] }
+uuid = { workspace = true, features = ["v4"] }
+semver.workspace = true

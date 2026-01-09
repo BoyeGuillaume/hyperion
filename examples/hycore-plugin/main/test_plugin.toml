@@ -1,0 +1,4 @@
+[[ext]]
+uuid = "a8af402c-7892-4b7f-9aa1-ca4b9bd47c94"
+path = "../../../target/debug/libhycore_plugin.so"
+name = "__EXT_PLUGIN_EXAMPLE"

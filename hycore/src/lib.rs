@@ -1,4 +1,5 @@
-pub mod instance;
+pub mod base;
+pub mod magic;
 pub mod provers;
 pub mod specifications;
 #[cfg(any(test, feature = "test-utils"))]

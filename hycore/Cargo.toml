@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 hyinstr.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4", "serde"] }
 petgraph.workspace = true
 smallvec.workspace = true
 semver.workspace = true
@@ -20,6 +20,9 @@ enum-map = { workspace = true }
 log = { workspace = true }
 either.workspace = true
 bit-set = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+toml.workspace = true
+libloading.workspace = true
 
 [build-dependencies]
 build-info-build.workspace = true

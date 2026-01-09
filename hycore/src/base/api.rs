@@ -19,11 +19,14 @@ impl Into<semver::Version> for VersionInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationInfo<'a> {
-    pub version: VersionInfo,
+    pub application_version: VersionInfo,
     pub application_name: &'a str,
+    pub engine_version: VersionInfo,
+    pub engine_name: Option<&'a str>,
 }
 
 #[repr(C)]
 pub struct InstanceCreateInfo<'a> {
     pub application_info: &'a ApplicationInfo<'a>,
+    pub enabled_extensions: &'a [&'a str],
 }
