@@ -20,7 +20,7 @@ use semver::{Version, VersionReq};
 use uuid::Uuid;
 
 use crate::{
-    base::meta::HyperionMetaInfo,
+    base::{InstanceContext, meta::HyperionMetaInfo},
     magic::{EXT_COMPATIBILITY_CHECK_FN_NAME, EXT_LOADER_FN_NAME},
     utils::error::{HyError, HyResult},
 };
@@ -100,6 +100,13 @@ pub trait PluginExt: Send + Sync {
     /// Longer description explaining the functionality or requirements of the
     /// plugin.
     fn description(&self) -> &str;
+
+    /// Initializes the plugin for a particular [`InstanceContext`]. This is called
+    /// once per instance after loading. [`PluginExt`] is always instantiated only once
+    /// per process, so any per-instance state must be set up here.
+    fn initialize(&mut self, instance: Weak<InstanceContext>) -> HyResult<()>;
+
+    fn teardown(self);
 }
 
 /// Compile-time helpers that let the host instantiate plugins without knowing

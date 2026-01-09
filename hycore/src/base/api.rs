@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::{base::InstanceContext, utils::error::HyResult};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionInfo {
     pub major: u16,
@@ -22,11 +26,15 @@ pub struct ApplicationInfo<'a> {
     pub application_version: VersionInfo,
     pub application_name: &'a str,
     pub engine_version: VersionInfo,
-    pub engine_name: Option<&'a str>,
+    pub engine_name: &'a str,
 }
 
 #[repr(C)]
 pub struct InstanceCreateInfo<'a> {
     pub application_info: &'a ApplicationInfo<'a>,
     pub enabled_extensions: &'a [&'a str],
+}
+
+pub unsafe fn create_instance(create_info: &InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
+    unsafe { InstanceContext::create(create_info) }
 }
