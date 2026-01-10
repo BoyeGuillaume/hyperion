@@ -9,7 +9,7 @@
 
 use std::{
     collections::BTreeMap,
-    ops::Deref,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Weak},
 };
@@ -22,13 +22,16 @@ use uuid::Uuid;
 use crate::{
     base::{InstanceContext, meta::HyperionMetaInfo},
     magic::{EXT_COMPATIBILITY_CHECK_FN_NAME, EXT_LOADER_FN_NAME},
-    utils::error::{HyError, HyResult},
+    utils::{
+        conf::ExtList,
+        error::{HyError, HyResult},
+    },
 };
 
 /// Function signature that plugin crates must expose under
 /// [`EXT_LOADER_FN_NAME`]. The host passes the UUID declared in the metadata and
 /// expects back an instantiated [`PluginExt`].
-pub type ExtLoaderFn = unsafe fn(Uuid) -> HyResult<Box<dyn PluginExt>>;
+pub type ExtLoaderFn = unsafe fn(Uuid, &mut ExtList) -> HyResult<Box<dyn PluginExt>>;
 
 /// Function signature that plugin crates must expose under
 /// [`EXT_COMPATIBILITY_CHECK_FN_NAME`]. The function returns the version
@@ -67,11 +70,11 @@ macro_rules! define_plugin_loader {
         $(,)?
     ) => {
         #[unsafe(no_mangle)]
-        pub unsafe fn __hyext_fn_loader(uuid: uuid::Uuid) -> hycore::utils::error::HyResult<Box<dyn hycore::base::ext::PluginExt>> {
+        pub unsafe fn __hyext_fn_loader(uuid: uuid::Uuid, ext: &mut hycore::utils::conf::ExtList) -> hycore::utils::error::HyResult<Box<dyn hycore::base::ext::PluginExt>> {
             match uuid {
                 $(
                     <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID => {
-                        let plugin = <$plugin_ty as hycore::base::ext::PluginExtStatic>::new();
+                        let plugin = <$plugin_ty as hycore::base::ext::PluginExtStatic>::new(ext);
                         assert_eq!(plugin.uuid(), <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID, "Plugin UUID does not match the expected UUID");
                         return Ok(Box::new(plugin));
                     },
@@ -101,10 +104,14 @@ pub trait PluginExt: Send + Sync {
     /// plugin.
     fn description(&self) -> &str;
 
+    /// Provide a handle to the plugin's instance context. This is always called
+    /// before [`PluginExt::initialize`].
+    fn attach_to(&mut self, instance: Weak<InstanceContext>);
+
     /// Initializes the plugin for a particular [`InstanceContext`]. This is called
     /// once per instance after loading. [`PluginExt`] is always instantiated only once
     /// per process, so any per-instance state must be set up here.
-    fn initialize(&mut self, instance: Weak<InstanceContext>) -> HyResult<()>;
+    fn initialize(&self) -> HyResult<()>;
 
     fn teardown(self);
 }
@@ -118,7 +125,7 @@ pub trait PluginExtStatic: PluginExt {
 
     /// Constructs a fresh plugin instance. Implementations should keep
     /// allocation lightweight because this is called on every load.
-    fn new() -> Self;
+    fn new(ext: &mut ExtList) -> Self;
 }
 
 /// Wrapper around a dynamically loaded plugin extension.
@@ -145,6 +152,12 @@ impl Deref for PluginExtWrapper {
     }
 }
 
+impl DerefMut for PluginExtWrapper {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.ext
+    }
+}
+
 /// Global internal table referencing weak pointers to loaded libraries
 /// to prevent redundant loads.
 static PLUGIN_LIBRARY_TABLE: RwLock<BTreeMap<PathBuf, Weak<Library>>> =
@@ -156,7 +169,7 @@ pub static GLOBAL_LD_LIB_LOCK: Mutex<()> = Mutex::new(());
 /// loading the libraries is not thread-safe if used in conjunction with `DllSetSearchPath` or
 /// `LD_LIBRARY_PATH` manipulations. To ensure safety, we use a global mutex
 /// [`GLOBAL_LD_LIB_LOCK`] to serialize library loading operations and prevent such issues.
-pub unsafe fn _get_plugin_from_path(path: &Path) -> HyResult<Arc<Library>> {
+pub unsafe fn load_so_lib(path: &Path) -> HyResult<Arc<Library>> {
     // Convert path to absolute path
     let abs_path = std::fs::canonicalize(path).map_err(|e| HyError::IoError(e))?;
 
@@ -205,6 +218,7 @@ pub unsafe fn load_plugin_by_name(
     meta_info: &HyperionMetaInfo,
     name: &str,
     library_version: Version,
+    ext: &mut ExtList,
 ) -> HyResult<PluginExtWrapper> {
     // Find the extension meta info by UUID
     let ext_info = meta_info
@@ -215,7 +229,7 @@ pub unsafe fn load_plugin_by_name(
 
     // Load the dynamic library
     unsafe {
-        let library = _get_plugin_from_path(Path::new(&ext_info.path))?;
+        let library = load_so_lib(Path::new(&ext_info.path))?;
 
         // Get the compatibility check function
         let compat_check_fn: libloading::Symbol<ExtCompatibilityCheckFn> = library
@@ -247,8 +261,7 @@ pub unsafe fn load_plugin_by_name(
             })?;
 
         // Load the extension
-        let ext = loader_fn(ext_info.uuid)?;
-
+        let ext = loader_fn(ext_info.uuid, ext)?;
         Ok(PluginExtWrapper { ext, _lib: library })
     }
 }

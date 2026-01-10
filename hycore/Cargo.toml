@@ -23,6 +23,13 @@ bit-set = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 libloading.workspace = true
+downcast-rs.workspace = true
+pyo3 = { workspace = true, features = [
+    "uuid",
+    "extension-module",
+    "abi3",
+], optional = true }
+phf = { workspace = true, features = ["macros"] }
 
 [build-dependencies]
 build-info-build.workspace = true
@@ -30,3 +37,4 @@ build-info-build.workspace = true
 [features]
 default = []
 test-utils = ["hyinstr/chumsky"]
+pyo3 = ["dep:pyo3"]

@@ -38,21 +38,15 @@ pub struct InstanceContext {
 }
 
 impl InstanceContext {
-    pub unsafe fn create(instance_create_info: &api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
+    pub unsafe fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
         // Construct state about the application.
-        let application_name = instance_create_info
-            .application_info
-            .application_name
-            .to_string();
+        let application_name = instance_create_info.application_info.application_name;
         let application_version = instance_create_info
             .application_info
             .application_version
             .into();
         let engine_version = instance_create_info.application_info.engine_version.into();
-        let engine_name = instance_create_info
-            .application_info
-            .engine_name
-            .to_string();
+        let engine_name = instance_create_info.application_info.engine_name;
 
         // Open the metadata containing build info.
         let meta_path = HyperionMetaInfo::default_path();
@@ -73,17 +67,30 @@ impl InstanceContext {
         };
 
         // For each enabled extension, load and instantiate it.
-        for &ext_name in instance_create_info.enabled_extensions {
+        for ext_name in &instance_create_info.enabled_extensions {
             let plugin = unsafe {
-                load_plugin_by_name(&meta_info, ext_name, _build_info.crate_info.version.clone())?
+                load_plugin_by_name(
+                    &meta_info,
+                    ext_name,
+                    _build_info.crate_info.version.clone(),
+                    &mut instance_create_info.ext,
+                )?
             };
             instance.extensions.insert(plugin.uuid(), plugin);
         }
 
         // Initialize each extension with the instance context.
-        let instance = Arc::new(instance);
-        // Arc::new_cyclic(data_fn)
+        let instance = Arc::new_cyclic(|weak| {
+            for plugin in instance.extensions.values_mut() {
+                plugin.attach_to(weak.clone());
+            }
+            instance
+        });
 
+        // For each plugin, call initialize.
+        for plugin in instance.extensions.values() {
+            plugin.initialize()?;
+        }
         Ok(instance)
     }
 }

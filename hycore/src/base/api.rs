@@ -1,8 +1,16 @@
 use std::sync::Arc;
 
-use crate::{base::InstanceContext, utils::error::HyResult};
+#[cfg(feature = "pyo3")]
+use pyo3::FromPyObject;
+
+use crate::{
+    base::InstanceContext,
+    utils::{conf::ExtList, error::HyResult},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "pyo3", derive(FromPyObject))]
+#[repr(C)]
 pub struct VersionInfo {
     pub major: u16,
     pub minor: u16,
@@ -21,20 +29,23 @@ impl Into<semver::Version> for VersionInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApplicationInfo<'a> {
+#[repr(C)]
+#[cfg_attr(feature = "pyo3", derive(FromPyObject))]
+pub struct ApplicationInfo {
     pub application_version: VersionInfo,
-    pub application_name: &'a str,
+    pub application_name: String,
     pub engine_version: VersionInfo,
-    pub engine_name: &'a str,
+    pub engine_name: String,
 }
 
 #[repr(C)]
-pub struct InstanceCreateInfo<'a> {
-    pub application_info: &'a ApplicationInfo<'a>,
-    pub enabled_extensions: &'a [&'a str],
+#[cfg_attr(feature = "pyo3", derive(FromPyObject))]
+pub struct InstanceCreateInfo {
+    pub application_info: ApplicationInfo,
+    pub enabled_extensions: Vec<String>,
+    pub ext: ExtList,
 }
 
-pub unsafe fn create_instance(create_info: &InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
+pub unsafe fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
     unsafe { InstanceContext::create(create_info) }
 }

@@ -35,6 +35,10 @@ pub enum HyError {
         version: Version,
         req: VersionReq,
     },
+
+    #[error("UTF-8 conversion error: {0}")]
+    #[from(std::str::Utf8Error)]
+    Utf8Error(std::str::Utf8Error),
 }
 
 pub type HyResult<T> = Result<T, HyError>;

@@ -5,31 +5,29 @@ use hycore::{
         InstanceContext,
         ext::{PluginExt, PluginExtStatic},
     },
-    define_plugin_compatibility, define_plugin_loader,
+    magic::{HYPERION_LOGGER_NAME_EXT, HYPERION_LOGGER_UUID_EXT},
 };
 use semver::Version;
-use uuid::{Uuid, uuid};
+use uuid::Uuid;
 
-define_plugin_compatibility!(">=0.1.0");
-define_plugin_loader!(Plugin);
-
-pub struct Plugin {
+pub struct LogPlugin {
     version: Version,
     instance: Option<Weak<InstanceContext>>,
 }
 
-impl PluginExtStatic for Plugin {
-    const UUID: Uuid = uuid!("a8af402c-7892-4b7f-9aa1-ca4b9bd47c94");
+impl PluginExtStatic for LogPlugin {
+    const UUID: Uuid = HYPERION_LOGGER_UUID_EXT;
 
     fn new(_ext: &mut hycore::utils::conf::ExtList) -> Self {
+        let version = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
         Self {
-            version: Version::parse("0.2.3").unwrap(),
+            version,
             instance: None,
         }
     }
 }
 
-impl PluginExt for Plugin {
+impl PluginExt for LogPlugin {
     fn uuid(&self) -> uuid::Uuid {
         Self::UUID
     }
@@ -39,22 +37,22 @@ impl PluginExt for Plugin {
     }
 
     fn name(&self) -> &str {
-        "__EXT_PLUGIN_EXAMPLE"
+        HYPERION_LOGGER_NAME_EXT
     }
 
     fn description(&self) -> &str {
-        "An example plugin extension for Hycore."
-    }
-
-    fn attach_to(&mut self, instance: Weak<InstanceContext>) {
-        self.instance = Some(instance);
+        "Hyperion Logger Extension"
     }
 
     fn initialize(&self) -> hycore::utils::error::HyResult<()> {
         Ok(())
     }
 
+    fn attach_to(&mut self, instance: Weak<InstanceContext>) {
+        self.instance = Some(instance);
+    }
+
     fn teardown(self) {
-        // Clean up resources if needed
+        // Nothing to do
     }
 }

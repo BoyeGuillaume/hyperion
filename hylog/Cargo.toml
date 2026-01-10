@@ -1,0 +1,14 @@
+[package]
+name = "hylog"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hyinstr = { workspace = true, features = ["chumsky"] }
+hycore = { workspace = true, features = ["test-utils"] }
+uuid = { workspace = true, features = ["v4"] }
+chrono.workspace = true
+semver.workspace = true
+
+[lib]
+crate-type = ["dylib"]

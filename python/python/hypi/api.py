@@ -1,5 +1,6 @@
 import hypi._sys as lib # type: ignore
 from pydantic.dataclasses import dataclass
+from pydantic import Field
 
 @dataclass
 class Version:
@@ -35,6 +36,7 @@ class InstanceCreateInfo:
     """Holds information required to create an instance."""
     application_info: ApplicationInfo
     enabled_extensions: list[str]
+    ext: list[object] = Field(default_factory=list)
 
 def create_instance(create_info: InstanceCreateInfo) -> lib.Instance:
     """Create an instance with the given creation info."""
