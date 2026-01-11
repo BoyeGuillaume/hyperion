@@ -1,6 +1,6 @@
 [package]
 name = "hycore"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -28,7 +28,9 @@ pyo3 = { workspace = true, features = [
     "uuid",
     "extension-module",
     "abi3",
+    "chrono",
 ], optional = true }
+chrono = { workspace = true }
 
 [build-dependencies]
 build-info-build.workspace = true

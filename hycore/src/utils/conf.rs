@@ -27,6 +27,18 @@ pub static PY_OPAQUE_OBJECT_LOADERS: RwLock<BTreeMap<String, PyOpaqueObjectLoade
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ExtList(pub Vec<Box<dyn OpaqueObject>>);
 
+impl ExtList {
+    /// Retrieve an extension object by type and remove it from the list.
+    pub fn take_ext<T: OpaqueObject + 'static>(&mut self) -> Option<Box<T>> {
+        if let Some(pos) = self.0.iter().position(|ext| ext.as_ref().is::<T>()) {
+            let ext = self.0.remove(pos);
+            Some(ext.downcast::<T>().ok().unwrap())
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(feature = "pyo3")]
 impl<'a, 'py> FromPyObject<'a, 'py> for Box<dyn OpaqueObject> {
     type Error = pyo3::PyErr;

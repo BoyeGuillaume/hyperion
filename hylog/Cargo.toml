@@ -1,6 +1,6 @@
 [package]
 name = "hylog"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -15,5 +15,5 @@ pyo3 = { workspace = true, optional = true, features = ["abi3"] }
 crate-type = ["cdylib"]
 
 [features]
-default = []
+default = ["pyo3"]
 pyo3 = ["hycore/pyo3", "dep:pyo3"]

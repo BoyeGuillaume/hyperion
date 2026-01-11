@@ -6,6 +6,7 @@ use hycore::{
         ext::{PluginExt, PluginExtStatic},
     },
     define_plugin,
+    ext::hylog::{LogLevelEXT, LogMessageEXT},
     magic::{HYPERION_LOGGER_NAME_EXT, HYPERION_LOGGER_UUID_EXT},
     utils::conf::OpaqueObject,
 };
@@ -16,7 +17,7 @@ use uuid::Uuid;
 
 pub const HYPERION_PY_NAME_LOG_CREATE_INFO_EXT: &str = "hypi.api.ext_hylog.LogCreateInfoEXT";
 
-define_plugin!("=0.1.0",
+define_plugin!("=0.1.1",
     entry => logger_entrypoint,
     teardown => logger_teardown,
     plugins => [LogPluginEXT],
@@ -49,24 +50,6 @@ pub fn logger_teardown(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
             .write()
             .remove(HYPERION_PY_NAME_LOG_CREATE_INFO_EXT);
     }
-}
-
-/// Logger levels supported by the logger extension.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "pyo3", pyclass(eq, eq_int))]
-pub enum LogLevelEXT {
-    Trace = 0,
-    Debug = 1,
-    Info = 2,
-    Warn = 3,
-    Error = 4,
-}
-
-/// Message structure for the logger extension.
-#[cfg_attr(feature = "pyo3", derive(IntoPyObject))]
-pub struct LogMessageEXT {
-    pub level: LogLevelEXT,
-    pub message: String,
 }
 
 pub struct LogCallbackEXT(pub Box<dyn Fn(LogMessageEXT) + Send + Sync>);
@@ -107,16 +90,30 @@ impl OpaqueObject for LogCreateInfoEXT {}
 pub struct LogPluginEXT {
     version: Version,
     instance: Option<Weak<InstanceContext>>,
+    callback: Option<LogCallbackEXT>,
+    min_level: LogLevelEXT,
 }
 
 impl PluginExtStatic for LogPluginEXT {
     const UUID: Uuid = HYPERION_LOGGER_UUID_EXT;
 
-    fn new(_ext: &mut hycore::utils::conf::ExtList) -> Self {
+    fn new(ext: &mut hycore::utils::conf::ExtList) -> Self {
         let version = Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+
+        // Find the LogCreateInfoEXT in the ext list
+        let mut callback = None;
+        let mut min_level = LogLevelEXT::Trace;
+
+        if let Some(create_info) = ext.take_ext::<LogCreateInfoEXT>() {
+            min_level = create_info.level;
+            callback = Some(create_info.callback);
+        }
+
         Self {
             version,
             instance: None,
+            min_level,
+            callback,
         }
     }
 }
@@ -139,6 +136,12 @@ impl PluginExt for LogPluginEXT {
     }
 
     fn initialize(&self) -> hycore::utils::error::HyResult<()> {
+        let instance = self.instance.as_ref().unwrap().upgrade().unwrap();
+        let mut log_handle = instance.ext.log_callback.write();
+
+        // Attach the log_handle to this extension's log_message function
+        *log_handle = Self::log_message;
+
         Ok(())
     }
 
@@ -147,6 +150,26 @@ impl PluginExt for LogPluginEXT {
     }
 
     fn teardown(&mut self) {
-        // Nothing to do
+        let instance = self.instance.as_ref().unwrap().upgrade().unwrap();
+        instance.ext.restore_default_log_callback();
+    }
+}
+
+impl LogPluginEXT {
+    pub fn log_message(instance_context: &InstanceContext, message: LogMessageEXT) {
+        if let Some(logger_ext) = instance_context.get_plugin_ext::<LogPluginEXT>() {
+            if message.level < logger_ext.min_level {
+                return;
+            }
+
+            if let Some(callback) = &logger_ext.callback {
+                (callback.0)(message);
+            } else {
+                println!(
+                    "[{:?}] {} - {}",
+                    message.level, message.timepoint, message.message
+                );
+            }
+        }
     }
 }

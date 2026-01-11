@@ -1,14 +1,17 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use parking_lot::RwLock;
 use semver::Version;
 use uuid::Uuid;
 
 use crate::{
     base::{
-        ext::{PluginExtWrapper, load_plugin_by_name},
+        ext::{PluginExtStatic, PluginExtWrapper, load_plugin_by_name},
         meta::HyperionMetaInfo,
         module::ModuleContext,
     },
+    ext::hylog::LogMessageEXT,
+    hyinfo, hytrace,
     utils::error::HyResult,
 };
 
@@ -18,6 +21,23 @@ pub mod meta;
 pub mod module;
 
 build_info::build_info!(fn retrieve_build_info);
+
+pub struct InstanceStateEXT {
+    pub log_callback: RwLock<fn(&InstanceContext, LogMessageEXT)>,
+}
+impl InstanceStateEXT {
+    pub fn restore_default_log_callback(&self) {
+        *self.log_callback.write() = |_, _| {};
+    }
+}
+
+impl Default for InstanceStateEXT {
+    fn default() -> Self {
+        Self {
+            log_callback: RwLock::new(|_, _| {}),
+        }
+    }
+}
 
 /// Internal instance context.
 pub struct InstanceContext {
@@ -35,10 +55,15 @@ pub struct InstanceContext {
 
     /// A list of all extension (by UUID) loaded into this instance.
     pub extensions: BTreeMap<Uuid, PluginExtWrapper>,
+
+    /// Function pointers for logging callbacks
+    pub ext: InstanceStateEXT,
 }
 
 impl Drop for InstanceContext {
     fn drop(&mut self) {
+        hytrace!(self, "Tearing down InstanceContext at {:p}", self);
+
         while let Some((_uuid, mut ext)) = self.extensions.pop_last() {
             ext.teardown();
         }
@@ -46,6 +71,12 @@ impl Drop for InstanceContext {
 }
 
 impl InstanceContext {
+    pub fn get_plugin_ext<T: PluginExtStatic>(&self) -> Option<&T> {
+        self.extensions
+            .get(&T::UUID)
+            .and_then(|wrapper| wrapper.downcast_ref())
+    }
+
     pub unsafe fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
         // Construct state about the application.
         let application_name = instance_create_info.application_info.application_name;
@@ -72,6 +103,7 @@ impl InstanceContext {
             engine_version,
             modules: Vec::new(),
             extensions: BTreeMap::new(),
+            ext: Default::default(),
         };
 
         // For each enabled extension, load and instantiate it.
@@ -94,6 +126,59 @@ impl InstanceContext {
         for plugin in instance.extensions.values() {
             plugin.initialize()?;
         }
+
+        // Logging information about the created instance.
+        hytrace!(
+            instance,
+            "Instance created successfully at {:p}",
+            Arc::as_ptr(&instance)
+        );
+        hyinfo!(
+            instance,
+            "Application '{}' v{} using engine '{}' v{}",
+            &instance.application_name,
+            &instance.application_version,
+            &instance.engine_name,
+            &instance.engine_version
+        );
+        hyinfo!(
+            instance,
+            "Loaded {} extensions: {:?}",
+            instance.extensions.len(),
+            instance_create_info.enabled_extensions,
+        );
+        hyinfo!(
+            instance,
+            "hycore version: v{} (features: {:?}) -- {} {}",
+            _build_info.crate_info.version,
+            _build_info.crate_info.enabled_features,
+            _build_info.target.triple,
+            _build_info.profile,
+        );
+        hyinfo!(
+            instance,
+            "built from commit {}..{} on branch '{}'",
+            _build_info
+                .version_control
+                .as_ref()
+                .and_then(|x| x.git())
+                .map(|x| x.commit_short_id.clone())
+                .unwrap_or_else(|| "00000000".to_string()),
+            _build_info
+                .version_control
+                .as_ref()
+                .and_then(|x| x.git())
+                .map(|x| if x.dirty { " (dirty)" } else { "" })
+                .unwrap_or_else(|| ""),
+            _build_info
+                .version_control
+                .as_ref()
+                .and_then(|x| x.git())
+                .and_then(|x| x.branch.as_ref())
+                .map(|x| x.clone())
+                .unwrap_or_else(|| "<unnamed>".to_string())
+        );
+
         Ok(instance)
     }
 }

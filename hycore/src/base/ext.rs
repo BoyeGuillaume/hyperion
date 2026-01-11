@@ -14,6 +14,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use downcast_rs::{DowncastSync, impl_downcast};
 use libloading::Library;
 use parking_lot::{Mutex, RwLock};
 use semver::{Version, VersionReq};
@@ -120,7 +121,7 @@ macro_rules! define_plugin {
 }
 
 /// Runtime contract that every Hyperion plugin must honor.
-pub trait PluginExt: Send + Sync {
+pub trait PluginExt: DowncastSync {
     /// Returns the globally unique identifier registering the plugin in
     /// Hyperion metadata files.
     fn uuid(&self) -> Uuid;
@@ -145,8 +146,11 @@ pub trait PluginExt: Send + Sync {
     /// per process, so any per-instance state must be set up here.
     fn initialize(&self) -> HyResult<()>;
 
+    /// Tears down the plugin, releasing any resources held. This is called
+    /// once per instance when the instance is being destroyed.
     fn teardown(&mut self);
 }
+impl_downcast!(sync PluginExt);
 
 /// Compile-time helpers that let the host instantiate plugins without knowing
 /// concrete types.
