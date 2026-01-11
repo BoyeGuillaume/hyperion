@@ -22,10 +22,12 @@ pub mod module;
 
 build_info::build_info!(fn retrieve_build_info);
 
+/// Container for instance-scoped state exposed to extensions.
 pub struct InstanceStateEXT {
     pub log_callback: RwLock<fn(&InstanceContext, LogMessageEXT)>,
 }
 impl InstanceStateEXT {
+    /// Restores the default no-op logger callback.
     pub fn restore_default_log_callback(&self) {
         *self.log_callback.write() = |_, _| {};
     }
@@ -39,7 +41,8 @@ impl Default for InstanceStateEXT {
     }
 }
 
-/// Internal instance context.
+/// Internal instance context that owns modules, extensions, and diagnostics
+/// state for a single Hyperion engine instantiation.
 pub struct InstanceContext {
     /// Version of the instance context.
     pub version: Version,
@@ -71,12 +74,16 @@ impl Drop for InstanceContext {
 }
 
 impl InstanceContext {
+    /// Returns the typed plugin reference for the supplied `PluginExtStatic`
+    /// implementor, if it was enabled for this instance.
     pub fn get_plugin_ext<T: PluginExtStatic>(&self) -> Option<&T> {
         self.extensions
             .get(&T::UUID)
             .and_then(|wrapper| wrapper.downcast_ref())
     }
 
+    /// Constructs a new [`InstanceContext`] and wires all enabled extensions
+    /// into it. Unsafe because it loads user-provided shared objects.
     pub unsafe fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
         // Construct state about the application.
         let application_name = instance_create_info.application_info.application_name;

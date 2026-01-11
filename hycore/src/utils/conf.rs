@@ -1,3 +1,6 @@
+//! Utilities that allow extensions to pass opaque configuration objects across
+//! the FFI boundary (notably from Python) into Rust plugins.
+
 #[cfg(feature = "pyo3")]
 use std::collections::BTreeMap;
 
@@ -8,11 +11,15 @@ use parking_lot::RwLock;
 #[cfg(feature = "pyo3")]
 use pyo3::{FromPyObject, PyAny, PyResult};
 
-/// Extendable configuration trait for dynamic extension of configuration structures.
+/// Marker trait implemented by per-extension configuration structs that need to
+/// cross API boundaries without the host knowing their concrete type upfront.
 pub trait OpaqueObject: DowncastSync {}
 impl_downcast!(sync OpaqueObject);
 
 #[cfg(feature = "pyo3")]
+/// Python-side factory that converts a `PyAny` into an [`OpaqueObject`]. Each
+/// registered loader is keyed by the fully-qualified Python class name so
+/// plugins can bring their own dataclasses.
 pub type PyOpaqueObjectLoader =
     fn(pyo3::Borrowed<'_, '_, PyAny>) -> PyResult<Box<dyn OpaqueObject>>;
 #[cfg(not(feature = "pyo3"))]
@@ -23,7 +30,8 @@ pub type PyOpaqueObjectLoader = fn() -> ();
 pub static PY_OPAQUE_OBJECT_LOADERS: RwLock<BTreeMap<String, PyOpaqueObjectLoader>> =
     RwLock::new(BTreeMap::new());
 
-/// A list of extendable configuration entries.
+/// Bag of dynamically typed configuration entries supplied when an instance is
+/// created. Plugins inspect and extract the structs relevant to them.
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ExtList(pub Vec<Box<dyn OpaqueObject>>);
 

@@ -1,108 +1,225 @@
 # Hyperion Plugin System
 
-This document explains how Hyperion discovers, loads, and interacts with external plugins. It captures the conventions introduced in the latest plugin work so that you can build compatible extensions, ship them, and consume them from Hyperion-based tools.
+The `hycore::base::ext` module is the backbone of Hyperion’s extensibility story. It exposes
+the trait contracts, lifecycle hooks, and hosting utilities that enable user-defined DLLs to
+participate in an instance. This document augments the in-line documentation with a narrative
+walkthrough so you can design, ship, and troubleshoot extensions confidently.
 
-## High-level architecture
+## Runtime anatomy
 
-- **Discovery**: Plugin metadata lives in a TOML file (usually `~/.config/hyperion/meta.toml`). Each `[[ext]]` entry specifies a UUID, a human-friendly name, and the absolute or relative path to the compiled dynamic library. Set the `HY_CONFIG_PATH` environment variable to override the lookup path.
-- **Loading**: `load_plugin_by_name()` deserializes the metadata using `HyperionMetaInfo`, locates the library via `libloading`, runs a compatibility check, and then asks the plugin-specific loader to build the concrete type. The plugin value is wrapped in `PluginExtWrapper` to keep the `Library` alive for as long as the extension instance exists.
-- **Extensibility surface**: Plugins implement two traits. `PluginExt` exposes runtime metadata (UUID, version, name, description). `PluginExtStatic` adds the static UUID constant and a `new()` constructor that the loader uses to instantiate the plugin.
-- **Version gating**: Every plugin exports a compatibility function that returns a `semver::VersionReq`. Hyperion compares it against the library version supplied by the host. Loading aborts if the requirement does not match, producing `HyError::CompatibilityCheckFailed`.
+The major moving pieces live in [hycore/src/base/ext.rs](hycore/src/base/ext.rs):
 
-## Module reference: `hycore/src/base/ext.rs`
+- **Metadata (`HyperionMetaInfo`)** records every known extension (name, UUID, path). Discovery
+    happens before any shared object is touched.
+- **Loader (`load_plugin_by_name`)** handles the full lifecycle: open the dynamic library, run the
+    compatibility check, and invoke the plugin-specific constructor exported by the shared object.
+- **Traits** define the extensibility surface:
+  - `PluginExt` describes runtime behavior (UUID, version, name, `attach_to`, `initialize`,
+        `teardown`).
+  - `PluginExtStatic` adds the compile-time UUID constant and the `new(ext: &mut ExtList)` factory
+        used by the loader.
+- **Macros**. A single [`define_plugin!`](hycore/src/base/ext.rs) invocation now generates the
+    compatibility, entrypoint, loader, and teardown symbols Hyperion expects. This keeps plugin
+    crates declarative and prevents symbol mismatches.
+- **Library management**. `PluginExtWrapper` and `LibraryWrapper` ensure that the shared object
+    remains loaded for as long as any plugin value exists. The wrapper also triggers the teardown
+    symbol when the library drops, giving plugins a chance to release global resources.
+- **Host services**. `LibraryBuilderPtr` exposes whitelisted host APIs (currently the Python opaque
+    loader registry) to entrypoint/teardown callbacks, while `ExtList` ferries per-instance
+    configuration objects into plugin constructors.
 
-- **Macros**: `define_plugin_compatibility!` emits the `__hyext_fn_compatibility_check` symbol that returns a `VersionReq`, while `define_plugin_loader!` wires UUIDs to concrete `PluginExtStatic` implementors and exposes the `__hyext_fn_loader` entry point expected by the host.
-- **Traits**: `PluginExt` defines the runtime contract (UUID, semantic version, name, description). `PluginExtStatic` extends it with the compile-time UUID constant and a `new()` constructor used solely by the loader.
-- **Wrapper**: `PluginExtWrapper` keeps an `Arc<Library>` next to the boxed plugin to guarantee the shared object stays loaded for the lifetime of the plugin instance.
-- **Loader**: `load_plugin_by_name()` glues together metadata lookup, symbol resolution, semantic version checks, and instantiation. Failures bubble up as the `HyError` variants defined in `hycore/src/utils/error.rs`.
+## Lifecycle: from metadata to running plugin
 
-## Writing a plugin
+1. **Discovery**. `InstanceContext::create` loads `HyperionMetaInfo` from the configured TOML file.
+     Environment variable `HY_CONFIG_PATH` can override the default path described in
+     [hycore/src/magic.rs](hycore/src/magic.rs).
+2. **Preloading (optional)**. When Python bindings need to register opaque objects before instance
+     creation, the host calls `preload_plugins`, which keeps `LibraryWrapper`s alive via
+     `PluginPreloadGuard`.
+3. **dlopen**. `load_so_lib` canonicalizes the path, takes a global lock to avoid platform-specific
+     races, and loads the shared object through `libloading`.
+4. **Entrypoint**. The generated `__hyext_fn_entrypoint` receives a `LibraryBuilderPtr`, allowing
+     the plugin to register Python loaders or other global services.
+5. **Compatibility check**. The generated `__hyext_fn_compatibility_check` returns a
+     `semver::VersionReq`; the host compares it to `env!("CARGO_PKG_VERSION")` and aborts with
+     `HyError::CompatibilityCheckFailed` if the requirement is not satisfied.
+6. **Instantiation**. The generated `__hyext_fn_loader` matches the requested UUID, calls
+     `PluginExtStatic::new`, and returns a boxed `PluginExt`. Any configuration supplied through
+     `ExtList` (e.g., logger callbacks) can be consumed at this point.
+7. **Attach**. Once all plugins are instantiated, `InstanceContext` builds an `Arc` and calls
+     `PluginExt::attach_to` for each plugin, providing a `Weak` pointer they can upgrade during
+     `initialize`.
+8. **Initialize**. Each plugin receives a final `initialize()` call where per-instance state is
+     registered (event hooks, logging callbacks, etc.).
+9. **Steady state**. The plugin runs alongside the host. Logging helpers such as
+     [hycore/src/ext/hylog.rs](hycore/src/ext/hylog.rs) show how macros bridge host code and plugin
+     callbacks.
+10. **Tear-down**. Dropping `InstanceContext` triggers `PluginExt::teardown` on every plugin. When
+        the last strong reference to the shared object is gone, `LibraryWrapper::drop` invokes the
+        generated `__hyext_fn_teardown` symbol so plugins can unregister global resources.
 
-1. **Create a `cdylib` crate**. In `Cargo.toml`, set `crate-type = ["cdylib"]` and depend on `hycore`, `semver`, and `uuid`.
-2. **Define the plugin type**. Implement both `PluginExt` and `PluginExtStatic` so Hyperion can describe and instantiate your plugin.
-3. **Expose the required entry points** using the provided macros:
+## Configuration channels
 
-   ```rust
-   use hycore::{
-       base::ext::{PluginExt, PluginExtStatic},
-       define_plugin_compatibility, define_plugin_loader,
-   };
-   use semver::Version;
-   use uuid::{Uuid, uuid};
+Extensions frequently need structured configuration from the host application. Hyperion provides two
+mechanisms:
 
-   define_plugin_compatibility!(">=0.1.0");
-   define_plugin_loader!(MyPlugin);
+- **`ExtList`** ([hycore/src/utils/conf.rs](hycore/src/utils/conf.rs)) holds boxed `OpaqueObject`
+    values. The list is populated via Rust or Python before `InstanceContext::create` is invoked. The
+    logger plugin, for example, looks up `LogCreateInfoEXT` during `PluginExtStatic::new`.
+- **Python opaque loaders** enable high-level bindings to push dataclasses across the FFI boundary.
+    Each extension may register a loader inside its entrypoint using `LibraryBuilderPtr` so that the
+    Python runtime can `extract()` strongly-typed objects.
 
-   pub struct MyPlugin {
-       version: Version,
-   }
+## Building a plugin from scratch
 
-   impl PluginExtStatic for MyPlugin {
-       const UUID: Uuid = uuid!("a8af402c-7892-4b7f-9aa1-ca4b9bd47c94");
+Below is a condensed workflow for writing a new DLL/`cdylib` plugin that exports multiple concrete
+extensions.
 
-       fn new() -> Self {
-           Self { version: Version::parse("0.2.3").unwrap() }
-       }
-   }
+1. **Scaffold the crate**:
 
-   impl PluginExt for MyPlugin {
-       fn uuid(&self) -> Uuid { Self::UUID }
-       fn version(&self) -> &Version { &self.version }
-       fn name(&self) -> &str { "__EXT_PLUGIN_EXAMPLE" }
-       fn description(&self) -> &str { "An example plugin extension." }
-   }
-   ```
+     ```toml
+     [package]
+     name = "my_hy_plugin"
+     edition = "2024"
 
-   `define_plugin_compatibility!` emits the `__hyext_fn_compatibility_check` symbol, while `define_plugin_loader!` publishes `__hyext_fn_loader` capable of spawning one or more plugin types.
-4. **Build the dynamic library** via `cargo build --release`. Record the resulting `.so`, `.dylib`, or `.dll` path.
+     [lib]
+     crate-type = ["cdylib"]
 
-See the complete reference implementation in [examples/hycore-plugin/plugin/src/lib.rs](examples/hycore-plugin/plugin/src/lib.rs).
+     [dependencies]
+     hycore = { path = "../../hycore" }
+     semver = { workspace = true }
+     uuid = { workspace = true, features = ["v4"] }
+     ```
 
-## Registering plugins
+2. **Describe each plugin type**:
 
-Add, edit, or generate the metadata file read by `HyperionMetaInfo::load_from_toml()`:
+     ```rust
+     use hycore::{
+             base::ext::{PluginExt, PluginExtStatic},
+             define_plugin,
+     };
+     use semver::Version;
+     use uuid::{Uuid, uuid};
 
-```toml
-[[ext]]
-uuid = "a8af402c-7892-4b7f-9aa1-ca4b9bd47c94"
-path = "/absolute/path/to/libmy_plugin.so"
-name = "__EXT_PLUGIN_EXAMPLE"
+     pub struct FooPlugin {
+             version: Version,
+     }
+
+     impl PluginExtStatic for FooPlugin {
+             const UUID: Uuid = uuid!("cdb726aa-8656-486f-a5b5-ff09f37a83fb");
+
+             fn new(_ext: &mut hycore::utils::conf::ExtList) -> Self {
+                     Self { version: Version::parse(env!("CARGO_PKG_VERSION")).unwrap() }
+             }
+     }
+
+     impl PluginExt for FooPlugin {
+             fn uuid(&self) -> Uuid { Self::UUID }
+             fn version(&self) -> &Version { &self.version }
+             fn name(&self) -> &str { "__EXT_FOO" }
+             fn description(&self) -> &str { "Provides foo-related features" }
+             fn attach_to(&mut self, _instance: std::sync::Weak<hycore::base::InstanceContext>) {}
+             fn initialize(&self) -> hycore::utils::error::HyResult<()> { Ok(()) }
+             fn teardown(&mut self) {}
+     }
+     ```
+
+3. **Generate the required symbols**:
+
+     ```rust
+     define_plugin!(
+             ">=0.1",
+             entry => plugin_entrypoint,
+             teardown => plugin_teardown,
+             plugins => [FooPlugin],
+     );
+
+     pub fn plugin_entrypoint(_builder: hycore::base::ext::LibraryBuilderPtr) {}
+     pub fn plugin_teardown(_builder: hycore::base::ext::LibraryBuilderPtr) {}
+     ```
+
+4. **Register metadata** so the host knows where to find the shared object:
+
+     ```toml
+     [[ext]]
+     uuid = "cdb726aa-8656-486f-a5b5-ff09f37a83fb"
+     name = "__EXT_FOO"
+     path = "/abs/path/to/libmy_hy_plugin.so"
+     ```
+
+5. **Consume from the host**:
+
+     ```rust
+     use hycore::base::{ext::load_plugin_by_name, meta::HyperionMetaInfo};
+
+     let meta = HyperionMetaInfo::load_from_toml(HyperionMetaInfo::default_path())?;
+     let mut ext_list = hycore::utils::conf::ExtList(vec![]);
+     let plugin = unsafe { load_plugin_by_name(&meta, "__EXT_FOO", &mut ext_list)? };
+     println!("Loaded {}", plugin.name());
+     ```
+
+## Case study: the logger extension
+
+The built-in logger (`hylog` crate) showcases most patterns discussed above:
+
+- Custom configuration travels through `LogCreateInfoEXT`, an `OpaqueObject` that Python bindings
+    know how to serialize. The plugin stores the user callback and minimum log level.
+- During `initialize`, the plugin writes a function pointer into
+    `InstanceStateEXT::log_callback`, allowing host macros such as `hyinfo!` or `hywarn!` to funnel
+    messages through the plugin.
+- `teardown` simply restores the default callback so future instances can run without logging.
+- See [hylog/src/lib.rs](hylog/src/lib.rs) for the fully annotated source.
+
+## Python workflow
+
+Python bindings mirror the Rust structures so that scripts can spin up instances without touching
+unsafe code:
+
+```python
+from hypi.api import (
+        ApplicationInfo,
+        InstanceCreateInfo,
+        InstanceEXT,
+        Version,
+        create_instance,
+)
+from hypi.api.ext_hylog import LogCreateInfoEXT, LogLevelEXT
+
+def py_logger(msg):
+        print(f"[{msg.level.name}] {msg.module}: {msg.message}")
+
+create_info = InstanceCreateInfo(
+        application_info=ApplicationInfo(
+                application_name="Notebook",
+                application_version=Version.parse("0.1.0"),
+                engine_name="Hyperion",
+                engine_version=Version.parse("0.1.1"),
+        ),
+        enabled_extensions=[InstanceEXT.LOGGER.value],
+        ext=[LogCreateInfoEXT(level=LogLevelEXT.DEBUG, callback=py_logger)],
+)
+
+instance = create_instance(create_info)
 ```
 
-Key field semantics:
+When `create_instance` crosses the FFI boundary, the dataclasses become the struct types defined in
+[hycore/src/base/api.rs](hycore/src/base/api.rs), and the logger plugin finds its configuration via
+`ExtList::take_ext`.
 
-- `uuid`: Must match `PluginExtStatic::UUID`. Hyperion verifies this at load time.
-- `path`: Any path libloading can open. Relative paths are resolved from the process working directory.
-- `name`: Used by `load_plugin_by_name()` and for user-facing listings.
+## Troubleshooting and best practices
 
-Use `HyperionMetaInfo::save_to_toml()` to write the file programmatically or keep one committed alongside your application (see [examples/hycore-plugin/main/test_plugin.toml](examples/hycore-plugin/main/test_plugin.toml)).
+- **Stabilize UUIDs**. Treat a UUID change as a completely different plugin.
+- **Log aggressively**. The macros in [hycore/src/ext/hylog.rs](hycore/src/ext/hylog.rs) are cheap;
+    use them to annotate every stage of load/initialize/teardown.
+- **Handle errors deterministically**. Bubble errors through `HyResult` so hosts can surface them to
+    end users. Avoid panicking inside plugin constructors.
+- **Version consciously**. Encode real compatibility expectations in the `define_plugin!`
+    `compat` string. Semantic ranges such as `"=0.1.1"`, `"^0.1"`, or `">=1.0,<2.0"` are all valid.
+- **Keep entrypoints idempotent**. Hosts may preload plugins before instance creation. Limit
+    entrypoint work to lightweight registration steps and store state in the instance rather than
+    globals whenever possible.
+- **Use `ExtList` sparingly**. Remove configuration objects once consumed so other plugins do not
+    accidentally grab them.
 
-## Loading from host applications
-
-A host integrates the plugin runtime with a handful of calls:
-
-```rust
-use hycore::base::{ext::load_plugin_by_name, meta::HyperionMetaInfo};
-use semver::Version;
-
-let meta = HyperionMetaInfo::load_from_toml("./test_plugin.toml".as_ref())?;
-let host_version = Version::parse("0.1.0")?;
-let plugin = load_plugin_by_name(&meta, "__EXT_PLUGIN_EXAMPLE", host_version)?;
-println!("Loaded {} v{}", plugin.name(), plugin.version());
-```
-
-This routine will:
-
-- Display any `HyError::ExtensionLoadError` if the shared object cannot be opened or does not export the expected symbols.
-- Reject the plugin when `compatibility_req.matches(host_version)` evaluates to `false`.
-- Keep the shared object pinned in memory via `PluginExtWrapper`, so references to vtables stay valid for the life of `plugin`.
-
-## Best practices and troubleshooting
-
-- **Stabilize UUIDs**: Treat the UUID as the plugin’s identity. Generating a new UUID implies a distinct plugin.
-- **Follow semantic versioning**: The compatibility check can express ranges like `"^0.1"` or `"<=1.2"`; choose requirements that reflect real API expectations.
-- **Bundle diagnostics**: Implement `description()` with actionable text (e.g., prerequisites, expected host modules).
-- **Graceful updates**: Ship a new shared object, update the metadata entry (or distribute multiple entries with different names), and allow hosts to pick the appropriate plugin at runtime.
-- **Security**: `load_plugin_by_name()` executes arbitrary code from the shared object constructors. Only load trusted libraries and consider sandboxing when integrating third-party plugins.
-
-With these conventions, plugin authors can safely extend Hyperion, and host applications gain a consistent way to discover and orchestrate new capabilities without recompiling the core runtime.
+Armed with this reference and the inline Rustdoc/docstrings contributed across the codebase, you can
+confidently extend Hyperion with bespoke functionality tailored to your workloads.

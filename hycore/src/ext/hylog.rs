@@ -1,3 +1,6 @@
+//! Cross-language logging primitives used by Hyperion instances and
+//! extensions.
+
 #[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 use strum::FromRepr;
@@ -57,7 +60,8 @@ pub struct LogMessageEXT {
     pub thread_name: Option<String>,
 }
 
-/// Function ptr type for log callbacks
+/// Formats a message and forwards it to the runtime log callback registered on
+/// an [`InstanceContext`](crate::base::InstanceContext).
 #[macro_export]
 macro_rules! hylog {
     (
@@ -82,6 +86,7 @@ macro_rules! hylog {
     };
 }
 
+/// Emits a trace-level log entry routed through the logger extension.
 #[macro_export]
 macro_rules! hytrace {
     (
@@ -96,6 +101,7 @@ macro_rules! hytrace {
     };
 }
 
+/// Emits a debug-level log entry routed through the logger extension.
 #[macro_export]
 macro_rules! hydebug {
     (
@@ -110,6 +116,7 @@ macro_rules! hydebug {
     };
 }
 
+/// Emits an info-level log entry routed through the logger extension.
 #[macro_export]
 macro_rules! hyinfo {
     (
@@ -124,6 +131,7 @@ macro_rules! hyinfo {
     };
 }
 
+/// Emits a warning-level log entry routed through the logger extension.
 #[macro_export]
 macro_rules! hywarn {
     (
@@ -138,6 +146,7 @@ macro_rules! hywarn {
     };
 }
 
+/// Emits an error-level log entry routed through the logger extension.
 #[macro_export]
 macro_rules! hyerror {
     (

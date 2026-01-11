@@ -1,3 +1,5 @@
+"""Python bindings for the Hyperion logger extension configuration objects."""
+
 from enum import IntEnum
 from typing import Callable, TYPE_CHECKING
 from pydantic.dataclasses import dataclass
@@ -8,6 +10,8 @@ from datetime import datetime
 
 
 class LogLevelEXT(IntEnum):
+    """Mirror of the Rust-side `LogLevelEXT` enumeration."""
+
     TRACE = 0
     DEBUG = 1
     INFO = 2
@@ -32,6 +36,8 @@ class LogCreateInfoEXT:
     callback: Callable[[LogMessageEXT], None] = Field(default_factory=lambda: lambda _: None)
 
     def __post_init__(self):
+        """Wrap the callback so that native structs turn into typed dataclasses."""
+
         # Wrap the callback to ensure it matches the actual signature
         original_callback = self.callback
         def wrapped_callback(log_message):

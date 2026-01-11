@@ -1,3 +1,10 @@
+"""Python-side convenience layer for constructing Hyperion instances.
+
+The helpers in this module mirror the Rust-side `InstanceCreateInfo` structs,
+making it straightforward to spin up engines from notebooks or scripts while
+still benefiting from type validation.
+"""
+
 import hypi._sys as lib # type: ignore
 from hypi.api.ext_hylog import *
 from pydantic.dataclasses import dataclass
@@ -5,7 +12,8 @@ from pydantic import Field
 from enum import StrEnum
 
 class InstanceEXT(StrEnum):
-    """Enumeration of possible instance extensions."""
+    """Enumeration of built-in extensions that can be enabled on an instance."""
+
     LOGGER = "__EXT_hyperion_logger"
 
 @dataclass
@@ -31,7 +39,7 @@ class Version:
 
 @dataclass
 class ApplicationInfo:
-    """Holds metadata about the application."""
+    """Holds metadata about the application and its host engine."""
     application_name: str
     application_version: Version
     engine_name: str
@@ -39,12 +47,25 @@ class ApplicationInfo:
 
 @dataclass
 class InstanceCreateInfo:
-    """Holds information required to create an instance."""
+    """Aggregates everything Hyperion needs to spin up a new instance."""
     application_info: ApplicationInfo
     enabled_extensions: list[str]
     ext: list[object] = Field(default_factory=list)
 
 def create_instance(create_info: InstanceCreateInfo) -> lib.Instance:
-    """Create an instance with the given creation info."""
+    """Create an instance with the given creation info.
+
+    Parameters
+    ----------
+    create_info:
+        A fully populated :class:`InstanceCreateInfo`. The object is converted
+        into the ABI-compatible representation expected by the Rust runtime.
+
+    Returns
+    -------
+    hypi._sys.Instance
+        Handle to the native Hyperion instance. Keep it alive for as long as
+        you intend to interact with the core engine.
+    """
     assert isinstance(create_info, InstanceCreateInfo), "create_info must be an InstanceCreateInfo"
     return lib._hy_create_instance(create_info)

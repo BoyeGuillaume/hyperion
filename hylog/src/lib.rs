@@ -1,3 +1,6 @@
+//! Built-in Hyperion logger extension implemented as a dynamically loaded
+//! plugin.
+
 use std::sync::Weak;
 
 use hycore::{
@@ -15,6 +18,8 @@ use pyo3::{IntoPyObjectExt, prelude::*};
 use semver::Version;
 use uuid::Uuid;
 
+/// Fully qualified Python type name used when registering the opaque loader
+/// for `LogCreateInfoEXT`.
 pub const HYPERION_PY_NAME_LOG_CREATE_INFO_EXT: &str = "hypi.api.ext_hylog.LogCreateInfoEXT";
 
 define_plugin!("=0.1.1",
@@ -23,6 +28,8 @@ define_plugin!("=0.1.1",
     plugins => [LogPluginEXT],
 );
 
+/// Entry-point called immediately after the shared object is loaded. Used to
+/// register opaque Python loaders.
 pub fn logger_entrypoint(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
     // Register the LogCreateInfoEXT structure to be understood by Hycore's Python integration
     #[cfg(feature = "pyo3")]
@@ -37,6 +44,8 @@ pub fn logger_entrypoint(_library_builder: hycore::base::ext::LibraryBuilderPtr)
     }
 }
 
+/// Complement to [`logger_entrypoint`] that unregisters opaque loaders when
+/// the shared object is unloaded.
 pub fn logger_teardown(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
     // Teardown logic for the logger extension can be added here
     #[cfg(feature = "pyo3")]
@@ -47,6 +56,8 @@ pub fn logger_teardown(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
     }
 }
 
+/// Wrapper around user-supplied log callbacks so they can be stored in
+/// `ExtList` and invoked from Rust.
 pub struct LogCallbackEXT(pub Box<dyn Fn(LogMessageEXT) + Send + Sync>);
 
 #[cfg(feature = "pyo3")]
@@ -82,6 +93,8 @@ pub struct LogCreateInfoEXT {
 }
 impl OpaqueObject for LogCreateInfoEXT {}
 
+/// Concrete logger plugin implementation backed by [`LogCreateInfoEXT`]
+/// configuration and optional Python callbacks.
 pub struct LogPluginEXT {
     version: Version,
     instance: Option<Weak<InstanceContext>>,
@@ -151,6 +164,8 @@ impl PluginExt for LogPluginEXT {
 }
 
 impl LogPluginEXT {
+    /// Dispatches a [`LogMessageEXT`] to the registered callback (or stdout) if
+    /// the message level is enabled.
     pub fn log_message(instance_context: &InstanceContext, message: LogMessageEXT) {
         if let Some(logger_ext) = instance_context.get_plugin_ext::<LogPluginEXT>() {
             if message.level < logger_ext.min_level {
