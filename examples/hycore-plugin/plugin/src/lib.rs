@@ -5,13 +5,26 @@ use hycore::{
         InstanceContext,
         ext::{PluginExt, PluginExtStatic},
     },
-    define_plugin_compatibility, define_plugin_loader,
+    define_plugin,
 };
 use semver::Version;
 use uuid::{Uuid, uuid};
 
-define_plugin_compatibility!(">=0.1.0");
-define_plugin_loader!(Plugin);
+define_plugin!(">=0.1.0",
+    entry => plugin_entrypoint,
+    teardown => plugin_teardown,
+    plugins => [Plugin],
+);
+
+pub fn plugin_entrypoint(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
+    // Entry point logic for the plugin can be added here
+    println!("Plugin entrypoint called.");
+}
+
+pub fn plugin_teardown(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
+    // Teardown logic for the plugin can be added here
+    println!("Plugin teardown called.");
+}
 
 pub struct Plugin {
     version: Version,
@@ -54,7 +67,7 @@ impl PluginExt for Plugin {
         Ok(())
     }
 
-    fn teardown(self) {
+    fn teardown(&mut self) {
         // Clean up resources if needed
     }
 }

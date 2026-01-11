@@ -56,3 +56,4 @@ petgraph = "^0.8"
 
 hyinstr = { path = "hyinstr" }
 hycore = { path = "hycore" }
+hylog = { path = "hylog" }

@@ -7,4 +7,3 @@ edition = "2024"
 hyinstr = { workspace = true, features = ["chumsky"] }
 hycore = { workspace = true, features = ["test-utils"] }
 uuid = { workspace = true, features = ["v4"] }
-semver.workspace = true

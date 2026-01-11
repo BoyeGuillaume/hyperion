@@ -10,7 +10,7 @@
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, Weak},
 };
 
@@ -20,13 +20,42 @@ use semver::{Version, VersionReq};
 use uuid::Uuid;
 
 use crate::{
-    base::{InstanceContext, meta::HyperionMetaInfo},
-    magic::{EXT_COMPATIBILITY_CHECK_FN_NAME, EXT_LOADER_FN_NAME},
+    base::{
+        InstanceContext,
+        meta::{ExtMetaInfo, HyperionMetaInfo},
+    },
+    magic::{
+        EXT_COMPATIBILITY_CHECK_FN_NAME, EXT_ENTRYPOINT_FN_NAME, EXT_LOADER_FN_NAME,
+        EXT_TEARDOWN_FN_NAME,
+    },
     utils::{
-        conf::ExtList,
+        conf::{ExtList, PyOpaqueObjectLoader},
         error::{HyError, HyResult},
     },
 };
+
+pub struct LibraryBuilderPtr {
+    pub opaque_object_loader: Option<&'static RwLock<BTreeMap<String, PyOpaqueObjectLoader>>>,
+}
+
+impl LibraryBuilderPtr {
+    fn create() -> Self {
+        let opaque_object_loader = {
+            #[cfg(feature = "pyo3")]
+            {
+                Some(&crate::utils::conf::PY_OPAQUE_OBJECT_LOADERS)
+            }
+            #[cfg(not(feature = "pyo3"))]
+            {
+                None
+            }
+        };
+
+        LibraryBuilderPtr {
+            opaque_object_loader,
+        }
+    }
+}
 
 /// Function signature that plugin crates must expose under
 /// [`EXT_LOADER_FN_NAME`]. The host passes the UUID declared in the metadata and
@@ -38,6 +67,12 @@ pub type ExtLoaderFn = unsafe fn(Uuid, &mut ExtList) -> HyResult<Box<dyn PluginE
 /// requirement describing which Hyperion hosts the plugin supports.
 pub type ExtCompatibilityCheckFn = unsafe fn() -> VersionReq;
 
+/// Type alias for the extension entry-point function.
+pub type ExtEntrypointFn = unsafe fn(LibraryBuilderPtr);
+
+/// Type alias for the extension teardown function.
+pub type ExtTeardownFn = unsafe fn(LibraryBuilderPtr);
+
 /// Generates the fixed-name compatibility function that Hyperion probes for
 /// after loading the shared object.
 ///
@@ -46,39 +81,36 @@ pub type ExtCompatibilityCheckFn = unsafe fn() -> VersionReq;
 /// [`load_plugin_by_name`]. Failures while parsing the literal panic at compile
 /// time, so malformed requirements are caught early.
 #[macro_export]
-macro_rules! define_plugin_compatibility {
+macro_rules! define_plugin {
     (
-        $compat:literal
+        $compat:literal,
+        entry => $entry_fn:path,
+        teardown => $teardown_fn:path,
+        plugins => [ $( $plugin_ty:ty ),+ $(,)? ] $(,)?
     ) => {
         #[unsafe(no_mangle)]
         pub fn __hyext_fn_compatibility_check() -> semver::VersionReq {
             semver::VersionReq::parse($compat).unwrap()
         }
-    };
-}
 
-/// Generates the entry-point loader function used to instantiate plugins.
-///
-/// The macro accepts one or more concrete types implementing
-/// [`PluginExtStatic`]. At runtime Hyperion passes the UUID read from metadata
-/// and expects the loader to return the matching plugin instance. Unknown UUIDs
-/// translate into [`HyError::ExtensionNotFound`].
-#[macro_export]
-macro_rules! define_plugin_loader {
-    (
-        $( $plugin_ty:ty ),+
-        $(,)?
-    ) => {
+        #[unsafe(no_mangle)]
+        pub fn __hyext_fn_entrypoint(library_builder_ptr: hycore::base::ext::LibraryBuilderPtr) {
+            $entry_fn(library_builder_ptr)
+        }
+
+        #[unsafe(no_mangle)]
+        pub fn __hyext_fn_teardown(library_builder_ptr: hycore::base::ext::LibraryBuilderPtr) {
+            $teardown_fn(library_builder_ptr)
+        }
+
         #[unsafe(no_mangle)]
         pub unsafe fn __hyext_fn_loader(uuid: uuid::Uuid, ext: &mut hycore::utils::conf::ExtList) -> hycore::utils::error::HyResult<Box<dyn hycore::base::ext::PluginExt>> {
             match uuid {
-                $(
-                    <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID => {
-                        let plugin = <$plugin_ty as hycore::base::ext::PluginExtStatic>::new(ext);
-                        assert_eq!(plugin.uuid(), <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID, "Plugin UUID does not match the expected UUID");
-                        return Ok(Box::new(plugin));
-                    },
-                )+
+                $( <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID => {
+                    let plugin = <$plugin_ty as hycore::base::ext::PluginExtStatic>::new(ext);
+                    assert_eq!(plugin.uuid(), <$plugin_ty as hycore::base::ext::PluginExtStatic>::UUID, "Plugin UUID does not match the expected UUID");
+                    return Ok(Box::new(plugin));
+                }, )+
                 _ => {
                     Err(hycore::utils::error::HyError::ExtensionNotFound(uuid.to_string()))
                 },
@@ -113,7 +145,7 @@ pub trait PluginExt: Send + Sync {
     /// per process, so any per-instance state must be set up here.
     fn initialize(&self) -> HyResult<()>;
 
-    fn teardown(self);
+    fn teardown(&mut self);
 }
 
 /// Compile-time helpers that let the host instantiate plugins without knowing
@@ -141,7 +173,7 @@ pub struct PluginExtWrapper {
     /// field can trigger use-after-unload UB.
     ///
     /// DO NOT CHANGE THE ORDER OF FIELDS OR DROP GUARANTEES!
-    _lib: Arc<libloading::Library>,
+    _lib: Arc<LibraryWrapper>,
 }
 
 impl Deref for PluginExtWrapper {
@@ -158,9 +190,27 @@ impl DerefMut for PluginExtWrapper {
     }
 }
 
+/// Wrapper around [`libloading::Library`] that calls the teardown function
+/// when dropped.
+pub struct LibraryWrapper(pub Library);
+
+impl Drop for LibraryWrapper {
+    fn drop(&mut self) {
+        unsafe {
+            // Call the teardown function if it exists
+            let teardown_fn: libloading::Symbol<ExtTeardownFn> =
+                match self.0.get(EXT_TEARDOWN_FN_NAME.as_bytes()) {
+                    Ok(symbol) => symbol,
+                    Err(_) => return, // No teardown function, nothing to do
+                };
+            teardown_fn(LibraryBuilderPtr::create());
+        }
+    }
+}
+
 /// Global internal table referencing weak pointers to loaded libraries
 /// to prevent redundant loads.
-static PLUGIN_LIBRARY_TABLE: RwLock<BTreeMap<PathBuf, Weak<Library>>> =
+static PLUGIN_LIBRARY_TABLE: RwLock<BTreeMap<PathBuf, Weak<LibraryWrapper>>> =
     RwLock::new(BTreeMap::new());
 /// Global mutex used to serialize dynamic library loading operations.
 pub static GLOBAL_LD_LIB_LOCK: Mutex<()> = Mutex::new(());
@@ -169,9 +219,9 @@ pub static GLOBAL_LD_LIB_LOCK: Mutex<()> = Mutex::new(());
 /// loading the libraries is not thread-safe if used in conjunction with `DllSetSearchPath` or
 /// `LD_LIBRARY_PATH` manipulations. To ensure safety, we use a global mutex
 /// [`GLOBAL_LD_LIB_LOCK`] to serialize library loading operations and prevent such issues.
-pub unsafe fn load_so_lib(path: &Path) -> HyResult<Arc<Library>> {
+pub unsafe fn load_so_lib(ext_info: &ExtMetaInfo) -> HyResult<Arc<LibraryWrapper>> {
     // Convert path to absolute path
-    let abs_path = std::fs::canonicalize(path).map_err(|e| HyError::IoError(e))?;
+    let abs_path = std::fs::canonicalize(&ext_info.path).map_err(|e| HyError::IoError(e))?;
 
     // Check the global table for an existing load
     {
@@ -184,16 +234,50 @@ pub unsafe fn load_so_lib(path: &Path) -> HyResult<Arc<Library>> {
     }
 
     // Load the dynamic library
-    unsafe {
+    let library = unsafe {
         let lock = GLOBAL_LD_LIB_LOCK.lock();
         let library = Library::new(&abs_path).map_err(|e| HyError::ExtensionLoadError {
             source: e,
             file: abs_path.to_string_lossy().to_string(),
-            name: String::new(),
+            name: ext_info.name.clone(),
         })?;
 
         // Insert into the global table
-        let arc_lib = Arc::new(library);
+        let arc_lib = Arc::new(LibraryWrapper(library));
+
+        // Call to the entrypoint function to ensure proper initialization
+        let entrypoint_fn: libloading::Symbol<ExtEntrypointFn> = arc_lib
+            .0
+            .get(EXT_ENTRYPOINT_FN_NAME.as_bytes())
+            .map_err(|_| HyError::ExtensionLoadErrorSymbolNotFound {
+                file: abs_path.to_string_lossy().to_string(),
+                name: ext_info.name.clone(),
+                symbol: EXT_ENTRYPOINT_FN_NAME,
+            })?;
+        entrypoint_fn(LibraryBuilderPtr::create());
+
+        // Check version compatibility of the loaded library
+        let compat_check_fn: libloading::Symbol<ExtCompatibilityCheckFn> = arc_lib
+            .0
+            .get(EXT_COMPATIBILITY_CHECK_FN_NAME.as_bytes())
+            .map_err(|_| HyError::ExtensionLoadErrorSymbolNotFound {
+                file: abs_path.to_string_lossy().to_string(),
+                name: ext_info.name.clone(),
+                symbol: EXT_COMPATIBILITY_CHECK_FN_NAME,
+            })?;
+
+        // Check compatibility
+        let compat_req = compat_check_fn();
+        let library_version = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
+        if !compat_req.matches(&library_version) {
+            return Err(HyError::CompatibilityCheckFailed {
+                file: ext_info.path.clone(),
+                name: ext_info.name.clone(),
+                version: library_version,
+                req: compat_req,
+            });
+        }
+
         let mut table = PLUGIN_LIBRARY_TABLE.write();
         table.insert(abs_path.clone(), Arc::downgrade(&arc_lib));
         drop(table);
@@ -202,8 +286,41 @@ pub unsafe fn load_so_lib(path: &Path) -> HyResult<Arc<Library>> {
         drop(lock);
 
         // Return the loaded library
-        Ok(arc_lib)
+        arc_lib
+    };
+
+    Ok(library)
+}
+
+/// Guard for preloaded plugins, this is because we need to preload shared libraries
+/// prior to decoding extensions (when using Python).
+pub struct PluginPreloadGuard {
+    _libraries: Vec<Arc<LibraryWrapper>>,
+}
+
+pub unsafe fn preload_plugins(ext_names: Vec<String>) -> HyResult<PluginPreloadGuard> {
+    // Open the metadata containing build info.
+    let meta_path = HyperionMetaInfo::default_path();
+    let meta_info = HyperionMetaInfo::load_from_toml(&meta_path)?;
+
+    let mut _libraries = Vec::new();
+    for ext_name in ext_names {
+        let ext_info = meta_info
+            .ext
+            .iter()
+            .find(|x| x.name == ext_name)
+            .ok_or_else(|| {
+                HyError::ExtensionNotFound(format!(
+                    "Extension '{}' not found in metadata.",
+                    ext_name
+                ))
+            })?;
+
+        let library = unsafe { load_so_lib(ext_info)? };
+        _libraries.push(library);
     }
+
+    Ok(PluginPreloadGuard { _libraries })
 }
 
 /// Loads and instantiates a plugin by name.
@@ -217,7 +334,6 @@ pub unsafe fn load_so_lib(path: &Path) -> HyResult<Arc<Library>> {
 pub unsafe fn load_plugin_by_name(
     meta_info: &HyperionMetaInfo,
     name: &str,
-    library_version: Version,
     ext: &mut ExtList,
 ) -> HyResult<PluginExtWrapper> {
     // Find the extension meta info by UUID
@@ -229,35 +345,16 @@ pub unsafe fn load_plugin_by_name(
 
     // Load the dynamic library
     unsafe {
-        let library = load_so_lib(Path::new(&ext_info.path))?;
-
-        // Get the compatibility check function
-        let compat_check_fn: libloading::Symbol<ExtCompatibilityCheckFn> = library
-            .get(EXT_COMPATIBILITY_CHECK_FN_NAME.as_bytes())
-            .map_err(|e| HyError::ExtensionLoadError {
-                source: e,
-                file: ext_info.path.clone(),
-                name: ext_info.name.clone(),
-            })?;
-
-        // Check compatibility
-        let compat_req = compat_check_fn();
-        if !compat_req.matches(&library_version) {
-            return Err(HyError::CompatibilityCheckFailed {
-                file: ext_info.path.clone(),
-                name: ext_info.name.clone(),
-                version: library_version,
-                req: compat_req,
-            });
-        }
+        let library = load_so_lib(ext_info)?;
 
         // Get the loader function
         let loader_fn: libloading::Symbol<ExtLoaderFn> = library
+            .0
             .get(EXT_LOADER_FN_NAME.as_bytes())
-            .map_err(|e| HyError::ExtensionLoadError {
-                source: e,
+            .map_err(|_| HyError::ExtensionLoadErrorSymbolNotFound {
                 file: ext_info.path.clone(),
                 name: ext_info.name.clone(),
+                symbol: EXT_LOADER_FN_NAME,
             })?;
 
         // Load the extension

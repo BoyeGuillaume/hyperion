@@ -26,6 +26,13 @@ pub enum HyError {
         name: String,
     },
 
+    #[error("Symbol '{symbol}' not found in '{file}' for extension '{name}'")]
+    ExtensionLoadErrorSymbolNotFound {
+        file: String,
+        name: String,
+        symbol: &'static str,
+    },
+
     #[error(
         "Compability check failed for extension '{name}' from file '{file}'. Required: {req}, found: {version}"
     )]

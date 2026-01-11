@@ -4,13 +4,11 @@ use hycore::{
     base::{ext::load_plugin_by_name, meta::HyperionMetaInfo},
     utils::conf::ExtList,
 };
-use semver::Version;
 
 fn main() {
     let path = PathBuf::from("./test_plugin.toml");
     println!("Loading meta info from {:?}", path);
     let meta_info = HyperionMetaInfo::load_from_toml(&path).unwrap();
-    let version = Version::parse("0.1.0").unwrap();
 
     println!("Available plugins:");
     for ext in &meta_info.ext {
@@ -18,13 +16,7 @@ fn main() {
     }
 
     let plugin = unsafe {
-        load_plugin_by_name(
-            &meta_info,
-            "__EXT_PLUGIN_EXAMPLE",
-            version,
-            &mut ExtList(vec![]),
-        )
-        .unwrap()
+        load_plugin_by_name(&meta_info, "__EXT_PLUGIN_EXAMPLE", &mut ExtList(vec![])).unwrap()
     };
     println!(
         "Loaded plugin: {} (UUID: {}, Version: {})",

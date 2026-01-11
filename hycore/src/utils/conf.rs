@@ -1,6 +1,10 @@
+#[cfg(feature = "pyo3")]
+use std::collections::BTreeMap;
+
 use downcast_rs::{DowncastSync, impl_downcast};
 #[cfg(feature = "pyo3")]
-use phf::phf_map;
+use parking_lot::RwLock;
+#[cfg(feature = "pyo3")]
 #[cfg(feature = "pyo3")]
 use pyo3::{FromPyObject, PyAny, PyResult};
 
@@ -8,14 +12,16 @@ use pyo3::{FromPyObject, PyAny, PyResult};
 pub trait OpaqueObject: DowncastSync {}
 impl_downcast!(sync OpaqueObject);
 
+#[cfg(feature = "pyo3")]
+pub type PyOpaqueObjectLoader =
+    fn(pyo3::Borrowed<'_, '_, PyAny>) -> PyResult<Box<dyn OpaqueObject>>;
+#[cfg(not(feature = "pyo3"))]
+pub type PyOpaqueObjectLoader = fn() -> ();
+
 /// A map of each py-object loader by type name.
 #[cfg(feature = "pyo3")]
-static PY_OBJECT_LOADERS: phf::Map<
-    &'static str,
-    fn(pyo3::Borrowed<'_, '_, PyAny>) -> PyResult<Box<dyn OpaqueObject>>,
-> = phf_map! {
-//     "my_module.MyType" => Box::new(|obj| {
-};
+pub static PY_OPAQUE_OBJECT_LOADERS: RwLock<BTreeMap<String, PyOpaqueObjectLoader>> =
+    RwLock::new(BTreeMap::new());
 
 /// A list of extendable configuration entries.
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
@@ -30,12 +36,16 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Box<dyn OpaqueObject> {
 
         let type_name: String = obj.get_type().fully_qualified_name()?.to_string();
 
-        if let Some(loader) = PY_OBJECT_LOADERS.get(&type_name) {
-            loader(obj)
+        if let Some(loader) = PY_OPAQUE_OBJECT_LOADERS.read().get(&type_name) {
+            println!("Found loader for type '{}'", type_name);
+            loader(obj).inspect_err(|e| {
+                println!("Failed: {}", e);
+            })
         } else {
             Err(pyo3::exceptions::PyTypeError::new_err(format!(
-                "No loader registered for type '{}'",
-                type_name
+                "No loader registered for type '{}'. Possible types are: {:?}",
+                type_name,
+                PY_OPAQUE_OBJECT_LOADERS.read().keys().collect::<Vec<_>>()
             )))
         }
     }

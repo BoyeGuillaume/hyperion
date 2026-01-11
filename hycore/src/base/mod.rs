@@ -37,6 +37,14 @@ pub struct InstanceContext {
     pub extensions: BTreeMap<Uuid, PluginExtWrapper>,
 }
 
+impl Drop for InstanceContext {
+    fn drop(&mut self) {
+        while let Some((_uuid, mut ext)) = self.extensions.pop_last() {
+            ext.teardown();
+        }
+    }
+}
+
 impl InstanceContext {
     pub unsafe fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
         // Construct state about the application.
@@ -69,12 +77,7 @@ impl InstanceContext {
         // For each enabled extension, load and instantiate it.
         for ext_name in &instance_create_info.enabled_extensions {
             let plugin = unsafe {
-                load_plugin_by_name(
-                    &meta_info,
-                    ext_name,
-                    _build_info.crate_info.version.clone(),
-                    &mut instance_create_info.ext,
-                )?
+                load_plugin_by_name(&meta_info, ext_name, &mut instance_create_info.ext)?
             };
             instance.extensions.insert(plugin.uuid(), plugin);
         }

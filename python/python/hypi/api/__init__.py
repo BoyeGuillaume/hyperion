@@ -1,6 +1,12 @@
 import hypi._sys as lib # type: ignore
+from hypi.api.ext_hylog import *
 from pydantic.dataclasses import dataclass
 from pydantic import Field
+from enum import StrEnum
+
+class InstanceEXT(StrEnum):
+    """Enumeration of possible instance extensions."""
+    LOGGER = "__EXT_hyperion_logger"
 
 @dataclass
 class Version:

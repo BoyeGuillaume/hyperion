@@ -29,7 +29,6 @@ pyo3 = { workspace = true, features = [
     "extension-module",
     "abi3",
 ], optional = true }
-phf = { workspace = true, features = ["macros"] }
 
 [build-dependencies]
 build-info-build.workspace = true

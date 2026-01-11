@@ -9,7 +9,14 @@ application_info = api.ApplicationInfo(
 
 instance_create_info = api.InstanceCreateInfo(
     application_info=application_info,
-    enabled_extensions=[],
+    enabled_extensions=[
+        api.InstanceEXT.LOGGER,
+    ],
+    ext=[
+        api.LogCreateInfoEXT(
+            level=0,
+        )
+    ]
 )
 
 instance = api.create_instance(instance_create_info)
