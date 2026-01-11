@@ -25,11 +25,8 @@ define_plugin!("=0.1.1",
 
 pub fn logger_entrypoint(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
     // Register the LogCreateInfoEXT structure to be understood by Hycore's Python integration
-    println!("Logger plugin entrypoint called.");
     #[cfg(feature = "pyo3")]
     if let Some(opaque_object_loader) = _library_builder.opaque_object_loader {
-        println!("Registering LogCreateInfoEXT loader.");
-
         opaque_object_loader.write().insert(
             HYPERION_PY_NAME_LOG_CREATE_INFO_EXT.to_string(),
             |obj: pyo3::Borrowed<'_, '_, pyo3::PyAny>| -> pyo3::PyResult<Box<dyn hycore::utils::conf::OpaqueObject>> {
@@ -44,8 +41,6 @@ pub fn logger_teardown(_library_builder: hycore::base::ext::LibraryBuilderPtr) {
     // Teardown logic for the logger extension can be added here
     #[cfg(feature = "pyo3")]
     if let Some(opaque_object_loader) = _library_builder.opaque_object_loader {
-        println!("Logger plugin teardown called.");
-
         opaque_object_loader
             .write()
             .remove(HYPERION_PY_NAME_LOG_CREATE_INFO_EXT);

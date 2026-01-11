@@ -49,10 +49,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Box<dyn OpaqueObject> {
         let type_name: String = obj.get_type().fully_qualified_name()?.to_string();
 
         if let Some(loader) = PY_OPAQUE_OBJECT_LOADERS.read().get(&type_name) {
-            println!("Found loader for type '{}'", type_name);
-            loader(obj).inspect_err(|e| {
-                println!("Failed: {}", e);
-            })
+            loader(obj)
         } else {
             Err(pyo3::exceptions::PyTypeError::new_err(format!(
                 "No loader registered for type '{}'. Possible types are: {:?}",
