@@ -11,6 +11,7 @@ pub struct RefId<U, T: AsRef<U>> {
 }
 
 impl<U, T: AsRef<U>> RefId<U, T> {
+    /// Wraps a reference-like type so pointer identity can be compared or hashed.
     pub fn new(inner: T) -> Self {
         Self {
             inner,
@@ -18,10 +19,12 @@ impl<U, T: AsRef<U>> RefId<U, T> {
         }
     }
 
+    /// Borrows the underlying reference wrapper (e.g. `Arc`).
     pub fn borrow_arc(&self) -> &T {
         &self.inner
     }
 
+    /// Consumes the wrapper and returns the owned reference-like value.
     pub fn take(self) -> T {
         self.inner
     }
@@ -72,8 +75,12 @@ impl<U, T: AsRef<U>> std::hash::Hash for RefId<U, T> {
     }
 }
 
+/// Shortcut for wrapping an `Arc<U>`.
 pub type ArcRefId<U> = RefId<U, Arc<U>>;
+/// Shortcut for wrapping an `Rc<U>`.
 pub type RcRefId<U> = RefId<U, std::rc::Rc<U>>;
+/// Shortcut for wrapping a raw reference so it can participate in maps/sets.
 pub type PtrId<'a, U> = RefId<U, &'a U>;
+/// Shortcut for wrapping a borrowed `Arc<U>` reference.
 pub type PtrArcId<'a, U> = RefId<U, &'a Arc<U>>;
 // pub type PtrRcId<'a, U> = RefId<U, &'a std::rc::Rc<U>>;

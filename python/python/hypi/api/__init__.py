@@ -29,13 +29,14 @@ class Version:
     def to_tuple(self) -> tuple[int, int, int]:
         return (self.major, self.minor, self.patch)
     
-    def parse(version_str: str) -> 'Version':
+    @classmethod
+    def parse(cls, version_str: str) -> 'Version':
         """Parse a version string in the format 'major.minor.patch'."""
         parts = version_str.split('.')
         if len(parts) != 3:
             raise ValueError("Version string must be in 'major.minor.patch' format")
         major, minor, patch = map(int, parts)
-        return Version(major, minor, patch)
+        return cls(major, minor, patch)
 
 @dataclass
 class ApplicationInfo:

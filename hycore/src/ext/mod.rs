@@ -30,7 +30,7 @@ pub mod hylog;
 /// Function signature to construct a plugin instance from a loaded shared object.
 pub type ExtLoaderFn = fn(&mut OpaqueList) -> HyResult<Box<dyn DynPluginEXT>>;
 
-/// Static list of all available extensions.
+/// Static registration entry describing one concrete plugin implementation.
 pub struct PluginRegistry {
     pub uuid: Uuid,
     pub name: &'static str,
@@ -59,7 +59,11 @@ macro_rules! define_plugin {
     };
 }
 
-/// Loads a plugin by its registered name from the provided metadata.
+/// Loads a plugin by its registered name from the inventory table.
+///
+/// # Errors
+///
+/// Returns [`HyError::PluginNotFound`] when no plugin entry matches `name`.
 pub fn load_plugin_by_name(
     name: &str,
     ext_list: &mut OpaqueList,

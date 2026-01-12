@@ -1,3 +1,5 @@
+//! Lightweight optimization passes shared by specification tooling and provers.
+
 use std::collections::HashMap;
 
 use bit_set::BitSet;

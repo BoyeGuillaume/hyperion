@@ -33,14 +33,16 @@ inventory::collect!(PyOpaqueObjectLoadersRegistry);
 macro_rules! define_py_opaque_object_loaders {
     (
         $name:literal,
-        $obj_type:ty,
+        $obj_type:ty
+        $(,)?
     ) => {};
 }
 #[macro_export]
 #[cfg(feature = "pyo3")]
 macro_rules! define_py_opaque_object_loaders {
     (
-        $name:expr, $obj_type:ty 
+        $name:expr, $obj_type:ty
+        $(,)?
     ) => {
         inventory::submit! {
             $crate::utils::opaque::PyOpaqueObjectLoadersRegistry {
@@ -87,7 +89,9 @@ impl<'a, 'py> FromPyObject<'a, 'py> for Box<dyn OpaqueObject> {
             }
         }
 
-        println!("No loader registered for type '{}'. Possible types are: {:?}", type_name,
+        println!(
+            "No loader registered for type '{}'. Possible types are: {:?}",
+            type_name,
             inventory::iter::<PyOpaqueObjectLoadersRegistry>
                 .into_iter()
                 .map(|r| r.name)

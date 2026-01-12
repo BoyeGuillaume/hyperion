@@ -96,12 +96,13 @@ pub struct Specification {
 }
 
 impl Specification {
+    /// Unique identifier associated with both the specification and the backing meta-function.
     pub fn uuid(&self) -> Uuid {
         debug_assert!(self.uuid == self.function.uuid);
         self.uuid
     }
 
-    /// Create a new specification from the given function.
+    /// Creates a new specification from the given meta-function.
     pub fn new(function: Function) -> Self {
         Self {
             uuid: function.uuid,
@@ -110,13 +111,13 @@ impl Specification {
         }
     }
 
-    /// Reference to the specification function body.
+    /// Returns the immutable specification function body, recomputing caches if needed.
     pub fn function(&self) -> &Function {
         debug_assert!(self.uuid == self.function.uuid);
         &self.function
     }
 
-    /// Mutable lazy reference to the specification acceleration structures.
+    /// Marks acceleration structures as dirty and exposes the mutable function for in-place edits.
     pub fn function_mut(&mut self) -> LazyDirtifierGuard<'_, Function> {
         self.acceleration.dirtify(&mut self.function)
     }

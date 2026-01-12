@@ -21,7 +21,6 @@ build_info::build_info!(fn retrieve_build_info);
 pub struct InstanceStateEXT {
     pub log_callback: RwLock<fn(&InstanceContext, LogMessageEXT)>,
 }
-impl InstanceStateEXT {}
 
 impl Default for InstanceStateEXT {
     fn default() -> Self {

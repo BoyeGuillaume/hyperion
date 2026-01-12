@@ -1,3 +1,5 @@
+//! Helpers for locating and persisting Hyperion metadata on disk.
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -11,6 +13,7 @@ use crate::{
 };
 
 #[derive(Default, Serialize, Deserialize)]
+/// Representation of the `meta.toml` manifest used to seed plugin discovery.
 pub struct HyMetaConfig {}
 
 impl HyMetaConfig {

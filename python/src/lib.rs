@@ -3,10 +3,12 @@ use std::sync::Arc;
 use hycore::base::{InstanceContext, api};
 use pyo3::prelude::*;
 
+/// Opaque handle to a running Hyperion instance exposed to Python callers.
 #[pyclass]
 #[allow(dead_code)]
 pub struct Instance(Arc<InstanceContext>);
 
+/// Creates a new Hyperion instance from the validated Python dataclasses.
 #[pyfunction]
 fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResult<Instance> {
     // Create the instance object from the provided create info
@@ -24,8 +26,8 @@ fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResul
     Ok(Instance(instance_context))
 }
 
-#[pyfunction]
 /// Computes the factorial of a number.
+#[pyfunction]
 fn factorial(n: u64) -> PyResult<u64> {
     let mut res = 1u64;
     for i in 2..=n {
@@ -36,8 +38,8 @@ fn factorial(n: u64) -> PyResult<u64> {
     Ok(res)
 }
 
-#[pyfunction]
 /// Computes the fibonacci of a number.
+#[pyfunction]
 fn fibonacci(n: u64) -> PyResult<u64> {
     let mut a = 0u64;
     let mut b = 1u64;
@@ -51,6 +53,7 @@ fn fibonacci(n: u64) -> PyResult<u64> {
     Ok(a)
 }
 
+/// Module initializer that wires the Rust functions into `hypi._sys`.
 #[pymodule]
 #[pyo3(name = "_sys")]
 #[pyo3(submodule)]

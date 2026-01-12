@@ -8,6 +8,7 @@ use crate::{
     utils::{error::HyResult, opaque::OpaqueList},
 };
 
+/// ABI-stable semantic version triple passed between frontends and the core.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 #[repr(C)]
@@ -29,6 +30,7 @@ impl Into<semver::Version> for VersionInfo {
     }
 }
 
+/// Describes the embedding application and target engine versions.
 #[repr(C)]
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ApplicationInfo {
@@ -38,6 +40,7 @@ pub struct ApplicationInfo {
     pub engine_name: String,
 }
 
+/// Container used to request the creation of an [`InstanceContext`].
 #[repr(C)]
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct InstanceCreateInfo {
@@ -46,6 +49,7 @@ pub struct InstanceCreateInfo {
     pub ext: OpaqueList,
 }
 
+/// Creates and initializes a new [`InstanceContext`] from the provided metadata.
 pub unsafe fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
     unsafe { InstanceContext::create(create_info) }
 }

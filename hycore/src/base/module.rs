@@ -19,6 +19,7 @@ pub struct FunctionContext {
     pub dest_map: BTreeMap<Name, InstructionRef>,
 }
 
+/// Aggregates metadata and analysis state for a single module loaded in an instance.
 pub struct ModuleContext {
     /// Unique information about this module.
     pub uuid: Uuid,

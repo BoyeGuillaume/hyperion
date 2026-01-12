@@ -1,3 +1,4 @@
+//! Lock-free helpers for memoizing expensive computations behind lightweight guards.
 use std::{
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicUsize, Ordering},
@@ -6,11 +7,11 @@ use std::{
 use crossbeam::utils::Backoff;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 
+// Everything above STATE_CLEAN is counting number of "in use" witch should prevent dirtifying
 const STATE_DIRTY: usize = 0; // Value is dirty and not being locked
 const STATE_DIRTY_LOCK: usize = 1; // Value is being dirtied (should not compute)
 const STATE_COMPUTING: usize = 2; // Value is behing computed (should not dirtify nor compute nor read)
 const STATE_CLEAN: usize = 3; // Value is clean and can be used or dirtified
-// Everything above STATE_CLEAN is counting number of "in use" witch should prevent dirtifying
 
 /// Guard for a lazy value
 ///
@@ -62,6 +63,7 @@ impl<'a, K: ?Sized> Drop for LazyGuard<'a, K> {
     }
 }
 
+/// Lazily computed value guarded by a CAS-based state machine.
 pub struct LazyContainer<T> {
     elem: RwLock<Option<T>>,
     state: AtomicUsize,
@@ -74,6 +76,7 @@ impl Default for LazyContainer<()> {
 }
 
 impl<T> LazyContainer<T> {
+    /// Creates a new container in the dirty state.
     pub const fn new() -> Self {
         Self {
             elem: RwLock::new(None),
@@ -81,6 +84,7 @@ impl<T> LazyContainer<T> {
         }
     }
 
+    /// Marks the underlying value as dirty while granting mutable access to the backing data.
     pub fn dirtify<'a, E>(&'a self, elem: &'a mut E) -> LazyDirtifierGuard<'a, E> {
         // Can only dirtify if the state is either DIRTY or CLEAN (not CLEAN_IN_USE)
         let backoff = Backoff::new();
@@ -112,6 +116,8 @@ impl<T> LazyContainer<T> {
         }
     }
 
+    /// Retrieves the cached value, recomputing it with `compute` if necessary, and maps the
+    /// result through `map`.
     pub fn get<'a, K: ?Sized>(
         &'a self,
         compute: impl FnOnce(Option<T>) -> T,
@@ -202,6 +208,7 @@ impl<T> LazyContainer<T> {
         }
     }
 
+    /// Convenience wrapper that returns a guard to the computed value without mapping.
     pub fn get_simple<'a>(&'a self, compute: impl FnOnce(Option<T>) -> T) -> LazyGuard<'a, T> {
         self.get(compute, |x| x)
     }
