@@ -125,6 +125,62 @@ impl Instruction for MetaAssume {
     }
 }
 
+/// Check whether an operand is fully defined (no undef/poison content).
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetaIsDef {
+    /// Destination SSA name holding the boolean result.
+    pub dest: Name,
+    /// Resulting type (should be a boolean integer).
+    pub ty: Typeref,
+    /// Operand to check for definedness.
+    pub operand: Operand,
+}
+
+impl Instruction for MetaIsDef {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META | InstructionFlags::SIMPLE
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::once(&self.operand)
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::once(&mut self.operand)
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+
+    fn dependencies(&self) -> impl Iterator<Item = Name> {
+        self.operands().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(*reg),
+            _ => None,
+        })
+    }
+
+    fn dependencies_mut(&mut self) -> impl Iterator<Item = &mut Name> {
+        self.operands_mut().filter_map(|op| match op {
+            Operand::Reg(reg) => Some(reg),
+            _ => None,
+        })
+    }
+}
+
 /// Probability operand types
 ///
 /// Models different kinds of probability-related operands that can be used in

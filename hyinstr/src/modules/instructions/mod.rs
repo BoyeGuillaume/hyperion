@@ -197,10 +197,13 @@ pub enum HyInstr {
     Phi(misc::Phi),
     Select(misc::Select),
     Cast(misc::Cast),
+    InsertValue(misc::InsertValue),
+    ExtractValue(misc::ExtractValue),
 
     // Meta instructions
     MetaAssert(meta::MetaAssert),
     MetaAssume(meta::MetaAssume),
+    MetaIsDef(meta::MetaIsDef),
     MetaProb(meta::MetaProb),
 }
 
@@ -241,9 +244,12 @@ impl HyInstrOp {
             HyInstrOp::Phi => "phi",
             HyInstrOp::Select => "select",
             HyInstrOp::Cast => "cast",
+            HyInstrOp::InsertValue => "insertvalue",
+            HyInstrOp::ExtractValue => "extractvalue",
 
             HyInstrOp::MetaAssert => "!assert",
             HyInstrOp::MetaAssume => "!assume",
+            HyInstrOp::MetaIsDef => "!isdef",
             HyInstrOp::MetaProb => "!prob",
         }
     }
@@ -277,8 +283,11 @@ impl HyInstrOp {
             HyInstrOp::Invoke => None,         // variable arity (at least 1 - function ptr)
             HyInstrOp::Phi => None,            // variable arity (at least 1)
             HyInstrOp::Select => Some(3),      // cond + val_true + val_false
+            HyInstrOp::InsertValue => None,    // aggregate + value + indices
+            HyInstrOp::ExtractValue => None,   // aggregate + indices
             HyInstrOp::MetaAssert | HyInstrOp::MetaAssume => Some(1), // condition
-            HyInstrOp::MetaProb => None,       // variable arity depending on variant
+            HyInstrOp::MetaIsDef => Some(1),
+            HyInstrOp::MetaProb => None, // variable arity depending on variant
         }
     }
 
@@ -409,8 +418,11 @@ define_instr_any_instr! {
     Phi,
     Select,
     Cast,
+    InsertValue,
+    ExtractValue,
     MetaAssert,
     MetaAssume,
+    MetaIsDef,
     MetaProb,
 }
 
@@ -456,7 +468,10 @@ define_hyinstr_from!(misc::Invoke, Invoke);
 define_hyinstr_from!(misc::Phi, Phi);
 define_hyinstr_from!(misc::Select, Select);
 define_hyinstr_from!(misc::Cast, Cast);
+define_hyinstr_from!(misc::InsertValue, InsertValue);
+define_hyinstr_from!(misc::ExtractValue, ExtractValue);
 
 define_hyinstr_from!(meta::MetaAssert, MetaAssert);
 define_hyinstr_from!(meta::MetaAssume, MetaAssume);
+define_hyinstr_from!(meta::MetaIsDef, MetaIsDef);
 define_hyinstr_from!(meta::MetaProb, MetaProb);

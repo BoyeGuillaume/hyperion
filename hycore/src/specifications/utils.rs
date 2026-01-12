@@ -1,3 +1,5 @@
+//! Lightweight optimization passes shared by specification tooling and provers.
+
 use std::collections::HashMap;
 
 use bit_set::BitSet;
@@ -8,22 +10,7 @@ use hyinstr::modules::{
 };
 use petgraph::graph::DiGraph;
 
-// /// Merge two meta functions into one
-// pub fn merge_meta_functions(a: Function, b: Function) -> anyhow::Result<()> {
-//     #[cfg(debug_assertions)]
-//     {
-//         a.verify().expect("Function must be valid before merging");
-//         b.verify().expect("Function must be valid before merging");
-//     }
-
-//     if !a.meta_function || !b.meta_function {
-//         bail!("Both functions must be meta functions to be merged");
-//     }
-
-//     todo!();
-
-//     Ok(())
-//
+use crate::utils::error::HyResult;
 
 /// A simple simplification pass for functions
 ///
@@ -33,7 +20,7 @@ use petgraph::graph::DiGraph;
 /// # Arguments
 /// * `func` - The function to simplify
 ///
-pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
+pub fn simple_simplify_function(func: &mut Function) -> HyResult<()> {
     #[cfg(debug_assertions)]
     func.verify()
         .expect("Function must be valid before simplifying");
@@ -53,9 +40,9 @@ pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
                 return true;
             }
 
-            // Clone the element and set its destination to None for comparison
+            // Clone the element and set its destination to the same value (so we can compare)
             let mut cloned_elem = elem.clone();
-            cloned_elem.set_destination(0);
+            cloned_elem.set_destination(Name(0));
 
             match previous_operand_map.get(&cloned_elem) {
                 Some(existing_name) => {
@@ -99,7 +86,7 @@ pub fn simple_simplify_function(func: &mut Function) -> anyhow::Result<()> {
 /// # Arguments
 /// * `func` - The function to process
 ///
-pub fn remove_unused_op(func: &mut Function) -> anyhow::Result<()> {
+pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     #[cfg(debug_assertions)]
     func.verify()
         .expect("Function must be valid before removing unused operands");

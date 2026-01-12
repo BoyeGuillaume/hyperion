@@ -1,109 +1,42 @@
-//! High-level specifications for analyzing function behavior and associated metadata.
-//!
-//! This module defines a small specification model used to attach assertions,
-//! preconditions, and referenced symbols to a function. The model is intentionally
-//! conservative: it provides useful, human-readable approximations for verification
-//! and analysis tasks rather than attempting to solve undecidable problems
-//! (e.g., general halting).
-
 use std::collections::BTreeSet;
 
-use enum_map::EnumMap;
 use hyinstr::{
-    analysis::TerminationBehavior,
     consts::AnyConst,
-    modules::{Function, InstructionRef, operand::Operand, symbol::FunctionPointer},
+    modules::{Function, InstructionRef, symbol::FunctionPointer},
 };
 use uuid::Uuid;
 
-/// A specification attached to a function that collects assertions, assumptions,
-/// and references needed for modular verification or analysis.
-///
-/// A [`Specification`] acts as a meta-function: its [`Specification::function`] field contains the
-/// body with embedded meta-assertions and meta-assumptions. The remaining fields
-/// are derived helpers that make it convenient to inspect and use those meta
-/// elements without repeatedly scanning the function body.
-#[derive(Debug, Clone)]
-pub struct Specification {
-    /// A unique identifier for this specification instance.
-    ///
-    /// This is used when tracking specifications across different analyses or
-    /// transformations to ensure the "proof"s remain associated with the correct
-    /// function.
-    pub uuid: Uuid,
+use crate::utils::lazy::{LazyContainer, LazyDirtifierGuard, LazyGuard};
 
-    /// The function carrying the specification's assertions and assumptions.
-    /// Typically this is a thin wrapper or a specially annotated version of the
-    /// original function body used for meta-level checks.
-    pub function: Function,
-
-    /// A mapping from halting behavior categories to boolean operands that
-    /// characterize when each behavior applies.
-    ///
-    /// Each operand should be a boolean expression (an [`Operand`]) describing the
-    /// condition under which the associated [`HaltingBehavior`] is assumed to hold.
-    /// Operands are expected to be mutually exclusive where possible, but they do
-    /// not need to exhaust all possibilities.
-    ///
-    /// TODO: Write this as a meta-instruction (something like `invoke_behavior` that takes value in 0..2 with
-    /// 0 = terminates, 1 = crashes, 2 = loops) rather than a map.
-    pub behavior: EnumMap<TerminationBehavior, Operand>,
-
+struct SpecificationAccelerationStructures {
     /// Collected references to all assert-style meta-instructions found in `function`.
-    ///
-    /// These correspond to places where the specification enforces properties that
-    /// must hold when the function is executed (postconditions, invariants, etc.).
-    _list_asserts: Vec<InstructionRef>,
+    list_asserts: Vec<InstructionRef>,
 
     /// Collected references to all assume-style meta-instructions found in `function`.
-    ///
-    /// These are preconditions or environmental assumptions that the analysis or
-    /// verifier may take for granted when reasoning about the function.
-    _list_assumptions: Vec<InstructionRef>,
+    list_assumptions: Vec<InstructionRef>,
 
-    /// All concrete functions referenced by this specification's body (direct calls).
-    ///
-    /// This set contains only statically known function pointers discovered by
-    /// examining the function body. Indirect calls whose target cannot be resolved
-    /// to a concrete pointer are intentionally omitted.
-    _list_referenced_functions: BTreeSet<FunctionPointer>,
+    /// Collected references to all referenced functions found in `function`.
+    list_referenced_functions: BTreeSet<FunctionPointer>,
 }
 
-impl Specification {
+impl SpecificationAccelerationStructures {
     /// Scan the specification function and update [`Specification::list_asserts`] with all
     /// instructions that represent meta-assertions.
-    ///
-    /// After calling this method, [`Specification::list_asserts`] will contain references to every
-    /// assert-like instruction so callers can iterate them without re-scanning the
-    /// function body.
-    pub fn derive_meta_asserts(&mut self) {
-        self._list_asserts = self
-            .function
-            .gather_instructions_by_predicate(|instr| instr.is_meta_assert());
+    fn derive_meta_asserts(&mut self, func: &Function) {
+        self.list_asserts = func.gather_instructions_by_predicate(|instr| instr.is_meta_assert());
     }
 
     /// Scan the specification function and update [`Specification::list_assumptions`] with all
     /// instructions that represent meta-assumptions (preconditions).
-    ///
-    /// This isolates precondition-like instructions, simplifying subsequent checks
-    /// or transformations that need to treat assumptions specially.
-    pub fn derive_meta_assumptions(&mut self) {
-        self._list_assumptions = self
-            .function
-            .gather_instructions_by_predicate(|instr| instr.is_meta_assume());
+    fn derive_meta_assumptions(&mut self, func: &Function) {
+        self.list_assumptions =
+            func.gather_instructions_by_predicate(|instr| instr.is_meta_assume());
     }
 
     /// Scan the function body and populate [`Specification::list_referenced_functions`] with every
     /// directly referenced function pointer.
-    ///
-    /// Only direct, statically embedded function pointers are collected. Indirect
-    /// calls through unknown pointers are not added. This list is useful for
-    /// computing call-graphs, linking specification dependencies, and performing
-    /// modular analyses that require knowing which external functions a spec
-    /// mentions.
-    pub fn derive_referenced_functions(&mut self) {
-        self._list_referenced_functions = self
-            .function
+    fn derive_referenced_functions(&mut self, func: &Function) {
+        self.list_referenced_functions = func
             .iter()
             .filter_map(|(instr, _)| {
                 if let Some(call) = instr.try_as_invoke_ref() {
@@ -120,18 +53,97 @@ impl Specification {
             .collect();
     }
 
-    /// Get a reference to the list of meta-assertion instructions.
-    pub fn list_asserts(&self) -> &[InstructionRef] {
-        &self._list_asserts
+    /// Run all derivation steps to populate acceleration structures.
+    fn derive(&mut self, func: &Function) {
+        self.derive_meta_asserts(func);
+        self.derive_meta_assumptions(func);
+        self.derive_referenced_functions(func);
     }
 
-    /// Get a reference to the list of meta-assumption instructions.
-    pub fn list_assumptions(&self) -> &[InstructionRef] {
-        &self._list_assumptions
+    /// Compute func
+    fn compute(maybe_self: Option<Self>, func: &Function) -> Self {
+        let mut this = match maybe_self {
+            Some(s) => s,
+            None => Self {
+                list_asserts: Vec::new(),
+                list_assumptions: Vec::new(),
+                list_referenced_functions: BTreeSet::new(),
+            },
+        };
+
+        this.derive(func);
+        this
+    }
+}
+
+/// Specification are a set of external properties attached to functions, expressed as meta-functions.
+///
+/// These meta-functions can contain meta-instructions such as assertions and assumptions,
+/// which can be used by provers to verify that the target function adheres to its specification.
+///
+/// They are external as they do not provide information about the internal workings of the function,
+/// only about its external state and behavior.
+///
+pub struct Specification {
+    /// Uuid (should stay static after creation)
+    uuid: Uuid,
+
+    /// The meta-function that carries the specification.
+    function: Function,
+
+    /// Acceleration structures derived from the specification function.
+    acceleration: LazyContainer<SpecificationAccelerationStructures>,
+}
+
+impl Specification {
+    /// Unique identifier associated with both the specification and the backing meta-function.
+    pub fn uuid(&self) -> Uuid {
+        debug_assert!(self.uuid == self.function.uuid);
+        self.uuid
+    }
+
+    /// Creates a new specification from the given meta-function.
+    pub fn new(function: Function) -> Self {
+        Self {
+            uuid: function.uuid,
+            function,
+            acceleration: LazyContainer::new(),
+        }
+    }
+
+    /// Returns the immutable specification function body, recomputing caches if needed.
+    pub fn function(&self) -> &Function {
+        debug_assert!(self.uuid == self.function.uuid);
+        &self.function
+    }
+
+    /// Marks acceleration structures as dirty and exposes the mutable function for in-place edits.
+    pub fn function_mut(&mut self) -> LazyDirtifierGuard<'_, Function> {
+        self.acceleration.dirtify(&mut self.function)
+    }
+
+    /// Get a reference to the list of meta-assertion instructions.
+    // pub fn list_asserts(&self) -> &[InstructionRef] {}
+    pub fn list_asserts(&self) -> LazyGuard<'_, [InstructionRef]> {
+        self.acceleration.get(
+            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| x.list_asserts.as_slice(),
+        )
+    }
+
+    /// Get a reference to the list of meta-assumption instructions
+    pub fn list_assumptions(&self) -> LazyGuard<'_, [InstructionRef]> {
+        self.acceleration.get(
+            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| x.list_assumptions.as_slice(),
+        )
     }
 
     /// Get a reference to the set of directly referenced function pointers.
-    pub fn list_referenced_functions(&self) -> &BTreeSet<FunctionPointer> {
-        &self._list_referenced_functions
+    pub fn list_referenced_functions(&self) -> LazyGuard<'_, BTreeSet<FunctionPointer>> {
+        self.acceleration.get(
+            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| &x.list_referenced_functions,
+        )
     }
 }

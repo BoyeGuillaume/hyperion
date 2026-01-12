@@ -7,10 +7,15 @@
         "**/Thumbs.db": true,
         "**/build": true,
         "**/target": true,
+        "**/__pycache__": true,
+        "**/_sys.abi3.so": true,
     },
     "editor.formatOnSave": true,
     "files.associations": {
         "time.h": "c",
         "stdint.h": "c"
     },
+    "rust-analyzer.cargo.features": [
+        "ext_all"
+    ]
 }

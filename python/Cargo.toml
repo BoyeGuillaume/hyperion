@@ -13,4 +13,12 @@ name = "hypi_sys"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.27.0"
+pyo3 = { workspace = true, features = ["extension-module", "uuid", "abi3"] }
+hyinstr = { workspace = true, features = ["chumsky"] }
+hycore = { workspace = true, features = ["pyo3"] }
+uuid = { workspace = true, features = ["v4"] }
+semver.workspace = true
+
+[features]
+default = ["ext_all"]
+ext_all = ["hycore/ext_all"]

@@ -5,8 +5,13 @@ build-backend = "maturin"
 [project]
 name = "hypi"
 requires-python = ">=3.8"
-dynamic = ["version"]
 license-files = ["LICENSE"]
+version = "0.1.1"
+dependencies = ["pydantic>=2.10"]
+
+[project.urls]
+homepage = "https://github.com/BoyeGuillaume/hyperion"
+repository = "https://github.com/BoyeGuillaume/hyperion"
 
 [tool.maturin]
 python-source = "python"

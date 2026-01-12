@@ -594,18 +594,18 @@ impl Function {
     pub fn next_available_name(&self) -> Name {
         let mut max_index = 0;
         for (name, _) in &self.params {
-            max_index = max_index.max(*name);
+            max_index = max_index.max(name.0);
         }
 
         for bb in self.body.values() {
             for instr in &bb.instructions {
                 if let Some(dest) = instr.destination() {
-                    max_index = max_index.max(dest);
+                    max_index = max_index.max(dest.0);
                 }
             }
         }
 
-        max_index + 1
+        Name(max_index + 1)
     }
 
     /// Find next available [`Label`] for a basic block.
@@ -647,7 +647,7 @@ impl Function {
     /// for basic blocks, ordering is always deterministic.
     pub fn normalize_ssa(&mut self) {
         let mut name_mapping = BTreeMap::new();
-        let mut next_name = 0;
+        let mut next_name = Name(0);
 
         // Remap all SSA names in parameters
         for (name, _) in self.params.iter_mut() {
