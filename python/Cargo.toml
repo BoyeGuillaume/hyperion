@@ -15,7 +15,7 @@ crate-type = ["cdylib"]
 [dependencies]
 pyo3 = { workspace = true, features = ["extension-module", "uuid", "abi3"] }
 hyinstr = { workspace = true, features = ["chumsky"] }
-hycore = { workspace = true, features = ["test-utils", "pyo3"] }
+hycore = { workspace = true, features = ["pyo3"] }
 uuid = { workspace = true, features = ["v4"] }
 semver.workspace = true
 

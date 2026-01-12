@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 hyinstr = { workspace = true, features = ["chumsky"] }
-hycore = { workspace = true, features = ["test-utils"] }
+hycore = { workspace = true, features = [] }
 petgraph.workspace = true
 uuid = { workspace = true, features = ["v4"] }
