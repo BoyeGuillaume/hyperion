@@ -20,5 +20,5 @@ uuid = { workspace = true, features = ["v4"] }
 semver.workspace = true
 
 [features]
-default = []
+default = ["ext_all"]
 ext_all = ["hycore/ext_all"]
