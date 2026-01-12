@@ -9,8 +9,11 @@ walkthrough so you can design, ship, and troubleshoot extensions confidently.
 
 The major moving pieces live in [hycore/src/base/ext.rs](hycore/src/base/ext.rs):
 
-- **Metadata (`HyperionMetaInfo`)** records every known extension (name, UUID, path). Discovery
-    happens before any shared object is touched.
+- **Metadata (`HyperionMetaInfo`)** records every known extension (name, UUID, path). The
+    `load_or_generate()` helper caches the last `HY_LD_PATH` snapshot (falling back to an
+    `extensions/` directory next to `meta.toml` when the env var is unset) and repopulates the
+    metadata file whenever the discovery paths change or a requested plugin is missing by scanning
+    every `hy*` shared object exposed via the descriptor symbol described below.
 - **Loader (`load_plugin_by_name`)** handles the full lifecycle: open the dynamic library, run the
     compatibility check, and invoke the plugin-specific constructor exported by the shared object.
 - **Traits** define the extensibility surface:
@@ -19,8 +22,9 @@ The major moving pieces live in [hycore/src/base/ext.rs](hycore/src/base/ext.rs)
   - `PluginExtStatic` adds the compile-time UUID constant and the `new(ext: &mut ExtList)` factory
         used by the loader.
 - **Macros**. A single [`define_plugin!`](hycore/src/base/ext.rs) invocation now generates the
-    compatibility, entrypoint, loader, and teardown symbols Hyperion expects. This keeps plugin
-    crates declarative and prevents symbol mismatches.
+    compatibility, entrypoint, loader, descriptor, and teardown symbols Hyperion expects. This keeps
+    plugin crates declarative and prevents symbol mismatches while giving the host a uniform way to
+    interrogate DLL metadata before instantiation.
 - **Library management**. `PluginExtWrapper` and `LibraryWrapper` ensure that the shared object
     remains loaded for as long as any plugin value exists. The wrapper also triggers the teardown
     symbol when the library drops, giving plugins a chance to release global resources.
@@ -28,11 +32,32 @@ The major moving pieces live in [hycore/src/base/ext.rs](hycore/src/base/ext.rs)
     loader registry) to entrypoint/teardown callbacks, while `ExtList` ferries per-instance
     configuration objects into plugin constructors.
 
+## Automatic discovery
+
+Hyperion keeps the TOML metadata file but now treats it as a cache fed by an optional discovery
+stage:
+
+1. Set `HY_LD_PATH` (path-separated) to directories containing your shared objects. Only filenames
+    beginning with `hy` or `libhy` and ending in `.so`, `.dylib`, or `.dll` are considered. When the
+    env var is omitted, Hyperion defaults to the `extensions/` folder colocated with `meta.toml`.
+2. `HyperionMetaInfo::load_or_generate()` compares the persisted `env_ld_path` snapshot with the
+    current environment. When the value changes—or when a requested extension is missing—the cache is
+    invalidated.
+3. Every candidate DLL is dlopened briefly so the host can call the standardized
+    `__hyext_fn_describe` symbol. The descriptors returned by the plugin crate are converted into
+    fresh `ExtMetaInfo` entries (UUID, name, canonical path) and written back to `meta.toml`.
+4. Subsequent runs short-circuit unless `HY_LD_PATH` changes again, so hand-authored metadata can
+    coexist with automatically discovered entries.
+
+Using the `hy_`/`libhy` prefix dramatically narrows the search set and lets discovery scale even
+when the directories also host unrelated native libraries.
+
 ## Lifecycle: from metadata to running plugin
 
-1. **Discovery**. `InstanceContext::create` loads `HyperionMetaInfo` from the configured TOML file.
-     Environment variable `HY_CONFIG_PATH` can override the default path described in
-     [hycore/src/magic.rs](hycore/src/magic.rs).
+1. **Discovery**. `InstanceContext::create` calls `HyperionMetaInfo::load_or_generate`, which reads
+    the cached TOML file (overridable via `HY_CONFIG_PATH`) and refreshes it using `HY_LD_PATH`
+    (defaulting to the sibling `extensions/` directory) whenever the cache is stale or a requested
+    extension is missing.
 2. **Preloading (optional)**. When Python bindings need to register opaque objects before instance
      creation, the host calls `preload_plugins`, which keeps `LibraryWrapper`s alive via
      `PluginPreloadGuard`.
@@ -107,6 +132,8 @@ extensions.
 
      impl PluginExtStatic for FooPlugin {
              const UUID: Uuid = uuid!("cdb726aa-8656-486f-a5b5-ff09f37a83fb");
+             const NAME: &'static str = "__EXT_FOO";
+             const DESCRIPTION: &'static str = "Provides foo-related features";
 
              fn new(_ext: &mut hycore::utils::conf::ExtList) -> Self {
                      Self { version: Version::parse(env!("CARGO_PKG_VERSION")).unwrap() }
@@ -116,8 +143,8 @@ extensions.
      impl PluginExt for FooPlugin {
              fn uuid(&self) -> Uuid { Self::UUID }
              fn version(&self) -> &Version { &self.version }
-             fn name(&self) -> &str { "__EXT_FOO" }
-             fn description(&self) -> &str { "Provides foo-related features" }
+             fn name(&self) -> &str { Self::NAME }
+             fn description(&self) -> &str { Self::DESCRIPTION }
              fn attach_to(&mut self, _instance: std::sync::Weak<hycore::base::InstanceContext>) {}
              fn initialize(&self) -> hycore::utils::error::HyResult<()> { Ok(()) }
              fn teardown(&mut self) {}
@@ -147,16 +174,24 @@ extensions.
      path = "/abs/path/to/libmy_hy_plugin.so"
      ```
 
+    When `HY_LD_PATH` is set, the host writes these entries automatically after probing
+    `__hyext_fn_describe`, so manual snippets remain optional for day-to-day development.
+
 5. **Consume from the host**:
 
      ```rust
-     use hycore::base::{ext::load_plugin_by_name, meta::HyperionMetaInfo};
+    use hycore::base::{ext::load_plugin_by_name, meta::HyperionMetaInfo};
 
-     let meta = HyperionMetaInfo::load_from_toml(HyperionMetaInfo::default_path())?;
-     let mut ext_list = hycore::utils::conf::ExtList(vec![]);
-     let plugin = unsafe { load_plugin_by_name(&meta, "__EXT_FOO", &mut ext_list)? };
-     println!("Loaded {}", plugin.name());
+    let required = vec!["__EXT_FOO".to_string()];
+    let meta = HyperionMetaInfo::load_or_generate(&required)?;
+    let mut ext_list = hycore::utils::conf::ExtList(vec![]);
+    let plugin = unsafe { load_plugin_by_name(&meta, "__EXT_FOO", &mut ext_list)? };
+    println!("Loaded {}", plugin.name());
      ```
+
+In production, pass the same `enabled_extensions` vector you feed into `InstanceCreateInfo` so the
+cache refresh logic can ensure every requested plugin is discoverable. If `HY_LD_PATH` is unset, the
+loader still scans the default `extensions/` directory next to `meta.toml`.
 
 ## Case study: the logger extension
 
@@ -211,6 +246,9 @@ When `create_instance` crosses the FFI boundary, the dataclasses become the stru
 - **Stabilize UUIDs**. Treat a UUID change as a completely different plugin.
 - **Log aggressively**. The macros in [hycore/src/ext/hylog.rs](hycore/src/ext/hylog.rs) are cheap;
     use them to annotate every stage of load/initialize/teardown.
+- **Validate `HY_LD_PATH`**. Keep the directories accurate and prefixed libraries in place so the
+    metadata cache does not churn; the stored `env_ld_path` snapshot is a quick way to diagnose what
+    the host saw last.
 - **Handle errors deterministically**. Bubble errors through `HyResult` so hosts can surface them to
     end users. Avoid panicking inside plugin constructors.
 - **Version consciously**. Encode real compatibility expectations in the `define_plugin!`

@@ -5,7 +5,7 @@ use pyo3::FromPyObject;
 
 use crate::{
     base::InstanceContext,
-    utils::{conf::ExtList, error::HyResult},
+    utils::{error::HyResult, opaque::OpaqueList},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ pub struct ApplicationInfo {
 pub struct InstanceCreateInfo {
     pub application_info: ApplicationInfo,
     pub enabled_extensions: Vec<String>,
-    pub ext: ExtList,
+    pub ext: OpaqueList,
 }
 
 pub unsafe fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {

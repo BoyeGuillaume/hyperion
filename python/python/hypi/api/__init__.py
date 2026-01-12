@@ -6,7 +6,7 @@ still benefiting from type validation.
 """
 
 import hypi._sys as lib # type: ignore
-from hypi.api.ext_hylog import *
+from hypi.api.ext.hylog import LogCreateInfoEXT, LogLevelEXT, LogMessageEXT
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 from enum import StrEnum
@@ -69,3 +69,15 @@ def create_instance(create_info: InstanceCreateInfo) -> lib.Instance:
     """
     assert isinstance(create_info, InstanceCreateInfo), "create_info must be an InstanceCreateInfo"
     return lib._hy_create_instance(create_info)
+
+# Exported names
+__all__ = [
+    "InstanceCreateInfo",
+    "ApplicationInfo",
+    "Version",
+    "InstanceEXT",
+    "LogCreateInfoEXT",
+    "LogLevelEXT",
+    "LogMessageEXT",
+    "create_instance",
+]

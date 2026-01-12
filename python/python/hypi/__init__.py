@@ -1,5 +1,12 @@
 import hypi._sys as lib # type: ignore
 import hypi.api as api
+from os.path import join
+import sys
+import os
+
+if not "HY_LD_PATH" in os.environ:
+    os.environ["HY_LD_PATH"] = os.path.pathsep.join([join(path, "target", "release") for path in sys.path])
+
 
 __version__ = "0.1.1"
 

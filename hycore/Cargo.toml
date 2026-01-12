@@ -22,7 +22,6 @@ either.workspace = true
 bit-set = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
-libloading.workspace = true
 downcast-rs.workspace = true
 pyo3 = { workspace = true, features = [
     "uuid",
@@ -31,11 +30,16 @@ pyo3 = { workspace = true, features = [
     "chrono",
 ], optional = true }
 chrono = { workspace = true }
+inventory = { workspace = true }
 
 [build-dependencies]
 build-info-build.workspace = true
 
 [features]
 default = []
+
 test-utils = ["hyinstr/chumsky"]
 pyo3 = ["dep:pyo3"]
+
+ext_hylog = []
+ext_all = ["ext_hylog"]

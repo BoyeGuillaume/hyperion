@@ -29,4 +29,4 @@ instance_create_info = api.InstanceCreateInfo(
 )
 
 instance = api.create_instance(instance_create_info)
-print(f"Created instance: {instance}")
+del instance

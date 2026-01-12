@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use hycore::base::{InstanceContext, api, ext::preload_plugins};
-use pyo3::{intern, prelude::*};
+use hycore::base::{InstanceContext, api};
+use pyo3::prelude::*;
 
 #[pyclass]
 #[allow(dead_code)]
@@ -9,19 +9,6 @@ pub struct Instance(Arc<InstanceContext>);
 
 #[pyfunction]
 fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResult<Instance> {
-    let py = instance_create_info.py();
-
-    // Start by preloading all plugins requested in the create info
-    let ext_names: Vec<String> = instance_create_info
-        .getattr(intern!(py, "enabled_extensions"))?
-        .extract()?;
-    let guard = unsafe { preload_plugins(ext_names) }.map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-            "Failed to preload plugins: {}",
-            e
-        ))
-    })?;
-
     // Create the instance object from the provided create info
     let create_info: api::InstanceCreateInfo = instance_create_info.extract().map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!("Invalid InstanceCreateInfo: {}", e))
@@ -34,7 +21,6 @@ fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResul
         ))
     })?;
 
-    drop(guard); // Release the preload guard
     Ok(Instance(instance_context))
 }
 

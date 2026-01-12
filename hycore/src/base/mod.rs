@@ -5,33 +5,23 @@ use semver::Version;
 use uuid::Uuid;
 
 use crate::{
-    base::{
-        ext::{PluginExtStatic, PluginExtWrapper, load_plugin_by_name},
-        meta::HyperionMetaInfo,
-        module::ModuleContext,
-    },
-    ext::hylog::LogMessageEXT,
+    base::module::ModuleContext,
+    ext::{DynPluginEXT, StaticPluginEXT, hylog::LogMessageEXT, load_plugin_by_name},
     hyinfo, hytrace,
     utils::error::HyResult,
 };
 
 pub mod api;
-pub mod ext;
 pub mod meta;
 pub mod module;
 
 build_info::build_info!(fn retrieve_build_info);
 
-/// Container for instance-scoped state exposed to extensions.
+/// Container for extension-specific state and callbacks for an instance.
 pub struct InstanceStateEXT {
     pub log_callback: RwLock<fn(&InstanceContext, LogMessageEXT)>,
 }
-impl InstanceStateEXT {
-    /// Restores the default no-op logger callback.
-    pub fn restore_default_log_callback(&self) {
-        *self.log_callback.write() = |_, _| {};
-    }
-}
+impl InstanceStateEXT {}
 
 impl Default for InstanceStateEXT {
     fn default() -> Self {
@@ -57,7 +47,7 @@ pub struct InstanceContext {
     pub modules: Vec<ModuleContext>,
 
     /// A list of all extension (by UUID) loaded into this instance.
-    pub extensions: BTreeMap<Uuid, PluginExtWrapper>,
+    pub extensions: BTreeMap<Uuid, Box<dyn DynPluginEXT>>,
 
     /// Function pointers for logging callbacks
     pub ext: InstanceStateEXT,
@@ -76,7 +66,7 @@ impl Drop for InstanceContext {
 impl InstanceContext {
     /// Returns the typed plugin reference for the supplied `PluginExtStatic`
     /// implementor, if it was enabled for this instance.
-    pub fn get_plugin_ext<T: PluginExtStatic>(&self) -> Option<&T> {
+    pub fn get_plugin_ext<T: StaticPluginEXT>(&self) -> Option<&T> {
         self.extensions
             .get(&T::UUID)
             .and_then(|wrapper| wrapper.downcast_ref())
@@ -93,10 +83,6 @@ impl InstanceContext {
             .into();
         let engine_version = instance_create_info.application_info.engine_version.into();
         let engine_name = instance_create_info.application_info.engine_name;
-
-        // Open the metadata containing build info.
-        let meta_path = HyperionMetaInfo::default_path();
-        let meta_info = HyperionMetaInfo::load_from_toml(&meta_path)?;
 
         // Retrieve build info for the current crate.
         let _build_info = retrieve_build_info();
@@ -115,9 +101,7 @@ impl InstanceContext {
 
         // For each enabled extension, load and instantiate it.
         for ext_name in &instance_create_info.enabled_extensions {
-            let plugin = unsafe {
-                load_plugin_by_name(&meta_info, ext_name, &mut instance_create_info.ext)?
-            };
+            let plugin = load_plugin_by_name(ext_name, &mut instance_create_info.ext)?;
             instance.extensions.insert(plugin.uuid(), plugin);
         }
 

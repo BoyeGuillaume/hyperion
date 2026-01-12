@@ -1,4 +1,3 @@
-use semver::{Version, VersionReq};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,32 +15,8 @@ pub enum HyError {
     #[error("An unknown error occurred: {0}")]
     Unknown(String),
 
-    #[error("Extension with name '{0}' not found")]
-    ExtensionNotFound(String),
-
-    #[error("Failed to load extension '{name}' from file '{file}': {source}")]
-    ExtensionLoadError {
-        source: libloading::Error,
-        file: String,
-        name: String,
-    },
-
-    #[error("Symbol '{symbol}' not found in '{file}' for extension '{name}'")]
-    ExtensionLoadErrorSymbolNotFound {
-        file: String,
-        name: String,
-        symbol: &'static str,
-    },
-
-    #[error(
-        "Compability check failed for extension '{name}' from file '{file}'. Required: {req}, found: {version}"
-    )]
-    CompatibilityCheckFailed {
-        file: String,
-        name: String,
-        version: Version,
-        req: VersionReq,
-    },
+    #[error("Plugin with name '{0}' not found")]
+    PluginNotFound(String),
 
     #[error("UTF-8 conversion error: {0}")]
     #[from(std::str::Utf8Error)]

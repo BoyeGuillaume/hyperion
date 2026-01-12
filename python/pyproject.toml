@@ -9,6 +9,10 @@ license-files = ["LICENSE"]
 version = "0.1.0"
 dependencies = ["pydantic>=2.10"]
 
+[project.urls]
+homepage = "https://github.com/BoyeGuillaume/hyperion"
+repository = "https://github.com/BoyeGuillaume/hyperion"
+
 [tool.maturin]
 python-source = "python"
 module-name = "hypi._sys"

@@ -18,3 +18,7 @@ hyinstr = { workspace = true, features = ["chumsky"] }
 hycore = { workspace = true, features = ["test-utils", "pyo3"] }
 uuid = { workspace = true, features = ["v4"] }
 semver.workspace = true
+
+[features]
+default = []
+ext_all = ["hycore/ext_all"]

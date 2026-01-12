@@ -1,67 +1,63 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
-    magic::ENV_META_CONFIG_PATH,
+    magic::ENV_HOME_PATH,
     utils::error::{HyError, HyResult},
 };
 
-#[derive(Serialize, Deserialize)]
-pub struct ExtMetaInfo {
-    pub uuid: Uuid,
-    pub path: String,
-    pub name: String,
-}
-
 #[derive(Default, Serialize, Deserialize)]
-pub struct HyperionMetaInfo {
-    pub ext: Vec<ExtMetaInfo>,
-}
+pub struct HyMetaConfig {}
 
-impl HyperionMetaInfo {
-    /// Get the default path to the Hy configuration file.
-    pub fn default_path() -> PathBuf {
-        // Check if the environment variable is set
-        if let Ok(config_path) = std::env::var(ENV_META_CONFIG_PATH) {
-            return config_path.into();
-        }
-
-        // Fallback to default paths based on OS
-        let mut path = PathBuf::new();
-
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(appdata) = std::env::var("APPDATA") {
-                path.push(appdata);
-            }
-
-            // Fallback to current directory if APPDATA is not set
-            path.push("hyperion");
-            path.push("meta.toml");
-        }
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            if let Ok(xdg_config_home) = std::env::var("XDG_CONFIG_HOME") {
-                path.push(xdg_config_home);
-            } else if let Ok(home) = std::env::var("HOME") {
-                path.push(home);
-                path.push(".config");
+impl HyMetaConfig {
+    /// Path to the `HY_HOME` directory
+    pub fn hy_home() -> PathBuf {
+        let path = {
+            if let Ok(home_path) = std::env::var(ENV_HOME_PATH) {
+                PathBuf::from(home_path)
             } else {
-                // Fallback to current directory if HOME is not set
+                #[cfg(target_os = "windows")]
+                {
+                    if let Ok(appdata) = std::env::var("APPDATA") {
+                        PathBuf::from(appdata).join("hyperion")
+                    } else {
+                        panic!("Neither HY_HOME nor APPDATA environment variables are set");
+                    }
+                }
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                {
+                    if let Ok(home) = std::env::var("HOME") {
+                        PathBuf::from(home).join(".cache").join("hyperion")
+                    } else {
+                        panic!("Neither HY_HOME nor HOME environment variables are set");
+                    }
+                }
             }
+        };
 
-            path.push("hyperion");
-            path.push("meta.toml");
+        // Ensure the directory exists
+        if let Err(e) = fs::create_dir_all(&path) {
+            panic!(
+                "Failed to create HY_HOME directory at {}: {}",
+                path.display(),
+                e
+            );
         }
-
         path
+    }
+
+    /// Get the path to the config file, using environment variable or default
+    pub fn hy_meta_config_path() -> PathBuf {
+        Self::hy_home().join("meta.toml")
     }
 
     /// Load HyperionMetaInfo from a TOML string.
     pub fn load_from_toml(path: &Path) -> HyResult<Self> {
-        let toml_str = std::fs::read_to_string(path).map_err(|e| HyError::IoError(e))?;
+        let toml_str = fs::read_to_string(path).map_err(|e| HyError::IoError(e))?;
 
         toml::from_str(&toml_str).map_err(|e| HyError::ManifestParseError {
             source: e,
@@ -81,10 +77,10 @@ impl HyperionMetaInfo {
 
         // Attempt to create parent directories if they don't exist
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| HyError::IoError(e))?;
+            fs::create_dir_all(parent).map_err(|e| HyError::IoError(e))?;
         }
 
         // Write the TOML string to the specified path
-        std::fs::write(path, toml_str).map_err(|e| HyError::IoError(e))
+        fs::write(path, toml_str).map_err(|e| HyError::IoError(e))
     }
 }
