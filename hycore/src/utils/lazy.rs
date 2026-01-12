@@ -252,3 +252,143 @@ impl<'a, E> Drop for LazyDirtifierGuard<'a, E> {
             .expect("LazyGuard state should be DIRTY_LOCK when dropping Dirty");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        sync::{Arc, Barrier, atomic::Ordering},
+        thread,
+    };
+
+    fn current_state<T>(container: &LazyContainer<T>) -> usize {
+        container.state.load(Ordering::Acquire)
+    }
+
+    #[test]
+    fn new_starts_dirty_and_empty() {
+        let container: LazyContainer<u32> = LazyContainer::new();
+        assert_eq!(STATE_DIRTY, current_state(&container));
+        assert!(container.elem.read().is_none());
+    }
+
+    #[test]
+    fn first_get_computes_and_marks_clean() {
+        let container = LazyContainer::new();
+
+        {
+            let guard = container.get_simple(|prev| {
+                assert!(prev.is_none());
+                42u32
+            });
+            assert_eq!(42, *guard);
+            assert_eq!(STATE_CLEAN + 1, current_state(&container));
+        }
+
+        assert_eq!(STATE_CLEAN, current_state(&container));
+        assert_eq!(Some(42u32), *container.elem.read());
+    }
+
+    #[test]
+    fn cached_get_skips_recomputation() {
+        let container = LazyContainer::new();
+        drop(container.get_simple(|_| 5usize));
+
+        let guard = container.get_simple(|prev| {
+            panic!("should not recompute when value is clean: {:?}", prev);
+        });
+        assert_eq!(5, *guard);
+    }
+
+    #[test]
+    fn map_projection_returns_partial_view() {
+        #[derive(Debug, PartialEq, Eq)]
+        struct Payload {
+            left: &'static str,
+            right: &'static str,
+        }
+
+        let container = LazyContainer::new();
+        drop(container.get(
+            |_| Payload {
+                left: "alpha",
+                right: "beta",
+            },
+            |payload| payload.left,
+        ));
+        let guard = container.get(
+            |_| Payload {
+                left: "gamma",
+                right: "delta",
+            },
+            |payload| payload.right,
+        );
+
+        assert_eq!("beta", guard.as_ref());
+    }
+
+    #[test]
+    fn dirtify_transitions_state_and_allows_mutation() {
+        let container = LazyContainer::new();
+        drop(container.get_simple(|_| 1usize));
+
+        let mut backing = 0usize;
+        {
+            let mut dirt = container.dirtify(&mut backing);
+            assert_eq!(STATE_DIRTY_LOCK, current_state(&container));
+            *dirt = 99;
+        }
+
+        assert_eq!(99, backing);
+        assert_eq!(STATE_DIRTY, current_state(&container));
+    }
+
+    #[test]
+    fn recompute_receives_previous_value() {
+        let container = LazyContainer::new();
+        drop(container.get_simple(|_| vec![1, 2, 3]));
+
+        let mut shadow = ();
+        drop(container.dirtify(&mut shadow));
+        assert_eq!(STATE_DIRTY, current_state(&container));
+
+        let guard = container.get_simple(|prev| {
+            let mut previous =
+                prev.expect("previous value should exist when dirtifying clean value");
+            previous.push(4);
+            previous
+        });
+
+        assert_eq!(&[1, 2, 3, 4][..], &guard[..]);
+        drop(guard);
+        assert_eq!(STATE_CLEAN, current_state(&container));
+    }
+
+    #[test]
+    fn concurrent_readers_share_cached_value() {
+        let container = Arc::new(LazyContainer::new());
+        drop(container.get_simple(|_| 1234usize));
+
+        let reader_count = 8;
+        let barrier = Arc::new(Barrier::new(reader_count));
+        let mut handles = Vec::with_capacity(reader_count);
+
+        for _ in 0..reader_count {
+            let shared = Arc::clone(&container);
+            let wait = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                wait.wait();
+                let guard = shared.get_simple(|prev| {
+                    panic!("reader should not recompute cached value: {:?}", prev);
+                });
+                assert_eq!(1234, *guard);
+            }));
+        }
+
+        for handle in handles {
+            handle.join().expect("reader thread panicked");
+        }
+
+        assert_eq!(STATE_CLEAN, current_state(&container));
+    }
+}
