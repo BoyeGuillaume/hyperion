@@ -6,6 +6,7 @@
 //! exported below.
 
 pub mod base;
+pub mod compiler;
 pub mod ext;
 pub mod magic;
 pub mod provers;

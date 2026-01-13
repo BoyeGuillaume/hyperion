@@ -1,4 +1,6 @@
 use enum_map::Enum;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
 use crate::modules::instructions::InstructionFlags;

@@ -4,7 +4,7 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-hyinstr.workspace = true
+hyinstr = { workspace = true, features = ["serde", "chumsky"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 petgraph.workspace = true
 smallvec.workspace = true
@@ -31,14 +31,13 @@ pyo3 = { workspace = true, features = [
 ], optional = true }
 chrono = { workspace = true }
 inventory = { workspace = true }
+serde_cbor.workspace = true
 
 [build-dependencies]
 build-info-build.workspace = true
 
 [features]
 default = []
-
-
 pyo3 = ["dep:pyo3"]
 
 ext_hylog = []

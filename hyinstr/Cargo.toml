@@ -19,6 +19,7 @@ either.workspace = true
 enum-map.workspace = true
 bitflags.workspace = true
 chumsky = { workspace = true, optional = true }
+borsh = { workspace = true, optional = true }
 
 [features]
 default = ["chumsky", "chumsky/either"]

@@ -29,4 +29,39 @@ instance_create_info = api.InstanceCreateInfo(
 )
 
 instance = api.create_instance(instance_create_info)
+source_code = api.compile_module(
+    instance,
+    api.ModuleCompileInfo(
+        sources=[
+            api.ModuleSourceInfo(
+                source_type=api.ModuleSourceType.ASSEMBLY,
+                filename="example_module.hyasm",
+                data="""
+                ; Example Hyperion assembly module
+                define i32 pow(%a: i32, %b: i32) {
+                entry:
+                    jump loop_check
+
+                loop_check:
+                    %current.b: i32 = phi [%b, entry], [%next.b, loop_body]
+                    %current.acc: i32 = phi [i32 0, entry], [%next.acc, loop_body]
+                    %is_zero: i1 = icmp.eq %current.b, i32 0
+                    branch %is_zero, loop_end, loop_body
+
+                loop_body:
+                    %next.acc: i32 = imul.wrap %current.acc, %a
+                    %next.b: i32 = isub.wrap %current.b, i32 1
+                    jump loop_check
+
+                loop_end:
+                    ret %current.acc
+                }
+                """,
+            )
+        ]
+    )
+)
+
+print(source_code)
+
 del instance

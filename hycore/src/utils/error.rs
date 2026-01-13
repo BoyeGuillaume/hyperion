@@ -24,6 +24,9 @@ pub enum HyError {
     #[error("UTF-8 conversion error: {0}")]
     #[from(std::str::Utf8Error)]
     Utf8Error(std::str::Utf8Error),
+
+    #[error("{0}")]
+    HyInstrError(#[from] hyinstr::utils::Error),
 }
 
 /// Convenience alias for fallible operations returning [`HyError`].

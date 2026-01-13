@@ -290,6 +290,7 @@ impl From<InstructionRef> for (Label, usize) {
 /// the next block to execute. This structure allows for the representation
 /// of complex control flow within functions.
 #[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BasicBlock {
     /// Unique block label.
     pub label: Label,
@@ -332,6 +333,7 @@ impl BasicBlock {
 /// contain arbitrary control flow, including loops and recursion.
 ///
 #[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Function {
     /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
@@ -815,6 +817,7 @@ pub struct FunctionAnalysisContext<'a> {
 /// Functions defined here appear in `functions`; references to symbols not
 /// defined locally are listed in `external_functions`.
 #[derive(Debug, Default, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Module {
     /// Defined functions keyed by their UUID.
     pub functions: BTreeMap<Uuid, Function>,

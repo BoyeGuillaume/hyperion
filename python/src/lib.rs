@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hycore::base::{InstanceContext, api};
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyBytes};
 
 /// Opaque handle to a running Hyperion instance exposed to Python callers.
 #[pyclass]
@@ -24,6 +24,28 @@ fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResul
     })?;
 
     Ok(Instance(instance_context))
+}
+
+/// Compiles a list of source modules into a compiled module.
+#[pyfunction]
+fn _hy_compile_module<'py>(
+    instance: &Instance,
+    compile_info: &Bound<'py, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let py = compile_info.py();
+
+    let compile_info: api::ModuleCompileInfo = compile_info.extract().map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!("Invalid ModuleCompileInfo: {}", e))
+    })?;
+
+    let compiled_module = api::compile_sources(&instance.0, compile_info).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to compile module: {}",
+            e
+        ))
+    })?;
+
+    Ok(PyBytes::new(py, &compiled_module).into())
 }
 
 /// Computes the factorial of a number.
@@ -61,6 +83,7 @@ fn hypi_sys(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Instance>()?;
 
     m.add_function(wrap_pyfunction!(_hy_create_instance, m)?)?;
+    m.add_function(wrap_pyfunction!(_hy_compile_module, m)?)?;
 
     m.add_function(wrap_pyfunction!(factorial, m)?)?;
     m.add_function(wrap_pyfunction!(fibonacci, m)?)?;
