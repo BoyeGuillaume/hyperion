@@ -16,6 +16,6 @@
         "stdint.h": "c"
     },
     "rust-analyzer.cargo.features": [
-        "ext_all"
+        "ext_all",
     ]
 }

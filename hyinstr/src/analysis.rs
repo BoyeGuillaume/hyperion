@@ -55,9 +55,18 @@ impl TerminationBehavior {
 /// an block of instructions/function during execution or simulation.
 ///
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[strum_discriminants(name(AnalysisStatisticOp))]
 #[strum_discriminants(derive(EnumIter))]
+#[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
+#[cfg_attr(
+    feature = "borsh",
+    strum_discriminants(derive(borsh::BorshSerialize, borsh::BorshDeserialize))
+)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum AnalysisStatistic {
     /// Count of instructions executed containing any of the specified flags.
     ///

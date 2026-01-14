@@ -18,6 +18,10 @@ use crate::{
 /// Floating-point comparison operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum FCmpVariant {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
     Oeq,
@@ -76,6 +80,10 @@ impl FCmpVariant {
 /// Floating-point addition instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FAdd {
     /// Destination SSA name receiving the sum.
     pub dest: Name,
@@ -120,6 +128,10 @@ impl Instruction for FAdd {
 /// Floating-point subtraction instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FSub {
     /// Destination SSA name receiving the difference.
     pub dest: Name,
@@ -164,6 +176,10 @@ impl Instruction for FSub {
 /// Floating-point multiplication instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FMul {
     /// Destination SSA name receiving the product.
     pub dest: Name,
@@ -208,6 +224,10 @@ impl Instruction for FMul {
 /// Floating-point division instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FDiv {
     /// Destination SSA name receiving the quotient.
     pub dest: Name,
@@ -252,6 +272,10 @@ impl Instruction for FDiv {
 /// Floating-point remainder instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FRem {
     /// Destination SSA name receiving the remainder.
     pub dest: Name,
@@ -296,6 +320,10 @@ impl Instruction for FRem {
 /// Floating-point negation instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FNeg {
     /// Destination SSA name receiving the negated value.
     pub dest: Name,
@@ -338,6 +366,10 @@ impl Instruction for FNeg {
 /// Floating-point comparison instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FCmp {
     /// Destination SSA name receiving the comparison result.
     pub dest: Name,

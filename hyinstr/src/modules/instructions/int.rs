@@ -19,6 +19,10 @@ use crate::{
 /// Overflow policies for integer operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum OverflowPolicy {
     /// Wrap around on overflow
     Wrap,
@@ -32,6 +36,10 @@ pub enum OverflowPolicy {
 /// Additional signedness policy for overflow handling
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum OverflowSignednessPolicy {
     /// Wrap (signedness does not matter for wrap)
     Wrap,
@@ -83,6 +91,10 @@ impl OverflowSignednessPolicy {
 /// Signedness for integer operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum IntegerSignedness {
     Signed,
     Unsigned,
@@ -106,6 +118,10 @@ impl IntegerSignedness {
 /// Integer comparison operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum ICmpVariant {
     /// Equal
     Eq,
@@ -181,6 +197,10 @@ impl ICmpVariant {
 /// Integer shift operations disambiguation
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum IShiftVariant {
     /// Logical left shift
     Lsl,
@@ -215,6 +235,10 @@ impl IShiftVariant {
 /// Integer addition instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IAdd {
     /// Destination SSA name receiving the sum.
     pub dest: Name,
@@ -261,6 +285,10 @@ impl Instruction for IAdd {
 /// Integer substraction instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ISub {
     /// Destination SSA name receiving the difference.
     pub dest: Name,
@@ -307,6 +335,10 @@ impl Instruction for ISub {
 /// Integer multiplication instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IMul {
     /// Destination SSA name receiving the product.
     pub dest: Name,
@@ -353,6 +385,10 @@ impl Instruction for IMul {
 /// Integer division instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IDiv {
     /// Destination SSA name receiving the quotient.
     pub dest: Name,
@@ -399,6 +435,10 @@ impl Instruction for IDiv {
 /// Integer remainder instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IRem {
     /// Destination SSA name receiving the remainder.
     pub dest: Name,
@@ -445,6 +485,10 @@ impl Instruction for IRem {
 /// Integer comparison instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ICmp {
     /// Destination SSA name receiving the predicate result.
     pub dest: Name,
@@ -493,6 +537,10 @@ impl Instruction for ICmp {
 /// Integer shift instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ISht {
     /// Destination SSA name receiving the shifted value.
     pub dest: Name,
@@ -540,6 +588,10 @@ impl Instruction for ISht {
 /// (Negates the value of the operand)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct INeg {
     /// Destination SSA name receiving the negated value.
     pub dest: Name,
@@ -583,6 +635,10 @@ impl Instruction for INeg {
 /// (Flips all bits of the operand)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct INot {
     /// Destination SSA name receiving the inverted value.
     pub dest: Name,
@@ -625,6 +681,10 @@ impl Instruction for INot {
 /// Integer AND instruction (bitwise AND, logical is equivalent when working on type i1)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IAnd {
     /// Destination SSA name receiving the bitwise conjunction.
     pub dest: Name,
@@ -669,6 +729,10 @@ impl Instruction for IAnd {
 /// Integer OR instruction (bitwise OR, logical is equivalent when working on type i1)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IOr {
     /// Destination SSA name receiving the bitwise disjunction.
     pub dest: Name,
@@ -713,6 +777,10 @@ impl Instruction for IOr {
 /// Integer XOR instruction (bitwise XOR, logical is equivalent when working on type i1)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IXor {
     /// Destination SSA name receiving the bitwise exclusive-or.
     pub dest: Name,
@@ -757,6 +825,10 @@ impl Instruction for IXor {
 /// Implies instruction (logical implication, works on type i1)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IImplies {
     /// Destination SSA name receiving the implication result.
     pub dest: Name,
@@ -801,6 +873,10 @@ impl Instruction for IImplies {
 /// Equivalence instruction (logical equivalence, works on type i1)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct IEquiv {
     /// Destination SSA name receiving the equivalence result.
     pub dest: Name,

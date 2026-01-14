@@ -35,6 +35,10 @@ pub mod primary;
 /// A stable reference to a type stored inside a `TypeRegistry`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Typeref(Uuid);
 
 impl Typeref {

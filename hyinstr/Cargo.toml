@@ -33,3 +33,4 @@ serde = [
     "bitflags/serde",
 ]
 chumsky = ["dep:chumsky"]
+borsh = ["dep:borsh", "borsh/derive", "uuid/borsh"]

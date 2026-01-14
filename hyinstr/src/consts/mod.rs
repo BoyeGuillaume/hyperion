@@ -17,6 +17,10 @@ pub mod int;
 /// A constant value (integer or floating‑point) usable as an immediate.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum AnyConst {
     /// Integer constant
     Int(IConst),

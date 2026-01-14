@@ -15,6 +15,10 @@ use strum::{EnumIs, EnumTryAs};
 /// instruction's result.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Name(pub u32);
 
 impl std::ops::Add<u32> for Name {
@@ -46,6 +50,10 @@ impl Debug for Name {
 /// Represents a meta operand used internally in attributes and properties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaLabel(pub u32);
 
 /// Represents a code label used as a target for control‑flow instructions (besides invokes).
@@ -54,6 +62,10 @@ pub struct MetaLabel(pub u32);
 /// labels are only valid within the function they are defined in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Label(pub u32);
 
 impl Label {
@@ -70,6 +82,10 @@ impl Label {
 /// Instruction operand.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum Operand {
     /// Reference to a previously defined SSA value.
     Reg(Name),

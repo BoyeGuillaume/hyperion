@@ -30,6 +30,10 @@ pub trait Terminator: Instruction {
 /// See `Label` in `operand.rs` for more information about code labels.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Branch {
     /// The condition operand; should evaluate to a boolean value.
     ///
@@ -83,6 +87,10 @@ impl Terminator for Branch {
 /// See `Label` in `operand.rs` for more information about code labels.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Jump {
     /// The label to jump to.
     pub target: Label,
@@ -125,6 +133,10 @@ impl Terminator for Jump {
 /// If `value` is `None`, it indicates a `void` return.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Ret {
     pub value: Option<Operand>,
 }
@@ -164,6 +176,10 @@ impl Terminator for Ret {
 /// Trap instruction to indicate an unrecoverable error or exceptional condition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Trap;
 
 impl Instruction for Trap {
@@ -203,7 +219,15 @@ impl Terminator for Trap {
 #[strum_discriminants(name(HyTerminatorOp))]
 #[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
+#[cfg_attr(
+    feature = "borsh",
+    strum_discriminants(derive(borsh::BorshSerialize, borsh::BorshDeserialize))
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum HyTerminator {
     Branch(Branch),
     Jump(Jump),

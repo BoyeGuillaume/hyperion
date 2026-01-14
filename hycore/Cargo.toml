@@ -4,8 +4,10 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-hyinstr = { workspace = true, features = ["serde", "chumsky"] }
+hyinstr = { workspace = true, features = ["serde", "chumsky", "borsh"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
+borsh = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 petgraph.workspace = true
 smallvec.workspace = true
 semver.workspace = true
@@ -20,18 +22,17 @@ enum-map = { workspace = true }
 log = { workspace = true }
 either.workspace = true
 bit-set = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
 toml.workspace = true
 downcast-rs.workspace = true
+chrono.workspace = true
+inventory.workspace = true
+zstd.workspace = true
 pyo3 = { workspace = true, features = [
     "uuid",
     "extension-module",
     "abi3",
     "chrono",
 ], optional = true }
-chrono = { workspace = true }
-inventory = { workspace = true }
-serde_cbor.workspace = true
 
 [build-dependencies]
 build-info-build.workspace = true

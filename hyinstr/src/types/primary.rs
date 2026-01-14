@@ -28,6 +28,10 @@ use uuid::Uuid;
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 #[repr(transparent)]
 pub struct IType {
     num_bits: u32,
@@ -120,6 +124,10 @@ impl std::fmt::Display for IType {
 /// formats. Not all floating-point types may be supported on all targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum FType {
     /// 16-bit floating point value (IEEE-754 binary16)
     /// Also known as "half precision".
@@ -239,6 +247,10 @@ impl std::fmt::Display for ExtType {
 /// to coexist in the same function or module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct WType {
     /// Ordinal identifier used to distinguish wildcard placeholders.
     pub id: u16,

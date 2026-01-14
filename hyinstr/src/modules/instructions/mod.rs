@@ -78,6 +78,21 @@ bitflags! {
     }
 }
 
+#[cfg(feature = "borsh")]
+impl borsh::BorshSerialize for InstructionFlags {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.bits(), writer)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl borsh::BorshDeserialize for InstructionFlags {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let bits = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        Ok(InstructionFlags::from_bits_truncate(bits))
+    }
+}
+
 /// Common interface implemented by every instruction node.
 ///
 /// This trait provides lightweight, zero‑allocation iteration over an
@@ -158,6 +173,10 @@ pub trait Instruction {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
 #[strum_discriminants(name(HyInstrOp), derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum HyInstr {
     // Integer instructions
     IAdd(int::IAdd),

@@ -20,6 +20,10 @@ use strum::{EnumIter, IntoEnumIterator};
 /// a return code or never return from the function (e.g., abort).
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Invoke {
     /// Should be a reference to a function pointer (either internal or external). We
     /// describe it as an `Operand` to allow dynamic function calls to achieve virtualization
@@ -80,6 +84,10 @@ impl Instruction for Invoke {
 /// beginning of a basic block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Phi {
     /// The destination SSA name for the result of the phi instruction.
     pub dest: Name,
@@ -126,6 +134,10 @@ impl Instruction for Phi {
 /// This instruction selects one of two values based on a condition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Select {
     /// The destination SSA name for the result of the select instruction.
     pub dest: Name,
@@ -179,6 +191,10 @@ impl Instruction for Select {
 /// details.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum CastVariant {
     /// Truncate integer
     ///
@@ -275,6 +291,10 @@ impl CastVariant {
 /// This instruction casts a value from one type to another using the specified cast operation.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Cast {
     /// The destination SSA name for the casted result.
     pub dest: Name,
@@ -325,6 +345,10 @@ impl Instruction for Cast {
 /// This is purely a value transform; no memory is touched.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct InsertValue {
     /// Destination SSA name receiving the updated aggregate.
     pub dest: Name,
@@ -375,6 +399,10 @@ impl Instruction for InsertValue {
 /// all indices must be constant integers. This is a pure value operation (no memory access).
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ExtractValue {
     /// Destination SSA name receiving the extracted element.
     pub dest: Name,

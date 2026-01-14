@@ -23,6 +23,10 @@ use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 /// be provided by the derivation engine or external tools.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAssert {
     /// The condition to assert. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -80,6 +84,10 @@ impl Instruction for MetaAssert {
 /// while `assert %cond` signifies that ∵ `%cond` is true.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAssume {
     /// The condition to assume. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -128,6 +136,10 @@ impl Instruction for MetaAssume {
 /// Check whether an operand is fully defined (no undef/poison content).
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaIsDef {
     /// Destination SSA name holding the boolean result.
     pub dest: Name,
@@ -189,6 +201,10 @@ impl Instruction for MetaIsDef {
 #[strum_discriminants(name(MetaProbVariant))]
 #[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum MetaProbOperand {
     /// Operand (boolean) value, this is the probability that the given operand is true. Input
     /// should be a boolean value.
@@ -244,6 +260,10 @@ impl MetaProbVariant {
 /// for modeling and reasoning about probabilistic computations.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaProb {
     /// The destination SSA name for the result of the probability function.
     pub dest: Name,
@@ -303,6 +323,10 @@ impl Instruction for MetaProb {
 ///
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAnalysisStat {
     /// The destination SSA name for the result of the analysis statistic instruction.
     pub dest: Name,

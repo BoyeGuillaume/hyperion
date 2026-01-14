@@ -16,6 +16,10 @@ use crate::{modules::CallingConvention, types::Typeref};
 /// This struct represents a function that is defined outside the current module,
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ExternalFunction {
     /// Unique identifier for the external function. This is used internally to
     /// reference the function within the module.
@@ -41,6 +45,10 @@ pub struct ExternalFunction {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumDiscriminants)]
 #[strum_discriminants(name(FunctionPointerType))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum FunctionPointer {
     /// Reference to a function defined within the current module
     Internal(Uuid),

@@ -44,6 +44,10 @@ pub mod terminator;
 /// All Global Variables and Functions have one of the following types of linkage:
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum Linkage {
     /// Global values with `Linkage::private` linkage are only directly accessible by objects in the current module.
     ///
@@ -70,6 +74,10 @@ pub enum Linkage {
 /// Note: A symbol with internal or private linkage must have default visibility.
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum Visibility {
     /// Default visibility
     ///
@@ -114,6 +122,10 @@ impl Visibility {
 /// and more may be added in the future:
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum CallingConvention {
     /// The C calling convention
     ///
@@ -261,6 +273,10 @@ impl CallingConvention {
 /// This structure identifies an instruction by the basic block label it resides in
 /// and the index of the instruction within that block.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct InstructionRef {
     /// Label of the basic block containing the instruction.
     pub block: Label,
@@ -291,6 +307,10 @@ impl From<InstructionRef> for (Label, usize) {
 /// of complex control flow within functions.
 #[derive(Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct BasicBlock {
     /// Unique block label.
     pub label: Label,
@@ -334,6 +354,10 @@ impl BasicBlock {
 ///
 #[derive(Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Function {
     /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
@@ -818,6 +842,10 @@ pub struct FunctionAnalysisContext<'a> {
 /// defined locally are listed in `external_functions`.
 #[derive(Debug, Default, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Module {
     /// Defined functions keyed by their UUID.
     pub functions: BTreeMap<Uuid, Function>,
