@@ -7,7 +7,7 @@ use hyinstr::modules::{
 use petgraph::prelude::DiGraphMap;
 use uuid::Uuid;
 
-use crate::specifications::library::SpecificationLibrary;
+use crate::theorems::library::TheoremLibrary;
 
 /// Contextual information about a [`Function`] within a module.
 pub struct FunctionContext {
@@ -32,5 +32,5 @@ pub struct ModuleContext {
 
     /// Library of properties and specifications (can be used to derive additional
     /// specifications).
-    pub library: SpecificationLibrary,
+    pub library: TheoremLibrary,
 }

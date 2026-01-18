@@ -10,7 +10,7 @@ pub mod compiler;
 pub mod ext;
 pub mod formal;
 pub mod magic;
-pub mod specifications;
+pub mod theorems;
 pub mod utils;
 
 pub extern crate chrono;

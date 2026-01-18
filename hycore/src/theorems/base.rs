@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::utils::lazy::{LazyContainer, LazyDirtifierGuard, LazyGuard};
 
-struct SpecificationAccelerationStructures {
+struct TheoremAccelerationStructures {
     /// Collected references to all assert-style meta-instructions found in `function`.
     list_asserts: Vec<InstructionRef>,
 
@@ -19,21 +19,21 @@ struct SpecificationAccelerationStructures {
     list_referenced_functions: BTreeSet<FunctionPointer>,
 }
 
-impl SpecificationAccelerationStructures {
-    /// Scan the specification function and update [`Specification::list_asserts`] with all
+impl TheoremAccelerationStructures {
+    /// Scan the theorems function and update [`Theorem::list_asserts`] with all
     /// instructions that represent meta-assertions.
     fn derive_meta_asserts(&mut self, func: &Function) {
         self.list_asserts = func.gather_instructions_by_predicate(|instr| instr.is_meta_assert());
     }
 
-    /// Scan the specification function and update [`Specification::list_assumptions`] with all
+    /// Scan the theorems function and update [`Theorem::list_assumptions`] with all
     /// instructions that represent meta-assumptions (preconditions).
     fn derive_meta_assumptions(&mut self, func: &Function) {
         self.list_assumptions =
             func.gather_instructions_by_predicate(|instr| instr.is_meta_assume());
     }
 
-    /// Scan the function body and populate [`Specification::list_referenced_functions`] with every
+    /// Scan the function body and populate [`Theorem::list_referenced_functions`] with every
     /// directly referenced function pointer.
     fn derive_referenced_functions(&mut self, func: &Function) {
         self.list_referenced_functions = func
@@ -76,7 +76,7 @@ impl SpecificationAccelerationStructures {
     }
 }
 
-/// Specification are a set of external properties attached to functions, expressed as meta-functions.
+/// Theorems are a set of external properties attached to functions, expressed as meta-functions.
 ///
 /// These meta-functions can contain meta-instructions such as assertions and assumptions,
 /// which can be used by provers to verify that the target function adheres to its specification.
@@ -84,7 +84,7 @@ impl SpecificationAccelerationStructures {
 /// They are external as they do not provide information about the internal workings of the function,
 /// only about its external state and behavior.
 ///
-pub struct Specification {
+pub struct Theorem {
     /// Uuid (should stay static after creation)
     uuid: Uuid,
 
@@ -92,10 +92,10 @@ pub struct Specification {
     function: Function,
 
     /// Acceleration structures derived from the specification function.
-    acceleration: LazyContainer<SpecificationAccelerationStructures>,
+    acceleration: LazyContainer<TheoremAccelerationStructures>,
 }
 
-impl Specification {
+impl Theorem {
     /// Unique identifier associated with both the specification and the backing meta-function.
     pub fn uuid(&self) -> Uuid {
         debug_assert!(self.uuid == self.function.uuid);
@@ -126,7 +126,7 @@ impl Specification {
     // pub fn list_asserts(&self) -> &[InstructionRef] {}
     pub fn list_asserts(&self) -> LazyGuard<'_, [InstructionRef]> {
         self.acceleration.get(
-            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| TheoremAccelerationStructures::compute(x, &self.function),
             |x| x.list_asserts.as_slice(),
         )
     }
@@ -134,7 +134,7 @@ impl Specification {
     /// Get a reference to the list of meta-assumption instructions
     pub fn list_assumptions(&self) -> LazyGuard<'_, [InstructionRef]> {
         self.acceleration.get(
-            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| TheoremAccelerationStructures::compute(x, &self.function),
             |x| x.list_assumptions.as_slice(),
         )
     }
@@ -142,7 +142,7 @@ impl Specification {
     /// Get a reference to the set of directly referenced function pointers.
     pub fn list_referenced_functions(&self) -> LazyGuard<'_, BTreeSet<FunctionPointer>> {
         self.acceleration.get(
-            |x| SpecificationAccelerationStructures::compute(x, &self.function),
+            |x| TheoremAccelerationStructures::compute(x, &self.function),
             |x| &x.list_referenced_functions,
         )
     }

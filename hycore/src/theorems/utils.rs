@@ -1,4 +1,4 @@
-//! Lightweight optimization passes shared by specification tooling and provers.
+//! Lightweight optimization passes shared by theorems tooling and provers.
 
 use std::collections::HashMap;
 
