@@ -15,3 +15,20 @@
 - [ ] Develop derivers for simple specifications (find loop invariants, preconditions, postconditions).
 - [ ] Implement a verification engine that can check function equivalence based on provided specifications.
 - [ ] Implement searching of target conditions for equivalence using SMT solvers.
+
+## Design Decisions: ProofView and TerminationScope
+
+- Construct: ProofView (aka TheoremDerivationView) overlays an original function, keeps an explicit reference to it, and adds reasoning without mutating the source.
+- Reasoning model:
+  - Use existing IR ops (e.g., iadd, icmp) in side-effect-free PreBlock and PostBlocks.
+  - Employ !assume and !assert to express preconditions, invariants, and postconditions.
+  - Order is governed by SSA dependencies; values must be defined before use.
+- Termination analysis:
+  - Introduce TerminationScope for MetaAnalysisStat::TerminationBehavior:
+    - BlockExit: termination of the current block.
+    - FunctionExit: termination of the entire function.
+    - ReachPoint(label): termination defined as reaching a specific label.
+    - ReachAny(labels): termination if any label in the set is reached.
+    - ReachAll(labels): termination if all labels in the set are reached.
+- Quantified reasoning:
+  - Encode ∀ by treating ProofView PreBlock parameters as bound variables; constrain with !assume in PreBlock and conclude with !assert in PostBlocks.
