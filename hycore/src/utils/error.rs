@@ -27,6 +27,9 @@ pub enum HyError {
 
     #[error("{0}")]
     HyInstrError(#[from] hyinstr::utils::Error),
+
+    #[error("Failed to find {context} with key '{key}'")]
+    KeyNotFound { key: String, context: String },
 }
 
 /// Convenience alias for fallible operations returning [`HyError`].

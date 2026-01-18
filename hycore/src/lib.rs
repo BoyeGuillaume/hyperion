@@ -8,10 +8,20 @@
 pub mod base;
 pub mod compiler;
 pub mod ext;
+pub mod formal;
 pub mod magic;
-pub mod provers;
 pub mod specifications;
 pub mod utils;
 
 pub extern crate chrono;
 pub extern crate inventory;
+
+#[macro_export]
+macro_rules! register {
+    (plugin $ty:ty) => {
+        crate::register_plugin!($ty);
+    };
+    (theorem_inference_strategy $ty:ty) => {
+        $crate::register_theorem_inference_strategy!($ty);
+    };
+}
