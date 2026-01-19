@@ -16,5 +16,6 @@
 pub mod analysis;
 pub mod consts;
 pub mod modules;
+pub mod proof;
 pub mod types;
 pub mod utils;

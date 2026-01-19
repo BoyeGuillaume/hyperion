@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 
 use crate::modules::instructions::InstructionFlags;
+use crate::modules::operand::Label;
 
 /// Possible termination behaviors of a block of instructions/function.
 ///
@@ -51,10 +52,28 @@ impl TerminationBehavior {
     }
 }
 
+/// Scope over which termination behavior is evaluated.
+///
+/// Selects the region of interest for the termination query.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
+pub enum TerminationScope {
+    /// Termination is defined as reaching the end of the current block.
+    BlockExit,
+    /// Termination of the entire function (any return/trap or completion of all paths).
+    FunctionExit,
+    /// Termination if any label in the set is reached.
+    ReachAny(Vec<Label>),
+}
+
 /// Analysis statistics that can be used to gather information about behavior of
 /// an block of instructions/function during execution or simulation.
 ///
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
 #[strum_discriminants(name(AnalysisStatisticOp))]
 #[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
@@ -82,13 +101,12 @@ pub enum AnalysisStatistic {
     /// Number of times this function was executed (useful for loop counts, recursion depth, etc).
     ExecutionCount,
 
-    /// Termination behavior observed at the block/label. This returns an integer similar
+    /// Termination behavior over a chosen scope. Returns an integer similar
     /// to [`TerminationBehavior::to_u8()`].
     ///
-    /// This evaluate the termination of the **whole** block of instructions/function not the at the
-    /// given point. This is motivated by the fact that assertion about termination behavior should be
-    /// made prior to executing the block/function.
-    TerminationBehavior,
+    /// The scope determines whether we consider the current block, the entire function,
+    /// or reaching specified points in the CFG.
+    TerminationBehavior(TerminationScope),
 }
 
 impl AnalysisStatistic {

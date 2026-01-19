@@ -7,6 +7,7 @@ use std::{
     u16,
 };
 
+use crate::analysis::{AnalysisStatistic, TerminationScope};
 use bigdecimal::BigDecimal;
 use chumsky::{
     container::Seq,
@@ -26,7 +27,9 @@ use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
         BasicBlock, CallingConvention, Function, Instruction, Module, Visibility,
-        instructions::{HyInstr, HyInstrOp, fp::*, int::*, mem::*, meta::*, misc::*},
+        instructions::{
+            HyInstr, HyInstrOp, InstructionFlags, fp::*, int::*, mem::*, meta::*, misc::*,
+        },
         operand::{Label, Name, Operand},
         symbol::{FunctionPointer, FunctionPointerType},
         terminator::*,
@@ -1078,6 +1081,18 @@ where
 
             if op.has_variant() {
                 let num_variant_operands = match op {
+                    HyInstrOp::MetaAnalysisStat => {
+                        if variant.is_empty() {
+                            1
+                        } else {
+                            match crate::analysis::AnalysisStatisticOp::from_str(&variant[0]) {
+                                Some(crate::analysis::AnalysisStatisticOp::ExecutionCount) => 1,
+                                Some(crate::analysis::AnalysisStatisticOp::InstructionCount) => 1,
+                                Some(crate::analysis::AnalysisStatisticOp::TerminationBehavior) => 2,
+                                None => 1,
+                            }
+                        }
+                    }
                     _ => 1,
                 };
 
@@ -1606,6 +1621,131 @@ where
                     };
 
                     MetaProb { dest, ty, operand }.into()
+                }
+                HyInstrOp::MetaAnalysisStat => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    if variant.is_empty() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "missing variant for !analysis",
+                        ));
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+
+                    let stat = match crate::analysis::AnalysisStatisticOp::from_str(&variant[0]) {
+                        Some(crate::analysis::AnalysisStatisticOp::ExecutionCount) => {
+                            if let Either::Left(ops) = operand.as_ref() {
+                                if !ops.is_empty() {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        format!(
+                                            "arity mismatch for !analysis.icnt: expected 0 operands, got {}",
+                                            ops.len()
+                                        ),
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            }
+                            AnalysisStatistic::ExecutionCount
+                        }
+                        Some(crate::analysis::AnalysisStatisticOp::InstructionCount) => {
+                            let ops = match operand.as_ref() {
+                                Either::Left(ops) => ops,
+                                Either::Right(_) => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        "syntax error for !analysis.icnt: expected 1 immediate integer operand",
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            };
+                            if ops.len() != 1 {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.icnt: expected 1 operand, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                            }
+                            let [value] = operand.unwrap_left().try_into().unwrap();
+                            match value {
+                                Operand::Imm(AnyConst::Int(ic)) => {
+                                    let bits = ic.value.to_u32_digits().1.into_iter().next().unwrap_or_default();
+                                    let flags = InstructionFlags::from_bits_truncate(bits);
+                                    AnalysisStatistic::InstructionCount(flags)
+                                }
+                                _ => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        "type error for !analysis.icnt: expected integer immediate operand",
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            }
+                        }
+                        Some(crate::analysis::AnalysisStatisticOp::TerminationBehavior) => {
+                            if let Either::Left(ops) = operand.as_ref() {
+                                if !ops.is_empty() {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        format!(
+                                            "arity mismatch for !analysis.term: expected 0 operands, got {}",
+                                            ops.len()
+                                        ),
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            }
+                            let scope_name = variant.get(1).copied().unwrap_or("");
+                            let scope = match scope_name {
+                                "blockexit" => TerminationScope::BlockExit,
+                                "funcexit" => TerminationScope::FunctionExit,
+                                _ => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        format!(
+                                            "unknown termination scope variant: {} (expected one of: blockexit, funcexit)",
+                                            scope_name
+                                        ),
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            };
+                            AnalysisStatistic::TerminationBehavior(scope)
+                        }
+                        None => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown analysis statistic op: {} (expected one of: {})",
+                                    variant[0],
+                                    crate::analysis::AnalysisStatisticOp::iter().map(|op| op.to_str()).collect::<Vec<_>>().join(", ")
+                                ),
+                            ));
+                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                        }
+                    };
+
+                    MetaAnalysisStat { dest, ty, statistic: stat }.into()
+                }
+                HyInstrOp::MetaForall => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    if let Either::Left(ops) = operand.as_ref() {
+                        if !ops.is_empty() {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "arity mismatch for !forall: expected 0 operands, got {}",
+                                    ops.len()
+                                ),
+                            ));
+                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                        }
+                    }
+                    MetaForall { dest, ty }.into()
                 }
             }
         }).boxed()

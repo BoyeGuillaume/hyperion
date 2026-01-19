@@ -224,6 +224,8 @@ pub enum HyInstr {
     MetaAssume(meta::MetaAssume),
     MetaIsDef(meta::MetaIsDef),
     MetaProb(meta::MetaProb),
+    MetaAnalysisStat(meta::MetaAnalysisStat),
+    MetaForall(meta::MetaForall),
 }
 
 impl HyInstrOp {
@@ -270,6 +272,8 @@ impl HyInstrOp {
             HyInstrOp::MetaAssume => "!assume",
             HyInstrOp::MetaIsDef => "!isdef",
             HyInstrOp::MetaProb => "!prob",
+            HyInstrOp::MetaAnalysisStat => "!analysis",
+            HyInstrOp::MetaForall => "!forall",
         }
     }
 
@@ -307,6 +311,8 @@ impl HyInstrOp {
             HyInstrOp::MetaAssert | HyInstrOp::MetaAssume => Some(1), // condition
             HyInstrOp::MetaIsDef => Some(1),
             HyInstrOp::MetaProb => None, // variable arity depending on variant
+            HyInstrOp::MetaAnalysisStat => None, // variable arity depending on analysis op
+            HyInstrOp::MetaForall => Some(0),
         }
     }
 
@@ -319,6 +325,7 @@ impl HyInstrOp {
                 | HyInstrOp::Cast
                 | HyInstrOp::ISht
                 | HyInstrOp::MetaProb
+                | HyInstrOp::MetaAnalysisStat
                 | HyInstrOp::IAdd
                 | HyInstrOp::ISub
                 | HyInstrOp::IMul
@@ -443,6 +450,8 @@ define_instr_any_instr! {
     MetaAssume,
     MetaIsDef,
     MetaProb,
+    MetaAnalysisStat,
+    MetaForall,
 }
 
 macro_rules! define_hyinstr_from {
@@ -494,3 +503,5 @@ define_hyinstr_from!(meta::MetaAssert, MetaAssert);
 define_hyinstr_from!(meta::MetaAssume, MetaAssume);
 define_hyinstr_from!(meta::MetaIsDef, MetaIsDef);
 define_hyinstr_from!(meta::MetaProb, MetaProb);
+define_hyinstr_from!(meta::MetaAnalysisStat, MetaAnalysisStat);
+define_hyinstr_from!(meta::MetaForall, MetaForall);

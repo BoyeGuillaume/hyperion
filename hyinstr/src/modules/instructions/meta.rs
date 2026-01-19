@@ -193,6 +193,54 @@ impl Instruction for MetaIsDef {
     }
 }
 
+/// Create a universally quantified ghost value.
+///
+/// This meta-instruction introduces a side-effect-free, unbound SSA value of a
+/// given type to support quantified reasoning (∀). It produces a destination
+/// register of the requested type and has no operands.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
+pub struct MetaForall {
+    /// Destination SSA name holding the quantified value.
+    pub dest: Name,
+    /// The type of the quantified value.
+    pub ty: Typeref,
+}
+
+impl Instruction for MetaForall {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
 /// Probability operand types
 ///
 /// Models different kinds of probability-related operands that can be used in
