@@ -1999,15 +1999,17 @@ fn final_parser<'src, I>() -> impl Parser<'src, I, Vec<Item>, Extra<'src>> + Clo
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    just(Token::Newline)
-        .or_not()
-        .ignore_then(choice((
-            import_parser().map(Item::Import),
-            parse_function().map(Item::Function),
-        )))
-        .then_ignore(just(Token::Newline).or_not())
-        .repeated()
-        .collect()
+    fast_boxed!(
+        just(Token::Newline)
+            .or_not()
+            .ignore_then(choice((
+                import_parser().map(Item::Import),
+                parse_function().map(Item::Function),
+            )))
+            .then_ignore(just(Token::Newline).or_not())
+            .repeated()
+            .collect()
+    )
 }
 
 /// Extend a module by parsing a file at the given path, including handling imports
