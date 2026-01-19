@@ -1757,8 +1757,8 @@ where
                 body: blocks.into_iter().map(|block| (block.label, block)).collect(),
                 visibility: visibility,
                 cconv: cconv,
-                wildcard_types: Default::default(),
                 meta_function: is_meta_func,
+                ..Default::default()
             };
 
             // Check if function should be meta-function

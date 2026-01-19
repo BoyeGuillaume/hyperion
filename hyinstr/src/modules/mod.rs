@@ -23,6 +23,7 @@ use crate::{
         instructions::{HyInstr, Instruction},
         operand::{Label, Name, Operand},
         symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
+        terminator::Trap,
     },
     types::{Typeref, primary::WType},
     utils::Error,
@@ -377,6 +378,34 @@ pub struct Function {
     pub wildcard_types: BTreeSet<WType>,
     /// Indicates whether this function is a meta-function (i.e., used for verification or analysis purposes).
     pub meta_function: bool,
+    /// If this function was derived from another, holds the source function UUID.
+    pub derived_from: Option<Uuid>,
+}
+
+impl Default for Function {
+    fn default() -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
+            name: None,
+            params: vec![],
+            return_type: None,
+            body: [(
+                Label::NIL,
+                BasicBlock {
+                    label: Label::NIL,
+                    instructions: vec![],
+                    terminator: terminator::HyTerminator::Trap(Trap),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            visibility: None,
+            cconv: None,
+            wildcard_types: Default::default(),
+            meta_function: false,
+            derived_from: Default::default(),
+        }
+    }
 }
 
 impl Function {

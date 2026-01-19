@@ -55,15 +55,13 @@ fn function(
     meta_function: bool,
 ) -> Function {
     Function {
-        uuid: Uuid::new_v4(),
         name: Some(name.to_string()),
         params,
         return_type,
         body: blocks.into_iter().map(|bb| (bb.label, bb)).collect(),
-        visibility: None,
-        cconv: None,
         wildcard_types,
         meta_function,
+        ..Default::default()
     }
 }
 
@@ -537,10 +535,7 @@ fn module_verify_succeeds_when_functions_resolved() {
                 }),
             ),
         )]),
-        visibility: None,
-        cconv: None,
-        wildcard_types: BTreeSet::new(),
-        meta_function: false,
+        ..Default::default()
     };
     module.functions.insert(callee_uuid, Arc::new(callee));
 
