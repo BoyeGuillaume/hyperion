@@ -139,3 +139,15 @@ entry:
     %clamped: i32 = select %gt_hi, %hi, %lo_or_x
     ret %clamped
 }
+
+define void !example_meta() {
+entry:
+    %x: i32 = !forall
+    %y: i32 = iadd.wrap i32 0, i32 0
+    %z: i32 = !analysis.term.reach stop, other
+    jump entry
+stop:
+    ret void
+other:
+    ret void
+}

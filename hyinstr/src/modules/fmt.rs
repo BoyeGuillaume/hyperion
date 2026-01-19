@@ -10,6 +10,7 @@ use crate::{
         operand::{Label, Operand},
         terminator::HyTerminator,
     },
+    analysis::{AnalysisStatistic, TerminationScope},
     types::TypeRegistry,
 };
 
@@ -225,6 +226,37 @@ impl HyInstr {
                             MetaProbOperand::Variance(_) => write!(f, ".var")?,
                         };
                         Ok(false)
+                    }
+                    HyInstr::MetaAnalysisStat(mas) => {
+                        match &mas.statistic {
+                            AnalysisStatistic::ExecutionCount => {
+                                write!(f, ".excnt")?;
+                                Ok(true)
+                            }
+                            AnalysisStatistic::InstructionCount(flags) => {
+                                write!(f, ".icnt i32 0x{:x}", flags.bits())?;
+                                Ok(true)
+                            }
+                            AnalysisStatistic::TerminationBehavior(scope) => {
+                                match scope {
+                                    TerminationScope::BlockExit => {
+                                        write!(f, ".term.blockexit")?;
+                                    }
+                                    TerminationScope::FunctionExit => {
+                                        write!(f, ".term.funcexit")?;
+                                    }
+                                    TerminationScope::ReachAny(labels) => {
+                                        write!(f, ".term.reach ")?;
+                                        let mut first = true;
+                                        for label in labels {
+                                            if first { first = false; } else { write!(f, ", ")?; }
+                                            write!(f, "{}", label)?;
+                                        }
+                                    }
+                                }
+                                Ok(true)
+                            }
+                        }
                     }
                     HyInstr::Invoke(invoke) => {
                         if let Some(cconv) = &invoke.cconv {

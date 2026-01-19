@@ -108,6 +108,9 @@ enum Token<'a> {
 
     /// Equals '='
     Equals,
+
+    /// Newline '\n'
+    Newline,
 }
 
 impl std::fmt::Display for Token<'_> {
@@ -158,6 +161,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Comma => write!(f, ","),
             Token::Colon => write!(f, ":"),
             Token::Equals => write!(f, "="),
+            Token::Newline => write!(f, "\\n"),
         }
     }
 }
@@ -625,7 +629,9 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'s
 fn ignoring_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
 {
     choice((
-        any().filter(|c: &char| c.is_whitespace()).to(()),
+        any()
+            .filter(|c: &char| c.is_whitespace() && *c != '\n')
+            .to(()),
         comment_parser(),
     ))
     .repeated()
@@ -648,6 +654,11 @@ fn lexer<'src>()
         just(",").to(Token::Comma),
         just(":").to(Token::Colon),
         just("=").to(Token::Equals),
+        just("\n")
+            .padded_by(ignoring_parser())
+            .repeated()
+            .at_least(1)
+            .to(Token::Newline),
         register_parser().map(Token::Register),
         identifier_parser(),
     ))
@@ -964,6 +975,12 @@ where
         )
         .then(operand_parser)
         .then(
+            label_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
+        .then(
             just(Token::Comma)
             .ignore_then(
                 just(Token::Identifier("align", vec![])),
@@ -993,7 +1010,7 @@ where
                 ).to(())
                 .or_not(),
         )
-        .validate(move |((elem, align), volatile), extra, emit| {
+        .validate(move |(((elem, labels), align), volatile), extra, emit| {
             let state: &mut SimpleState<State<'src>> = extra.state();
             let ((destination, op), operand) = elem;
             let (op, variant) = op;
@@ -1048,6 +1065,21 @@ where
                 ));
 
                 return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+            }
+
+            // Only authorize label lists for !analysis.term.reach (future-proof: parsed for all)
+            if let Some(lbls) = labels.as_ref() {
+                if !lbls.is_empty() && !(op == HyInstrOp::MetaAnalysisStat && variant.get(0).copied() == Some("term") && variant.get(1).copied() == Some("reach")) {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: unexpected label list",
+                            op.opname()
+                        ),
+                    ));
+
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                }
             }
 
             if matches!(op, HyInstrOp::MLoad | HyInstrOp::MStore) {
@@ -1700,21 +1732,33 @@ where
                                 }
                             }
                             let scope_name = variant.get(1).copied().unwrap_or("");
-                            let scope = match scope_name {
-                                "blockexit" => TerminationScope::BlockExit,
-                                "funcexit" => TerminationScope::FunctionExit,
-                                _ => {
+                            if scope_name == "reach" {
+                                let lbls = labels.clone().unwrap_or_default();
+                                if lbls.is_empty() {
                                     emit.emit(Rich::custom(
                                         extra.span(),
-                                        format!(
-                                            "unknown termination scope variant: {} (expected one of: blockexit, funcexit)",
-                                            scope_name
-                                        ),
+                                        "syntax error for !analysis.term.reach: expected at least 1 label",
                                     ));
                                     return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                                 }
-                            };
-                            AnalysisStatistic::TerminationBehavior(scope)
+                                AnalysisStatistic::TerminationBehavior(TerminationScope::ReachAny(lbls))
+                            } else {
+                                let scope = match scope_name {
+                                    "blockexit" => TerminationScope::BlockExit,
+                                    "funcexit" => TerminationScope::FunctionExit,
+                                    _ => {
+                                        emit.emit(Rich::custom(
+                                            extra.span(),
+                                            format!(
+                                                "unknown termination scope variant: {} (expected one of: blockexit, funcexit, reach)",
+                                                scope_name
+                                            ),
+                                        ));
+                                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                    }
+                                };
+                                AnalysisStatistic::TerminationBehavior(scope)
+                            }
                         }
                         None => {
                             emit.emit(Rich::custom(
@@ -1796,11 +1840,19 @@ fn parse_function<'src, I>() -> impl Parser<'src, I, Function, Extra<'src>> + Cl
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let block_label = label_parser().then_ignore(just(Token::Colon));
+    let block_label = label_parser()
+        .then_ignore(just(Token::Colon))
+        .then_ignore(just(Token::Newline).or_not());
 
     let block = block_label
-        .then(parse_instruction().repeated().collect::<Vec<_>>())
+        .then(
+            parse_instruction()
+                .separated_by(just(Token::Newline))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::Newline).or_not())
         .then(parse_terminator())
+        .then_ignore(just(Token::Newline).or_not())
         .map(|((label, instructions), terminator)| BasicBlock {
             label: label,
             instructions,
@@ -1871,7 +1923,7 @@ where
             block.repeated()
             .collect::<Vec<_>>()
             .delimited_by(
-                just(Token::LBrace),
+                just(Token::LBrace).ignore_then(just(Token::Newline).or_not()),
                 just(Token::RBrace),
             )
         )
@@ -1935,6 +1987,27 @@ where
                 .map(|token| token.try_as_string_literal().unwrap()),
         )
         .labelled("import statement")
+}
+
+// Final parser, import + function definitions
+enum Item {
+    Import(String),
+    Function(Function),
+}
+
+fn final_parser<'src, I>() -> impl Parser<'src, I, Vec<Item>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    just(Token::Newline)
+        .or_not()
+        .ignore_then(choice((
+            import_parser().map(Item::Import),
+            parse_function().map(Item::Function),
+        )))
+        .then_ignore(just(Token::Newline).or_not())
+        .repeated()
+        .collect()
 }
 
 /// Extend a module by parsing a file at the given path, including handling imports
@@ -2012,12 +2085,6 @@ pub fn extend_module_from_path(
         let (tokens, spans): (Vec<_>, Vec<_>) =
             lexer_result.into_output().unwrap().into_iter().unzip();
 
-        // Final parser, import + function definitions
-        enum Item {
-            Import(String),
-            Function(Function),
-        }
-
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
             if let Some(func_ptr) = module
                 .find_function_uuid_by_name(&name, func_type)
@@ -2040,12 +2107,7 @@ pub fn extend_module_from_path(
 
         let uuid_generator = Rc::new(|| Uuid::new_v4());
 
-        let parser = choice((
-            import_parser().map(Item::Import),
-            parse_function().map(Item::Function),
-        ))
-        .repeated()
-        .collect::<Vec<_>>();
+        let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
@@ -2230,11 +2292,6 @@ pub fn extend_module_from_string(
     let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result.into_output().unwrap().into_iter().unzip();
 
     // Final parser, import + function definitions
-    enum Item {
-        Import(String),
-        Function(Function),
-    }
-
     let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let mut list_added_internal_functions = vec![];
@@ -2263,12 +2320,7 @@ pub fn extend_module_from_string(
 
         let uuid_generator = Rc::new(|| Uuid::new_v4());
 
-        let parser = choice((
-            import_parser().map(Item::Import),
-            parse_function().map(Item::Function),
-        ))
-        .repeated()
-        .collect::<Vec<_>>();
+        let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
