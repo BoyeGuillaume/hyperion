@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -541,7 +542,7 @@ fn module_verify_succeeds_when_functions_resolved() {
         wildcard_types: BTreeSet::new(),
         meta_function: false,
     };
-    module.functions.insert(callee_uuid, callee.clone());
+    module.functions.insert(callee_uuid, Arc::new(callee));
 
     // Caller referencing callee
     let call_instr = HyInstr::from(Invoke {
@@ -565,7 +566,7 @@ fn module_verify_succeeds_when_functions_resolved() {
         BTreeSet::new(),
         false,
     );
-    module.functions.insert(caller.uuid, caller);
+    module.functions.insert(caller.uuid, Arc::new(caller));
 
     module.verify().unwrap();
 }

@@ -26,6 +26,7 @@ default = ["chumsky", "chumsky/either"]
 serde = [
     "dep:serde",
     "serde/serde_derive",
+    "serde/rc",
     "uuid/serde",
     "num-bigint/serde",
     "bigdecimal/serde",
@@ -33,4 +34,4 @@ serde = [
     "bitflags/serde",
 ]
 chumsky = ["dep:chumsky"]
-borsh = ["dep:borsh", "borsh/derive", "uuid/borsh"]
+borsh = ["dep:borsh", "borsh/derive", "borsh/rc", "uuid/borsh"]

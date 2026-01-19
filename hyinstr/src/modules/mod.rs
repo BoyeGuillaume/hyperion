@@ -848,7 +848,7 @@ pub struct FunctionAnalysisContext<'a> {
 )]
 pub struct Module {
     /// Defined functions keyed by their UUID.
-    pub functions: BTreeMap<Uuid, Function>,
+    pub functions: BTreeMap<Uuid, std::sync::Arc<Function>>,
     /// Declared external functions keyed by their UUID.
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,
 }
@@ -914,8 +914,8 @@ impl Module {
             FunctionPointerType::Internal => self
                 .functions
                 .values()
-                .find(|f| f.name.as_deref() == Some(name))
-                .map(|f| FunctionPointer::Internal(f.uuid)),
+                .find(|f| f.as_ref().name.as_deref() == Some(name))
+                .map(|f| FunctionPointer::Internal(f.as_ref().uuid)),
             FunctionPointerType::External => self
                 .external_functions
                 .values()
@@ -932,23 +932,26 @@ impl Module {
     pub fn find_internal_function_uuid_by_name(&self, name: &str) -> Option<Uuid> {
         self.functions
             .values()
-            .find(|f| f.name.as_deref() == Some(name))
-            .map(|f| f.uuid)
+            .find(|f| f.as_ref().name.as_deref() == Some(name))
+            .map(|f| f.as_ref().uuid)
     }
 
     /// Retrieve a particular function from its Uuid
     pub fn get_internal_function_by_uuid(&self, uuid: Uuid) -> Option<&Function> {
-        self.functions.get(&uuid)
+        self.functions.get(&uuid).map(|f| f.as_ref())
     }
 
     /// Retrieve a particular function from its Uuid (mutable)
     pub fn get_internal_function_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Function> {
-        self.functions.get_mut(&uuid)
+        self.functions
+            .get_mut(&uuid)
+            .and_then(|arc| std::sync::Arc::get_mut(arc))
     }
 
     /// Check each function in the module for SSA validity.
     pub fn verify(&self) -> Result<(), Error> {
-        for function in self.functions.values() {
+        for func in self.functions.values() {
+            let function = func.as_ref();
             function.verify()?;
             self.verify_func(function)?;
         }

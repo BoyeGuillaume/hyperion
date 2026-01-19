@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
     rc::Rc,
+    sync::Arc,
     u16,
 };
 
@@ -2035,7 +2036,7 @@ pub fn extend_module_from_path(
         }
 
         // Add it to the module
-        module.functions.insert(func.uuid, func);
+        module.functions.insert(func.uuid, Arc::new(func));
     }
 
     // Verify module
@@ -2256,7 +2257,7 @@ pub fn extend_module_from_string(
             }
         }
 
-        module.functions.insert(func.uuid, func.clone());
+        module.functions.insert(func.uuid, Arc::new(func));
     }
 
     // Verify module integrity
