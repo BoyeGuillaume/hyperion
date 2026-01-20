@@ -15,6 +15,7 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
 
 use crate::{
@@ -841,11 +842,11 @@ impl Function {
     }
 
     /// Get analysis context for the function.
-    pub fn generate_analysis_context(&'_ self) -> FunctionAnalysisContext<'_> {
-        FunctionAnalysisContext {
-            function: self,
+    pub fn generate_analysis_context(self: Arc<Self>) -> FunctionAnalysis {
+        FunctionAnalysis {
             cfg: self.derive_function_flow(),
             dest_map: self.derive_dest_map(),
+            function: self,
         }
     }
 }
@@ -855,9 +856,9 @@ impl Function {
 /// This contains a list of acceleration structures to speed up analysis and
 /// ease lookups when dealing with functions.
 #[derive(Debug, Clone)]
-pub struct FunctionAnalysisContext<'a> {
+pub struct FunctionAnalysis {
     /// The function being analyzed.
-    pub function: &'a Function,
+    pub function: Arc<Function>,
     /// The control flow graph of the function.
     pub cfg: DiGraphMap<Label, Option<Operand>>,
     /// The destination map of the function.

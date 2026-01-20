@@ -423,6 +423,7 @@ fn function_analysis_helpers_produce_expected_graphs() {
         false,
     );
     func.verify().unwrap();
+    let func = Arc::new(func);
 
     let cfg = func.derive_function_flow();
     assert!(cfg.contains_node(Label::NIL));
