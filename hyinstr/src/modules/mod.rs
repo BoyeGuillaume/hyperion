@@ -878,7 +878,7 @@ pub struct FunctionAnalysis {
 )]
 pub struct Module {
     /// Defined functions keyed by their UUID.
-    pub functions: BTreeMap<Uuid, std::sync::Arc<Function>>,
+    pub functions: BTreeMap<Uuid, Arc<Function>>,
     /// Declared external functions keyed by their UUID.
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,
 }
@@ -975,7 +975,7 @@ impl Module {
     pub fn get_internal_function_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Function> {
         self.functions
             .get_mut(&uuid)
-            .and_then(|arc| std::sync::Arc::get_mut(arc))
+            .and_then(|arc| Arc::get_mut(arc))
     }
 
     /// Check each function in the module for SSA validity.
