@@ -7,7 +7,7 @@ use std::{
     u16,
 };
 
-use crate::analysis::{AnalysisStatistic, TerminationScope};
+use crate::analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope};
 use bigdecimal::BigDecimal;
 use chumsky::{
     container::Seq,
@@ -1117,10 +1117,10 @@ where
                         if variant.is_empty() {
                             1
                         } else {
-                            match crate::analysis::AnalysisStatisticOp::from_str(&variant[0]) {
-                                Some(crate::analysis::AnalysisStatisticOp::ExecutionCount) => 1,
-                                Some(crate::analysis::AnalysisStatisticOp::InstructionCount) => 1,
-                                Some(crate::analysis::AnalysisStatisticOp::TerminationBehavior) => 2,
+                            match AnalysisStatisticOp::from_str(&variant[0]) {
+                                Some(AnalysisStatisticOp::ExecutionCount) => 1,
+                                Some(AnalysisStatisticOp::InstructionCount) => 1,
+                                Some(AnalysisStatisticOp::TerminationBehavior) => 2,
                                 None => 1,
                             }
                         }
@@ -1665,8 +1665,8 @@ where
                         return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                     }
 
-                    let stat = match crate::analysis::AnalysisStatisticOp::from_str(&variant[0]) {
-                        Some(crate::analysis::AnalysisStatisticOp::ExecutionCount) => {
+                    let stat = match AnalysisStatisticOp::from_str(&variant[0]) {
+                        Some(AnalysisStatisticOp::ExecutionCount) => {
                             if let Either::Left(ops) = operand.as_ref() {
                                 if !ops.is_empty() {
                                     emit.emit(Rich::custom(
@@ -1681,7 +1681,7 @@ where
                             }
                             AnalysisStatistic::ExecutionCount
                         }
-                        Some(crate::analysis::AnalysisStatisticOp::InstructionCount) => {
+                        Some(AnalysisStatisticOp::InstructionCount) => {
                             let ops = match operand.as_ref() {
                                 Either::Left(ops) => ops,
                                 Either::Right(_) => {
@@ -1718,7 +1718,7 @@ where
                                 }
                             }
                         }
-                        Some(crate::analysis::AnalysisStatisticOp::TerminationBehavior) => {
+                        Some(AnalysisStatisticOp::TerminationBehavior) => {
                             if let Either::Left(ops) = operand.as_ref() {
                                 if !ops.is_empty() {
                                     emit.emit(Rich::custom(
