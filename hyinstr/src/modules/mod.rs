@@ -849,6 +849,32 @@ impl Function {
             function: self,
         }
     }
+
+    /// Remap types in the function according to the provided mapping.
+    pub fn remap_types(&mut self, mapping: &BTreeMap<Typeref, Typeref>) {
+        // Remap parameter types
+        for (_, typeref) in self.params.iter_mut() {
+            if let Some(new_type) = mapping.get(typeref) {
+                *typeref = new_type.clone();
+            }
+        }
+
+        // Remap return type
+        if let Some(ret_type) = &self.return_type {
+            if let Some(new_type) = mapping.get(ret_type) {
+                self.return_type = Some(new_type.clone());
+            }
+        }
+
+        // Remap types in each instruction
+        for bb in self.body.values_mut() {
+            for instr in bb.instructions.iter_mut() {
+                instr.remap_types(|ty| mapping.get(&ty).cloned());
+            }
+
+            bb.terminator.remap_types(|ty| mapping.get(&ty).cloned());
+        }
+    }
 }
 
 /// Analyze context for a function.
@@ -987,5 +1013,22 @@ impl Module {
         }
 
         Ok(())
+    }
+
+    /// Remap types in the module according to the provided mapping.
+    pub fn remap_types(&mut self, mapping: &BTreeMap<Typeref, Typeref>) {
+        // Remap types in each function
+        for func in self.functions.values_mut() {
+            // Get mutable reference to the function
+            let function = Arc::get_mut(func).expect(
+                "Cannot remap types in function behind Arc; no other references should exist",
+            );
+            function.remap_types(mapping);
+        }
+
+        // Remap types in each external function
+        for ext_func in self.external_functions.values_mut() {
+            ext_func.remap_types(|ty| mapping.get(&ty).cloned());
+        }
     }
 }

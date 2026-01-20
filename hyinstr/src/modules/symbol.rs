@@ -38,6 +38,31 @@ pub struct ExternalFunction {
     pub return_type: Option<Typeref>,
 }
 
+impl ExternalFunction {
+    pub fn iter_referenced_typerefs(&self) -> impl Iterator<Item = &Typeref> {
+        self.param_types.iter().chain(self.return_type.iter())
+    }
+
+    pub fn iter_referenced_typerefs_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        self.param_types
+            .iter_mut()
+            .chain(self.return_type.iter_mut())
+    }
+
+    pub fn remap_types(&mut self, mapping: impl Fn(&Typeref) -> Option<Typeref>) {
+        for param_type in self.param_types.iter_mut() {
+            if let Some(new_type) = mapping(param_type) {
+                *param_type = new_type;
+            }
+        }
+        if let Some(ret_type) = &mut self.return_type {
+            if let Some(new_type) = mapping(ret_type) {
+                *ret_type = new_type;
+            }
+        }
+    }
+}
+
 /// A reference to a function symbol, internal or external.
 ///
 /// Internal functions are defined within the current module, while external

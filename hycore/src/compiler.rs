@@ -3,21 +3,22 @@ use hyinstr::{
     modules::{Module, parser::extend_module_from_string},
     types::TypeRegistry,
 };
-use log::info;
+use uuid::Uuid;
 
 use crate::{
     base::{
         InstanceContext,
         api::{ModuleCompileInfo, ModuleSourceType},
     },
-    hyerror, hytrace,
+    hyerror, hyinfo, hytrace,
     utils::error::{HyError, HyResult},
 };
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(BorshSerialize, BorshDeserialize)]
 pub struct CompiledModuleStorage {
     pub filenames: Vec<String>,
     pub module: Module,
+    pub type_registry: TypeRegistry,
 }
 
 impl CompiledModuleStorage {
@@ -138,7 +139,7 @@ impl CompiledModuleStorage {
         Ok(buf)
     }
 
-    pub fn decode(&self, instance: &InstanceContext, data: &[u8]) -> HyResult<Self> {
+    pub fn decode(instance: &InstanceContext, data: &[u8]) -> HyResult<Self> {
         hytrace!(
             instance,
             "Deserializing compiled module storage ({} bytes)",
@@ -170,6 +171,9 @@ pub fn compile_sources(
     compile_info: ModuleCompileInfo,
 ) -> HyResult<Vec<u8>> {
     let mut module = Module::default();
+
+    // Notice, we used a fresh type registry for compilation, not the instance's registry
+    // because we want to avoid polluting it with temporary types.
     let type_registry = TypeRegistry::new([0u8; 6]);
     let mut filenames = Vec::new();
 
@@ -194,11 +198,16 @@ pub fn compile_sources(
     }
 
     // Produce compiled module storage or further processing here
-    let storage = CompiledModuleStorage { module, filenames };
+    let storage = CompiledModuleStorage {
+        module,
+        type_registry,
+        filenames,
+    };
     let encoded_storage = storage.encode(instance)?;
 
     // Information about the compiled module can be used here
-    info!(
+    hyinfo!(
+        instance,
         "Compiled successful, module has {} functions: {:?}",
         storage.module.functions.len(),
         storage
@@ -208,10 +217,42 @@ pub fn compile_sources(
             .map(|x| x.name.clone().unwrap_or_else(|| format!("@{}", x.uuid)))
             .collect::<Vec<_>>()
     );
-    info!(
+    hyinfo!(
+        instance,
         "Produced {} bytes of compiled module storage",
         encoded_storage.len()
     );
 
     Ok(encoded_storage)
+}
+
+pub fn load_module(instance: &InstanceContext, data: &[u8]) -> HyResult<Uuid> {
+    let storage = CompiledModuleStorage::decode(instance, data)?;
+    hytrace!(
+        instance,
+        "Loaded compiled module with {} functions from {} bytes",
+        storage.module.functions.len(),
+        data.len()
+    );
+    hytrace!(
+        instance,
+        "Module originally compiled from: {}",
+        storage.filenames.join(", ")
+    );
+
+    // 1. Merge type registry, construct table mapping old to new type IDs
+    hytrace!(
+        instance,
+        "Merging type registry ({} types) into instance's registry ({} types)",
+        storage.type_registry.len(),
+        instance.type_registry.len()
+    );
+    let mapping = instance.type_registry.merge_with(&storage.type_registry);
+
+    // 2. Remap types in module using the mapping
+    let mut module = storage.module;
+    module.remap_types(&mapping);
+
+    // 3. Add module to instance's module list
+    instance.add_module(module)
 }

@@ -130,6 +130,9 @@ pub trait Instruction {
     /// Any types referenced by this instruction.
     fn referenced_types(&self) -> impl Iterator<Item = Typeref>;
 
+    /// Any types referenced by this instruction mutably.
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref>;
+
     /// Update the destination SSA name for this instruction. No-op if the
     /// instruction does not produce a result.
     fn set_destination(&mut self, _name: Name) {}
@@ -153,13 +156,22 @@ pub trait Instruction {
         })
     }
 
-    // Remap operands according to a mapping
+    /// Remap operands according to a mapping
     fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
         for operand in self.operands_mut() {
             if let Operand::Reg(name) = operand {
                 if let Some(new_name) = mapping(*name) {
                     *name = new_name;
                 }
+            }
+        }
+    }
+
+    /// Remap types according to a mapping
+    fn remap_types(&mut self, mapping: impl Fn(Typeref) -> Option<Typeref>) {
+        for ty in self.referenced_types_mut() {
+            if let Some(new_ty) = mapping(*ty) {
+                *ty = new_ty;
             }
         }
     }
@@ -399,6 +411,15 @@ macro_rules! define_instr_any_instr {
                 match self {
                     $(
                         HyInstr::$variant(instr) => instr.referenced_types(),
+                    )*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut crate::types::Typeref> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.referenced_types_mut(),
                     )*
                 }
             }

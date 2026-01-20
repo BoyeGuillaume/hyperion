@@ -53,6 +53,10 @@ impl Instruction for MetaAssert {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -111,6 +115,10 @@ impl Instruction for MetaAssume {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
         std::iter::empty()
     }
 
@@ -174,6 +182,10 @@ impl Instruction for MetaIsDef {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -226,6 +238,10 @@ impl Instruction for MetaForall {
 
     fn destination(&self) -> Option<Name> {
         Some(self.dest)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn set_destination(&mut self, name: Name) {
@@ -358,6 +374,10 @@ impl Instruction for MetaProb {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -408,6 +428,10 @@ impl Instruction for MetaAnalysisStat {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {

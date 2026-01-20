@@ -52,7 +52,13 @@ class InstanceCreateInfo:
     """Aggregates everything Hyperion needs to spin up a new instance."""
     application_info: ApplicationInfo
     enabled_extensions: list[str]
+    node_id: int = 0
     ext: list[object] = Field(default_factory=list)
+
+    def __post_init__(self):
+        # Ensure node_id does not exceed u32 limits
+        if not (0 <= self.node_id <= 0xFFFFFFFF):
+            raise ValueError("node_id must be between 0 and 2^32 - 1")
 
 class ModuleSourceType(IntEnum):
     """Enumeration of source module types."""
@@ -107,6 +113,25 @@ def compile_module(instance: lib.Instance, compile_info: ModuleCompileInfo) -> b
     assert isinstance(instance, lib.Instance), "instance must be a lib.Instance"
     assert isinstance(compile_info, ModuleCompileInfo), "compile_info must be a ModuleCompileInfo"
     return lib._hy_compile_module(instance, compile_info)
+
+def load_module(instance: lib.Instance, module_data: bytes):
+    """Load a compiled module into the given instance.
+
+    Parameters
+    ----------
+    instance:
+        Handle to a running Hyperion instance.
+    module_data:
+        The compiled module as a byte array.
+
+    Returns
+    -------
+    hypi._sys.Module
+        Handle to the loaded module within the instance.
+    """
+    assert isinstance(instance, lib.Instance), "instance must be a lib.Instance"
+    assert isinstance(module_data, bytes), "module_data must be bytes"
+    return lib._hy_load_module(instance, module_data)
 
 # Exported names
 __all__ = [

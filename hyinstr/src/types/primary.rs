@@ -210,6 +210,10 @@ impl std::fmt::Display for FType {
 /// defined by the target.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ExtType {
     /// Unique identifier describing the external type class.
     pub ext: Uuid,
@@ -274,6 +278,10 @@ impl std::fmt::Display for WType {
 /// to ensure behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct PtrType;
 
 impl std::fmt::Display for PtrType {
@@ -285,6 +293,10 @@ impl std::fmt::Display for PtrType {
 /// Primary base types used for vector types and other constructs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumTryAs, EnumIs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum PrimaryBasicType {
     Int(IType),
     Float(FType),
@@ -350,6 +362,10 @@ impl std::fmt::Display for PrimaryBasicType {
 /// Size of a vector type, either fixed or scalable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum VcSize {
     /// Fixed size vector with the given number of elements.
     ///
@@ -378,6 +394,10 @@ pub enum VcSize {
 /// considered primary types and can be embedded inside other type descriptors.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct VcType {
     /// Element type stored in the vector lanes.
     pub ty: PrimaryBasicType,
@@ -418,6 +438,10 @@ impl From<usize> for VcSize {
 /// are local to a function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct LblType;
 
 impl std::fmt::Display for LblType {
@@ -432,6 +456,10 @@ impl std::fmt::Display for LblType {
 /// extension types, pointers, vectors and labels.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum PrimaryType {
     /// Integer type
     ///

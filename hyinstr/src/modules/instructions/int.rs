@@ -277,6 +277,10 @@ impl Instruction for IAdd {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -325,6 +329,10 @@ impl Instruction for ISub {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -377,6 +385,10 @@ impl Instruction for IMul {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -427,6 +439,10 @@ impl Instruction for IDiv {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -475,6 +491,10 @@ impl Instruction for IRem {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -529,6 +549,10 @@ impl Instruction for ICmp {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -579,6 +603,10 @@ impl Instruction for ISht {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -626,6 +654,10 @@ impl Instruction for INeg {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -671,6 +703,10 @@ impl Instruction for INot {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -721,6 +757,10 @@ impl Instruction for IAnd {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -767,6 +807,10 @@ impl Instruction for IOr {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -817,6 +861,10 @@ impl Instruction for IXor {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -865,6 +913,10 @@ impl Instruction for IImplies {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -911,6 +963,10 @@ impl Instruction for IEquiv {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {

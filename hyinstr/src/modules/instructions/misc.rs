@@ -72,6 +72,10 @@ impl Instruction for Invoke {
         self.ty.into_iter()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        self.ty.iter_mut()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         self.ty
     }
@@ -122,6 +126,10 @@ impl Instruction for Phi {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -178,6 +186,10 @@ impl Instruction for Select {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {
@@ -331,6 +343,10 @@ impl Instruction for Cast {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -387,6 +403,10 @@ impl Instruction for InsertValue {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -437,6 +457,10 @@ impl Instruction for ExtractValue {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {

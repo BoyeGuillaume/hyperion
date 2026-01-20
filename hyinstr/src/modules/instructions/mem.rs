@@ -117,6 +117,10 @@ impl Instruction for MLoad {
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
     }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
 }
 
 /// Store a value to memory.
@@ -162,6 +166,10 @@ impl Instruction for MStore {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
         std::iter::empty()
     }
 
@@ -222,6 +230,10 @@ impl Instruction for MAlloca {
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
     }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
 }
 
 /// `getelementptr` instruction is used to get the address of a sub-element
@@ -272,5 +284,9 @@ impl Instruction for MGetElementPtr {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 }

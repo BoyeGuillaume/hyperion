@@ -67,6 +67,10 @@ impl Instruction for Branch {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -117,6 +121,10 @@ impl Instruction for Jump {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -162,6 +170,10 @@ impl Instruction for Ret {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -200,6 +212,10 @@ impl Instruction for Trap {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
         std::iter::empty()
     }
 
@@ -311,6 +327,13 @@ macro_rules! define_instr_any_instr {
             fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
                 match self {
                     $(HyTerminator::$variant(instr) => instr.referenced_types(),)*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.referenced_types_mut(),)*
                 }
             }
 

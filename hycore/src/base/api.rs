@@ -47,6 +47,7 @@ pub struct ApplicationInfo {
 pub struct InstanceCreateInfo {
     pub application_info: ApplicationInfo,
     pub enabled_extensions: Vec<String>,
+    pub node_id: u32,
     pub ext: OpaqueList,
 }
 
@@ -96,4 +97,4 @@ pub unsafe fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<I
     unsafe { InstanceContext::create(create_info) }
 }
 
-pub use crate::compiler::compile_sources;
+pub use crate::compiler::{compile_sources, load_module};

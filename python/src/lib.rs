@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use hycore::base::{InstanceContext, api};
 use pyo3::{prelude::*, types::PyBytes};
+use uuid::Uuid;
 
 /// Opaque handle to a running Hyperion instance exposed to Python callers.
 #[pyclass]
@@ -48,6 +49,18 @@ fn _hy_compile_module<'py>(
     Ok(PyBytes::new(py, &compiled_module).into())
 }
 
+/// Loads a compiled module into the given instance.
+#[pyfunction]
+fn _hy_load_module<'py>(instance: &Instance, module_data: &Bound<'py, PyBytes>) -> PyResult<Uuid> {
+    let data = module_data.as_bytes();
+    api::load_module(&instance.0, data).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+            "Failed to load compiled module: {}",
+            e
+        ))
+    })
+}
+
 /// Computes the factorial of a number.
 #[pyfunction]
 fn factorial(n: u64) -> PyResult<u64> {
@@ -84,6 +97,7 @@ fn hypi_sys(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(_hy_create_instance, m)?)?;
     m.add_function(wrap_pyfunction!(_hy_compile_module, m)?)?;
+    m.add_function(wrap_pyfunction!(_hy_load_module, m)?)?;
 
     m.add_function(wrap_pyfunction!(factorial, m)?)?;
     m.add_function(wrap_pyfunction!(fibonacci, m)?)?;
