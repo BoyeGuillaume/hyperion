@@ -114,7 +114,7 @@ def compile_module(instance: lib.Instance, compile_info: ModuleCompileInfo) -> b
     assert isinstance(compile_info, ModuleCompileInfo), "compile_info must be a ModuleCompileInfo"
     return lib._hy_compile_module(instance, compile_info)
 
-def load_module(instance: lib.Instance, module_data: bytes):
+def load_module(instance: lib.Instance, module_data: bytes) -> lib.Module:
     """Load a compiled module into the given instance.
 
     Parameters

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Weak};
 
 use hyinstr::modules::{
     InstructionRef, Module,
@@ -7,7 +7,10 @@ use hyinstr::modules::{
 use petgraph::prelude::DiGraphMap;
 use uuid::Uuid;
 
-use crate::theorems::library::TheoremLibrary;
+use crate::{
+    base::{InstanceContext, ModuleKey},
+    theorems::library::TheoremLibrary,
+};
 
 /// Contextual information about a [`Function`] within a module.
 pub struct FunctionContext {
@@ -21,8 +24,14 @@ pub struct FunctionContext {
 
 /// Aggregates metadata and analysis state for a single module loaded in an instance.
 pub struct ModuleContext {
-    /// Unique information about this module.
+    /// The unique key of this module within the instance.
+    pub key: ModuleKey,
+
+    /// Unique identifier for this module. This is consistent across different instances.
     pub uuid: Uuid,
+
+    /// A weak reference to the parent instance context.
+    pub instance: Weak<InstanceContext>,
 
     /// The module itself.
     pub module: Module,

@@ -20,7 +20,8 @@ bitflags = { workspace = true }
 nalgebra = { workspace = true, features = ["sparse"] }
 enum-map = { workspace = true }
 either.workspace = true
-bit-set = { workspace = true }
+slotmap.workspace = true
+bit-set.workspace = true
 toml.workspace = true
 downcast-rs.workspace = true
 chrono.workspace = true

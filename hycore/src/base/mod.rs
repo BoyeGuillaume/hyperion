@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use hyinstr::{modules::Module, types::TypeRegistry};
 use parking_lot::RwLock;
 use semver::Version;
+use slotmap::{Key, SlotMap, new_key_type};
 use uuid::Uuid;
 
 use crate::{
@@ -32,6 +33,10 @@ impl Default for InstanceStateEXT {
     }
 }
 
+new_key_type! {
+    pub struct ModuleKey;
+}
+
 /// Internal instance context that owns modules, extensions, and diagnostics
 /// state for a single Hyperion engine instantiation.
 pub struct InstanceContext {
@@ -46,7 +51,7 @@ pub struct InstanceContext {
     pub node_id: u32,
 
     /// A list of modules loaded into this instance
-    pub modules: RwLock<Vec<ModuleContext>>,
+    pub modules: RwLock<SlotMap<ModuleKey, Arc<ModuleContext>>>,
 
     /// A list of all extension (by UUID) loaded into this instance.
     pub extensions: BTreeMap<Uuid, Box<dyn DynPluginEXT>>,
@@ -115,7 +120,7 @@ impl InstanceContext {
             application_version,
             engine_name,
             engine_version,
-            modules: RwLock::new(Vec::new()),
+            modules: Default::default(),
             extensions: BTreeMap::new(),
             ext: Default::default(),
             type_registry: TypeRegistry::new(node_id),
@@ -198,16 +203,19 @@ impl InstanceContext {
         Ok(instance)
     }
 
-    pub fn add_module(&self, module: Module) -> HyResult<Uuid> {
+    pub fn add_module(self: &Arc<Self>, module: Module) -> HyResult<ModuleKey> {
         module.verify()?;
+        let weak_self = Arc::downgrade(self);
 
         // Create a new module context
         let uuid = self.generate_uuid();
-        let module_context = ModuleContext {
+        let mut module_context = ModuleContext {
             uuid,
             module,
             library: TheoremLibrary::new(),
             funcs: BTreeMap::new(),
+            key: ModuleKey::null(),
+            instance: weak_self,
         };
 
         // Add the module context to the instance
@@ -223,7 +231,26 @@ impl InstanceContext {
                 .collect::<Vec<_>>()
         );
         let mut modules = self.modules.write();
-        modules.push(module_context);
-        Ok(uuid)
+        let key = modules.insert_with_key(|key| {
+            module_context.key = key;
+            hytrace!(
+                self,
+                "ModuleContext inserted into InstanceContext with key {:?}",
+                key
+            );
+            Arc::new(module_context)
+        });
+
+        Ok(key)
+    }
+
+    pub fn get_module_by_key(&self, key: ModuleKey) -> Option<Arc<ModuleContext>> {
+        let modules = self.modules.read();
+        modules.get(key).cloned()
+    }
+
+    pub fn get_module_by_uuid(&self, uuid: Uuid) -> Option<Arc<ModuleContext>> {
+        let modules = self.modules.read();
+        modules.values().find(|m| m.uuid == uuid).cloned()
     }
 }

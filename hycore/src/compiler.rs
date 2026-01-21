@@ -1,13 +1,14 @@
+use std::sync::Arc;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use hyinstr::{
     modules::{Module, parser::extend_module_from_string},
     types::TypeRegistry,
 };
-use uuid::Uuid;
 
 use crate::{
     base::{
-        InstanceContext,
+        InstanceContext, ModuleKey,
         api::{ModuleCompileInfo, ModuleSourceType},
     },
     hyerror, hyinfo, hytrace,
@@ -226,7 +227,7 @@ pub fn compile_sources(
     Ok(encoded_storage)
 }
 
-pub fn load_module(instance: &InstanceContext, data: &[u8]) -> HyResult<Uuid> {
+pub fn load_module(instance: &Arc<InstanceContext>, data: &[u8]) -> HyResult<ModuleKey> {
     let storage = CompiledModuleStorage::decode(instance, data)?;
     hytrace!(
         instance,
