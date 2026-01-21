@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use hycore::base::{InstanceContext, ModuleKey, api};
 use pyo3::{prelude::*, types::PyBytes};
@@ -11,8 +11,25 @@ pub struct Instance(Arc<InstanceContext>);
 /// Opaque handle to a hyperion module
 #[pyclass]
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy)]
-pub struct Module(ModuleKey);
+pub struct Module(ModuleKey, Weak<InstanceContext>);
+
+impl Module {
+    pub fn assert_instance(&self, instance: &Instance) -> PyResult<()> {
+        if let Some(inst) = self.1.upgrade() {
+            if Arc::ptr_eq(&inst, &instance.0) {
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Module does not belong to the given instance",
+                ))
+            }
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Module's instance has been dropped",
+            ))
+        }
+    }
+}
 
 /// Creates a new Hyperion instance from the validated Python dataclasses.
 #[pyfunction]
@@ -67,7 +84,7 @@ fn _hy_load_module<'py>(
             e
         ))
     })?;
-    Ok(Module(module_key))
+    Ok(Module(module_key, Arc::downgrade(&instance.0)))
 }
 
 /// Computes the factorial of a number.
