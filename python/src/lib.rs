@@ -39,7 +39,7 @@ fn _hy_create_instance<'py>(instance_create_info: &Bound<'py, PyAny>) -> PyResul
         PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!("Invalid InstanceCreateInfo: {}", e))
     })?;
 
-    let instance_context = unsafe { api::create_instance(create_info) }.map_err(|e| {
+    let instance_context = api::create_instance(create_info).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
             "Failed to create instance: {}",
             e
