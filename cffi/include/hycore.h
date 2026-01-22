@@ -107,6 +107,8 @@ typedef uint32_t HyStructureType;
 
 typedef struct HyInstance HyInstance;
 
+typedef struct HyModule HyModule;
+
 typedef struct HyVersionInfo
 {
   uint16_t major;
@@ -213,6 +215,28 @@ HyResult hyCompileModule(const struct HyInstance *instance,
                          const struct HyModuleCompileInfo *pModuleCompileInfo,
                          uint8_t **ppDataPtr,
                          uint32_t *pDataLen);
+
+/**
+ * Loads a compiled module from binary data.
+ *
+ * # Safety
+ * - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
+ * - The `pDataPtr` pointer must be a valid, non-null pointer to the compiled module data.
+ * - The `dataLen` must be the correct length of the compiled module data.
+ * - The `pModule` pointer must be a valid, non-null pointer to receive the created `HyModule`.
+ */
+HyResult hyLoadModule(const struct HyInstance *instance,
+                      const uint8_t *pDataPtr,
+                      uint32_t dataLen,
+                      struct HyModule **pModule);
+
+/**
+ * Destroys a module loaded by `hyLoadModule`.
+ *
+ * # Safety
+ * - The `module` pointer must be a valid, non-null pointer to a `HyModule`.
+ */
+void hyDestroyModule(struct HyModule *module);
 
 #ifdef __cplusplus
 }  // extern "C"

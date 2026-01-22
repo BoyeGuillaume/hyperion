@@ -31,7 +31,7 @@ fn main() {
             }
         }
         Err(error) => match error {
-            hyinstr::utils::Error::ParserErrors { errors, tokens } => {
+            hyinstr::utils::Error::ParserErrors { errors, .. } => {
                 eprintln!("Failed to parse module from {}:", args.input);
                 // if tokens.is_empty() {
                 //     eprintln!("No tokens were produced.");

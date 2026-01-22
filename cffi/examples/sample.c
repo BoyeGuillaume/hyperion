@@ -99,10 +99,22 @@ int main()
     print_hex_ascii(compiledData, compiledDataLen);
     putchar('\n');
 
+    /* Load the compiled module */
+    HyModule *module;
+    result = hyLoadModule(instance, compiledData, compiledDataLen, &module);
+    if (result != HY_RESULT_SUCCESS)
+    {
+        printf("Module loading failed. Error code: %d\n", result);
+        free(compiledData);
+        hyDestroyInstance(instance);
+        return -1;
+    }
+
     /* free compiled data if necessary */
     free(compiledData);
 
-    /* Display compiled data in hexadecimal format */
+    /* Destroy the loaded module */
+    hyDestroyModule(module);
 
     /* Clean up and exit */
     hyDestroyInstance(instance);

@@ -28,6 +28,11 @@ else:
 subprocess.run(["cargo", "clean"], cwd=PARENT_DIR)
 print(f"Ran 'cargo clean' in: {PARENT_DIR}")
 
+# Also run make clean command in cffi/examples
+examples_dir = join(PARENT_DIR, "cffi", "examples")
+subprocess.run(["make", "clean"], cwd=examples_dir)
+print(f"Ran 'make clean' in: {examples_dir}")
+
 # Additionally, remove all .so, .dll, and .dylib files and __pycache__ directories in the python directory (recursively)
 python_dir = join(PARENT_DIR, "python", "python")
 for root, dirs, files in os.walk(python_dir):

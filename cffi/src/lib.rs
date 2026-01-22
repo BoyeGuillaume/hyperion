@@ -1,7 +1,7 @@
 use std::{
     ffi::CString,
     os::raw::{c_char, c_void},
-    sync::Arc,
+    sync::{Arc, Weak},
 };
 
 use hycore::{
@@ -10,12 +10,13 @@ use hycore::{
         InstanceContext, ModuleKey,
     },
     ext::hylog::LogLevelEXT,
+    hywarn,
     utils::{error::HyErrorType, opaque::OpaqueList},
 };
 use strum::FromRepr;
 
 pub struct HyInstance(Arc<InstanceContext>);
-pub struct HyModule(ModuleKey);
+pub struct HyModule(ModuleKey, Weak<InstanceContext>);
 
 /// cbindgen:rename-all=ScreamingSnakeCase
 #[repr(u32)]
@@ -250,15 +251,6 @@ pub unsafe fn convert_opaque_list_from_next(
     Ok(OpaqueList(list))
 }
 
-// #[repr(C)]
-// pub struct HyModuleSourceInfo {
-//     pub s_type: HyStructureType,
-//     pub source_type: u32,
-//     pub filename: *const ::std::os::raw::c_char, // nullable
-//     pub data_ptr: *const u8,
-//     pub data_len: usize,
-// }
-
 /// Retrieves information about the version of the Hycore library.
 ///
 /// # Safety
@@ -404,7 +396,20 @@ pub extern "C" fn hyDestroyInstance(instance: *mut HyInstance) {
         return;
     }
     unsafe {
-        drop(Box::from_raw(instance));
+        let instance = Box::from_raw(instance);
+
+        /* Check if there are any modules to remove */
+        let instance_ref = &instance.0;
+        let module_keys: Vec<ModuleKey> = instance_ref.modules.read().keys().collect();
+        if module_keys.len() > 0 {
+            hywarn!(
+                instance_ref,
+                "Some modules were not destroyed before instance destruction. Did you forget to call hyDestroyModule on them? Those modules are still loaded {:?}",
+                module_keys
+            );
+        }
+
+        drop(instance);
     }
 }
 
@@ -519,249 +524,54 @@ pub extern "C" fn hyCompileModule(
     }
 }
 
-// #[repr(C)]
-// pub struct HyModuleCompileInfo {
-//     pub sources_ptr: *const HyModuleSourceInfo,
-//     pub sources_len: usize,
-// }
+/// Loads a compiled module from binary data.
+///
+/// # Safety
+/// - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
+/// - The `pDataPtr` pointer must be a valid, non-null pointer to the compiled module data.
+/// - The `dataLen` must be the correct length of the compiled module data.
+/// - The `pModule` pointer must be a valid, non-null pointer to receive the created `HyModule`.
+///cbindgen:rename-all=CamelCase
+#[no_mangle]
+pub extern "C" fn hyLoadModule(
+    instance: *const HyInstance,
+    p_data_ptr: *const u8,
+    data_len: u32,
+    p_module: *mut *mut HyModule,
+) -> HyResult {
+    if instance.is_null() || p_data_ptr.is_null() || p_module.is_null() {
+        return HyResult::HyResultInvalidPointer;
+    }
 
-// // Error handling: return 0 on success, non-zero on failure. When failure, out_error_msg (if non-null)
-// // will be set to a freshly-allocated C string the caller must free with hyFreeString.
+    let inst = unsafe { &*instance };
+    let data = unsafe { std::slice::from_raw_parts(p_data_ptr, data_len as usize) };
+    match hycore::base::api::load_module(&inst.0, data) {
+        Ok(module_key) => {
+            let boxed = Box::new(HyModule(module_key, Arc::downgrade(&inst.0)));
+            unsafe {
+                *p_module = Box::into_raw(boxed);
+            }
+            HyResult::HyResultSuccess
+        }
+        Err(err) => err.into(),
+    }
+}
 
-// #[no_mangle]
-// pub extern "C" fn hyFreeString(ptr: *mut ::std::os::raw::c_char) {
-//     if !ptr.is_null() {
-//         unsafe {
-//             let _ = ::std::ffi::CString::from_raw(ptr);
-//         }
-//     }
-// }
-
-// fn set_error(out_error_msg: *mut *mut ::std::os::raw::c_char, msg: String) -> i32 {
-//     if out_error_msg.is_null() {
-//         return -1;
-//     }
-//     let c = ::std::ffi::CString::new(msg)
-//         .unwrap_or_else(|_| ::std::ffi::CString::new("invalid error").unwrap());
-//     unsafe {
-//         *out_error_msg = c.into_raw();
-//     }
-//     -1
-// }
-
-// fn to_string(cstr: *const ::std::os::raw::c_char) -> String {
-//     if cstr.is_null() {
-//         return String::new();
-//     }
-//     unsafe {
-//         ::std::ffi::CStr::from_ptr(cstr)
-//             .to_string_lossy()
-//             .into_owned()
-//     }
-// }
-
-// fn to_opt_string(cstr: *const ::std::os::raw::c_char) -> Option<String> {
-//     if cstr.is_null() {
-//         None
-//     } else {
-//         Some(to_string(cstr))
-//     }
-// }
-
-// fn convert_version(v: HyVersionInfo) -> api::VersionInfo {
-//     api::VersionInfo {
-//         major: v.major,
-//         minor: v.minor,
-//         patch: v.patch,
-//     }
-// }
-
-// #[repr(C)]
-// pub struct HyOpaqueList {
-//     _private: [u8; 0],
-// } // placeholder, not supported in C FFI yet
-
-// #[repr(C)]
-// pub struct HyInstanceCreateInfo {
-//     pub application_info: HyApplicationInfo,
-//     pub enabled_extensions_ptr: *const *const ::std::os::raw::c_char,
-//     pub enabled_extensions_len: usize,
-//     pub node_id: u32,
-//     pub ext: *const HyOpaqueList, // not supported, must be null for now
-// }
-
-// fn collect_extensions(ptr: *const *const ::std::os::raw::c_char, len: usize) -> Vec<String> {
-//     if ptr.is_null() || len == 0 {
-//         return Vec::new();
-//     }
-//     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-//     slice.iter().map(|&p| to_string(p)).collect()
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyCreateInstance(
-//     info: *const HyInstanceCreateInfo,
-//     out_instance: *mut *mut HyInstance,
-//     out_error_msg: *mut *mut ::std::os::raw::c_char,
-// ) -> i32 {
-//     if info.is_null() || out_instance.is_null() {
-//         return -1;
-//     }
-//     let info_ref = unsafe { &*info };
-
-//     if !info_ref.ext.is_null() {
-//         return set_error(
-//             out_error_msg,
-//             "Opaque ext not supported via C FFI yet".to_string(),
-//         );
-//     }
-
-//     let app_name = to_string(info_ref.application_info.application_name);
-//     let engine_name = to_string(info_ref.application_info.engine_name);
-//     let app_version = convert_version(info_ref.application_info.application_version);
-//     let engine_version = convert_version(info_ref.application_info.engine_version);
-//     let enabled_extensions = collect_extensions(
-//         info_ref.enabled_extensions_ptr,
-//         info_ref.enabled_extensions_len,
-//     );
-
-//     let create_info = api::InstanceCreateInfo {
-//         application_info: api::ApplicationInfo {
-//             application_version: app_version,
-//             application_name: app_name,
-//             engine_version,
-//             engine_name,
-//         },
-//         enabled_extensions,
-//         node_id: info_ref.node_id,
-//         ext: hycore::utils::opaque::OpaqueList(Vec::new()),
-//     };
-
-//     match unsafe { api::create_instance(create_info) } {
-//         Ok(ctx) => {
-//             let boxed = Box::new(InstanceHandle(ctx));
-//             unsafe {
-//                 *out_instance = Box::into_raw(boxed) as *mut HyInstance;
-//             }
-//             0
-//         }
-//         Err(e) => set_error(out_error_msg, format!("Failed to create instance: {}", e)),
-//     }
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyDestroyInstance(ptr: *mut HyInstance) {
-//     if ptr.is_null() {
-//         return;
-//     }
-//     unsafe {
-//         let _ = Box::from_raw(ptr as *mut InstanceHandle);
-//     }
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyCompileModule(
-//     instance: *const HyInstance,
-//     info: *const HyModuleCompileInfo,
-//     out_data_ptr: *mut *mut u8,
-//     out_data_len: *mut usize,
-//     out_error_msg: *mut *mut ::std::os::raw::c_char,
-// ) -> i32 {
-//     if instance.is_null() || info.is_null() || out_data_ptr.is_null() || out_data_len.is_null() {
-//         return -1;
-//     }
-//     let inst = unsafe { &*instance };
-//     let info_ref = unsafe { &*info };
-
-//     let sources_slice = if info_ref.sources_ptr.is_null() || info_ref.sources_len == 0 {
-//         &[][..]
-//     } else {
-//         unsafe { std::slice::from_raw_parts(info_ref.sources_ptr, info_ref.sources_len) }
-//     };
-
-//     let mut sources = Vec::with_capacity(sources_slice.len());
-//     for s in sources_slice {
-//         let filename = to_opt_string(s.filename);
-//         let data = if s.data_ptr.is_null() || s.data_len == 0 {
-//             String::new()
-//         } else {
-//             let bytes = unsafe { std::slice::from_raw_parts(s.data_ptr, s.data_len) };
-//             String::from_utf8_lossy(bytes).into_owned()
-//         };
-//         let source_type = match hycore::base::api::ModuleSourceType::from_repr(s.source_type) {
-//             Some(t) => t,
-//             None => {
-//                 return set_error(
-//                     out_error_msg,
-//                     format!("Invalid source_type {}", s.source_type),
-//                 );
-//             }
-//         };
-//         sources.push(api::ModuleSourceInfo {
-//             source_type,
-//             filename,
-//             data,
-//         });
-//     }
-
-//     let compile_info = api::ModuleCompileInfo { sources };
-//     match api::compile_sources(&inst.0, compile_info) {
-//         Ok(buf) => {
-//             let mut v = buf;
-//             let len = v.len();
-//             let ptr = v.as_mut_ptr();
-//             std::mem::forget(v);
-//             unsafe {
-//                 *out_data_ptr = ptr;
-//                 *out_data_len = len;
-//             }
-//             0
-//         }
-//         Err(e) => set_error(out_error_msg, format!("Failed to compile module: {}", e)),
-//     }
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyFreeBuffer(ptr: *mut u8, len: usize) {
-//     if ptr.is_null() || len == 0 {
-//         return;
-//     }
-//     unsafe {
-//         let _ = Vec::from_raw_parts(ptr, len, len);
-//     }
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyLoadModule(
-//     instance: *const HyInstance,
-//     data_ptr: *const u8,
-//     data_len: usize,
-//     out_module: *mut *mut HyModule,
-//     out_error_msg: *mut *mut ::std::os::raw::c_char,
-// ) -> i32 {
-//     if instance.is_null() || data_ptr.is_null() || out_module.is_null() {
-//         return -1;
-//     }
-//     let inst = unsafe { &*(instance as *const InstanceHandle) };
-//     let data = unsafe { std::slice::from_raw_parts(data_ptr, data_len) };
-//     match api::load_module(&inst.0, data) {
-//         Ok(key) => {
-//             let boxed = Box::new(ModuleHandle(key));
-//             unsafe {
-//                 *out_module = Box::into_raw(boxed) as *mut HyModule;
-//             }
-//             0
-//         }
-//         Err(e) => set_error(out_error_msg, format!("Failed to load module: {}", e)),
-//     }
-// }
-
-// #[no_mangle]
-// pub extern "C" fn hyDestroyModule(ptr: *mut HyModule) {
-//     if ptr.is_null() {
-//         return;
-//     }
-//     unsafe {
-//         let _ = Box::from_raw(ptr as *mut ModuleHandle);
-//     }
-// }
+/// Destroys a module loaded by `hyLoadModule`.
+///
+/// # Safety
+/// - The `module` pointer must be a valid, non-null pointer to a `HyModule`.
+///cbindgen:rename-all=CamelCase
+#[no_mangle]
+pub extern "C" fn hyDestroyModule(module: *mut HyModule) {
+    if module.is_null() {
+        return;
+    }
+    unsafe {
+        let boxed_module = Box::from_raw(module);
+        if let Some(instance) = boxed_module.1.upgrade() {
+            let _ = instance.remove_module_by_key(boxed_module.0);
+        }
+        drop(boxed_module);
+    }
+}

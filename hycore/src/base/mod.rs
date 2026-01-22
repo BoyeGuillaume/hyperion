@@ -11,7 +11,7 @@ use crate::{
     ext::{DynPluginEXT, StaticPluginEXT, hylog::LogMessageEXT, load_plugin_by_name},
     hyinfo, hytrace,
     theorems::library::TheoremLibrary,
-    utils::error::HyResult,
+    utils::error::{HyError, HyResult},
 };
 
 pub mod api;
@@ -252,5 +252,23 @@ impl InstanceContext {
     pub fn get_module_by_uuid(&self, uuid: Uuid) -> Option<Arc<ModuleContext>> {
         let modules = self.modules.read();
         modules.values().find(|m| m.uuid == uuid).cloned()
+    }
+
+    pub fn remove_module_by_key(&self, key: ModuleKey) -> HyResult<()> {
+        let mut modules = self.modules.write();
+        if modules.remove(key).is_some() {
+            hyinfo!(self, "Module with key {:?} removed from instance", key);
+            Ok(())
+        } else {
+            hyinfo!(
+                self,
+                "Attempted to remove module with key {:?}, but it was not found",
+                key
+            );
+            Err(HyError::KeyNotFound {
+                key: format!("{:?}", key),
+                context: "InstanceContext::remove_module_by_key".to_string(),
+            })
+        }
     }
 }
