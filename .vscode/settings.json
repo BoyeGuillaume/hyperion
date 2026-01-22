@@ -10,6 +10,7 @@
         "**/__pycache__": true,
         "**/_sys.abi3.so": true,
         "**/.crush": true,
+        "Cargo.lock": true,
     },
     "editor.formatOnSave": true,
     "files.associations": {
