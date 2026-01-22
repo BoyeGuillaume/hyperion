@@ -1,9 +1,11 @@
 //! Error types shared across the runtime and extension ecosystem.
 
+use strum::EnumDiscriminants;
 use thiserror::Error;
 
 /// Unified error enumeration for Hyperion.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, EnumDiscriminants)]
+#[strum_discriminants(name(HyErrorType))]
 pub enum HyError {
     #[error("I/O error: {0}")]
     #[from(std::io::Error)]

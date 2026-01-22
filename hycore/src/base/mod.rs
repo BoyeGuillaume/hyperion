@@ -92,8 +92,8 @@ impl InstanceContext {
     }
 
     /// Constructs a new [`InstanceContext`] and wires all enabled extensions
-    /// into it. Unsafe because it loads user-provided shared objects.
-    pub unsafe fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
+    /// into it.
+    pub fn create(mut instance_create_info: api::InstanceCreateInfo) -> HyResult<Arc<Self>> {
         // Construct state about the application.
         let application_name = instance_create_info.application_info.application_name;
         let application_version = instance_create_info

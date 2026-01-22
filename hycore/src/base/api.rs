@@ -93,8 +93,8 @@ pub struct ModuleCompileInfo {
 }
 
 /// Creates and initializes a new [`InstanceContext`] from the provided metadata.
-pub unsafe fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
-    unsafe { InstanceContext::create(create_info) }
+pub fn create_instance(create_info: InstanceCreateInfo) -> HyResult<Arc<InstanceContext>> {
+    InstanceContext::create(create_info)
 }
 
 pub use crate::compiler::{compile_sources, load_module};
