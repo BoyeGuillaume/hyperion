@@ -4,6 +4,7 @@ members = [
     "hyinstr",
     "hycore",
     "python",
+    "cffi",
     "examples/hycore-examples",
     "examples/hyinstr-parser",
 ]
