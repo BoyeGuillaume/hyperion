@@ -15,14 +15,14 @@ SO_STEM := $(patsubst lib%.so,%,$(SO_BASENAME))
 
 LDFLAGS := -L$(SO_DIR) -Wl,-rpath,$(SO_DIR) -l$(SO_STEM)
 
-all: simple.out
+all: sample.out
 
 lib:
 	cargo build $(CARGO_FLAGS) --manifest-path ../Cargo.toml
 
-simple.out: simple.c lib
+sample.out: sample.c lib
 	echo $(SO_PATH)
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:
-	rm -f simple.out
+	rm -f sample.out
