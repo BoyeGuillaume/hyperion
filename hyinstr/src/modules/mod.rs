@@ -620,6 +620,11 @@ impl Function {
     }
 
     /// Check whether the function should be treated as a meta-function.
+    ///
+    /// A function is considered a meta-function if it contains any meta-instructions.
+    /// Meta-functions are used for verification or analysis purposes and cannot be
+    /// executed directly, hence the distinction.
+    ///
     pub fn should_be_meta_function(&self) -> bool {
         // If any instruction is a meta-instruction, the function is meta
         for bb in self.body.values() {
@@ -675,9 +680,19 @@ impl Function {
         Label(max_index + 1)
     }
 
-    /// Verify SSA form:
-    /// 1) Each operand refers to a defined name.
-    /// 2) Each name is defined exactly once.
+    /// Verify the soundness of the function.
+    ///
+    /// This method performs a series of checks to ensure the integrity and correctness
+    /// of the function's structure and contents. It verifies:
+    /// - Wildcard types are sound.
+    /// - No meta-operands are present in non-meta functions.
+    /// - No meta-instructions are present in non-meta functions.
+    /// - Phi instructions are the first instructions in their respective blocks.
+    /// - Target basic blocks referenced by terminators exist.
+    /// - SSA form is maintained (all names are defined before use).
+    /// - Size constraints for blocks and functions are respected.
+    /// - The existence of an entry block.
+    ///
     pub fn verify(&self) -> Result<(), Error> {
         self.verify_wildcards_soundness()?;
         if !self.meta_function {
@@ -698,9 +713,12 @@ impl Function {
         Ok(())
     }
 
-    /// Normalize the function by ensuring that all SSA names are sequentially
-    /// numbered from zero upwards without gaps. Because of the use of `BTreeMap`
-    /// for basic blocks, ordering is always deterministic.
+    /// Normalize SSA names in the function to ensure uniqueness and sequential ordering.
+    ///
+    /// This method remaps all SSA names used in the function's parameters and instructions
+    /// to a new set of unique names starting from `Name(0)`. It ensures that each SSA name
+    /// is used exactly once as a destination and that all operands refer to the newly assigned names.
+    ///
     pub fn normalize_ssa(&mut self) {
         let mut name_mapping = BTreeMap::new();
         let mut next_name = Name(0);
@@ -739,7 +757,10 @@ impl Function {
         }
     }
 
-    /// Retrieve instruction from a [`FunctionInstructionReference`].
+    /// Retrieve instruction from a [`InstructionRef`].
+    ///
+    /// Returns `None` if the block or instruction index is invalid.
+    ///
     pub fn get(&self, reference: InstructionRef) -> Option<&HyInstr> {
         self.body
             .get(&reference.block)
@@ -747,6 +768,12 @@ impl Function {
     }
 
     /// Analyzes the control flow of a function and constructs its control flow graph (CFG).
+    ///
+    /// The CFG is represented as a directed graph where nodes are basic block labels
+    /// and edges represent possible control flow transitions between blocks. Each edge
+    /// is annotated with an optional condition operand that determines whether the transition
+    /// occurs.
+    ///
     pub fn derive_function_flow(&self) -> DiGraphMap<Label, Option<Operand>> {
         let mut graph = DiGraphMap::with_capacity(self.body.len(), self.body.len() * 3);
 
@@ -768,7 +795,10 @@ impl Function {
         graph
     }
 
-    /// Derive the dest-map, for each SSA name associate 1) the defining block label and 2) the instruction index within the block.
+    /// Derive the dest-map, for each SSA name, find the instruction that defines it.
+    ///
+    /// You can use this to quickly lookup the instruction that defines a particular SSA name.
+    ///
     pub fn derive_dest_map(&self) -> BTreeMap<Name, InstructionRef> {
         let mut dest_map = BTreeMap::new();
 
