@@ -5,7 +5,10 @@ use std::{
 };
 
 use hycore::{
-    base::{api::VersionInfo, InstanceContext, ModuleKey},
+    base::{
+        api::{ModuleSourceInfo, ModuleSourceType, VersionInfo},
+        InstanceContext, ModuleKey,
+    },
     ext::hylog::LogLevelEXT,
     utils::{error::HyErrorType, opaque::OpaqueList},
 };
@@ -21,6 +24,7 @@ pub enum HyResult {
     HyResultSuccess,
     HyResultInvalidPointer,
     HyResultIoError,
+    HyResultOutOfMemory,
     HyResultManifestParseError,
     HyResultUnknown,
     HyResultPluginNotFound,
@@ -48,6 +52,7 @@ pub enum HyStructureType {
     HyStructureTypeInstanceCreateInfo,
     HyStructureTypeApplicationInfo,
     HyStructureTypeModuleCompileInfo,
+    HyStructureTypeModuleSourceInfo,
     HyStructureTypeLogCreateInfoEXT = 0x10000000,
 }
 
@@ -98,7 +103,7 @@ impl Into<VersionInfo> for HyVersionInfo {
 }
 
 // Constants mirroring hycore::base::api::ModuleSourceType
-pub const HY_MODULE_SOURCE_ASSEMBLY: u32 = hycore::base::api::ModuleSourceType::Assembly as u32;
+// pub const HY_MODULE_SOURCE_ASSEMBLY: u32 = hycore::base::api::ModuleSourceType::Assembly as u32;
 
 /// cbindgen:rename-all=CamelCase
 #[repr(C)]
@@ -136,6 +141,38 @@ pub struct HyLogMessageEXT {
 
 #[allow(non_camel_case_types)]
 pub type HyLogCallback_PFN = extern "C" fn(message: *mut HyLogMessageEXT);
+
+/// cbindgen:rename-all=ScreamingSnakeCase
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, FromRepr)]
+pub enum HyModuleSourceType {
+    HyModuleSourceTypeAssembly,
+}
+
+impl Into<ModuleSourceType> for HyModuleSourceType {
+    fn into(self) -> ModuleSourceType {
+        match self {
+            HyModuleSourceType::HyModuleSourceTypeAssembly => ModuleSourceType::Assembly,
+        }
+    }
+}
+
+/// cbindgen:rename-all=CamelCase
+#[repr(C)]
+pub struct HyModuleSourceInfo {
+    pub s_type: HyStructureType,
+    pub source_type: HyModuleSourceType,
+    pub filename: *const c_char, // nullable
+    pub data: *const u8,
+}
+
+/// cbindgen:rename-all=CamelCase
+#[repr(C)]
+pub struct HyModuleCompileInfo {
+    pub s_type: HyStructureType,
+    pub pp_sources: *const *const HyModuleSourceInfo,
+    pub sources_count: u32,
+}
 
 /// cbindgen:rename-all=CamelCase
 #[repr(C)]
@@ -225,17 +262,17 @@ pub unsafe fn convert_opaque_list_from_next(
 /// Retrieves information about the version of the Hycore library.
 ///
 /// # Safety
-/// The `out` pointer must be a valid, non-null pointer to a `HyVersionInfo` struct.
-///
+/// - The `pVersionInfo` pointer must be a valid, non-null pointer to a `HyVersionInfo` struct.
+///cbindgen:rename-all=CamelCase
 #[no_mangle]
-pub extern "C" fn hyGetVersionInfo(out: *mut HyVersionInfo) {
-    if out.is_null() {
+pub extern "C" fn hyGetVersionInfo(p_version_info: *mut HyVersionInfo) {
+    if p_version_info.is_null() {
         return;
     }
     let version = semver::Version::parse(env!("CARGO_PKG_VERSION")).unwrap();
 
     unsafe {
-        *out = HyVersionInfo {
+        *p_version_info = HyVersionInfo {
             major: version.major as u16,
             minor: version.minor as u16,
             patch: version.patch as u16,
@@ -246,24 +283,29 @@ pub extern "C" fn hyGetVersionInfo(out: *mut HyVersionInfo) {
 /// Create an instance of the Hycore library.
 ///
 /// # Safety
-/// The `info` pointer must be a valid, non-null pointer to a `HyInstanceCreateInfo` struct.
-/// The `out_instance` pointer must be a valid, non-null pointer to a pointer to `HyInstance`.
-///
+/// - The `pInstanceCreateInfo` pointer must be a valid, non-null pointer to a `HyInstanceCreateInfo` struct.
+/// - The `pInstance` pointer must be a valid, non-null pointer to a pointer to `HyInstance`.
+///cbindgen:rename-all=CamelCase
 #[no_mangle]
 pub extern "C" fn hyCreateInstance(
-    info: *const HyInstanceCreateInfo,
-    out_instance: *mut *mut HyInstance,
+    p_instance_create_info: *const HyInstanceCreateInfo,
+    p_instance: *mut *mut HyInstance,
 ) -> HyResult {
-    if info.is_null() || out_instance.is_null() {
+    if p_instance_create_info.is_null() || p_instance.is_null() {
         return HyResult::HyResultInvalidPointer;
     }
 
-    if unsafe { !verify_structure_type(info, HyStructureType::HyStructureTypeInstanceCreateInfo) } {
+    if unsafe {
+        !verify_structure_type(
+            p_instance_create_info,
+            HyStructureType::HyStructureTypeInstanceCreateInfo,
+        )
+    } {
         return HyResult::HyResultStructureTypeMismatch;
     }
 
     // Convert and validate input info
-    let info_ref = unsafe { &*info };
+    let info_ref = unsafe { &*p_instance_create_info };
     if info_ref.p_application_info.is_null() {
         return HyResult::HyResultInvalidPointer;
     }
@@ -343,7 +385,7 @@ pub extern "C" fn hyCreateInstance(
         Ok(ctx) => {
             let boxed = Box::new(HyInstance(ctx));
             unsafe {
-                *out_instance = Box::into_raw(boxed);
+                *p_instance = Box::into_raw(boxed);
             }
             HyResult::HyResultSuccess
         }
@@ -354,14 +396,126 @@ pub extern "C" fn hyCreateInstance(
 /// Destroys an instance created by `hyCreateInstance`.
 ///
 /// # Safety
-/// The `ptr` pointer must be a valid, non-null pointer to a `HyInstance`.
+/// - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
+///cbindgen:rename-all=CamelCase
 #[no_mangle]
-pub extern "C" fn hyDestroyInstance(ptr: *mut HyInstance) {
-    if ptr.is_null() {
+pub extern "C" fn hyDestroyInstance(instance: *mut HyInstance) {
+    if instance.is_null() {
         return;
     }
     unsafe {
-        drop(Box::from_raw(ptr));
+        drop(Box::from_raw(instance));
+    }
+}
+
+/// Compile module sources into a binary format.
+///
+/// # Safety
+/// - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
+/// - The `pModuleCompileInfo` pointer must be a valid, non-null pointer to a `HyModuleCompileInfo`.
+/// - The `ppDataPtr` and `pDataLen` pointers must be valid, non-null pointers to receive the output data. The caller is responsible for freeing the allocated data using `libc::free`.
+///
+///cbindgen:rename-all=CamelCase
+#[no_mangle]
+pub extern "C" fn hyCompileModule(
+    instance: *const HyInstance,
+    p_module_compile_info: *const HyModuleCompileInfo,
+    pp_data_ptr: *mut *mut u8,
+    p_data_len: *mut u32,
+) -> HyResult {
+    if instance.is_null()
+        || p_module_compile_info.is_null()
+        || pp_data_ptr.is_null()
+        || p_data_len.is_null()
+    {
+        return HyResult::HyResultInvalidPointer;
+    }
+
+    // Convert and validate input info
+    let inst = unsafe { &*instance };
+
+    // Convert compile info
+    if !unsafe {
+        verify_structure_type(
+            p_module_compile_info,
+            HyStructureType::HyStructureTypeModuleCompileInfo,
+        )
+    } {
+        return HyResult::HyResultStructureTypeMismatch;
+    }
+    let info_ref = unsafe { &*p_module_compile_info };
+
+    // Convert sources
+    let sources = if info_ref.pp_sources.is_null() || info_ref.sources_count == 0 {
+        Vec::new()
+    } else {
+        let slice = unsafe {
+            std::slice::from_raw_parts(info_ref.pp_sources, info_ref.sources_count as usize)
+        };
+        let mut sources_vec = Vec::with_capacity(slice.len());
+        for &source_ptr in slice {
+            if source_ptr.is_null() {
+                return HyResult::HyResultInvalidPointer;
+            }
+            if !unsafe {
+                verify_structure_type(source_ptr, HyStructureType::HyStructureTypeModuleSourceInfo)
+            } {
+                return HyResult::HyResultStructureTypeMismatch;
+            }
+            let source_ref = unsafe { &*source_ptr };
+            let filename = if source_ref.filename.is_null() {
+                None
+            } else {
+                Some(unsafe {
+                    std::ffi::CStr::from_ptr(source_ref.filename)
+                        .to_string_lossy()
+                        .into_owned()
+                })
+            };
+            let data = if source_ref.data.is_null() {
+                String::new()
+            } else {
+                // For simplicity, assume data is null-terminated string
+                unsafe {
+                    std::ffi::CStr::from_ptr(source_ref.data as *const c_char)
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            };
+            let source_type: ModuleSourceType = source_ref.source_type.into();
+            sources_vec.push(ModuleSourceInfo {
+                source_type,
+                filename,
+                data,
+            });
+        }
+        sources_vec
+    };
+
+    // Create compile info
+    let compile_info = hycore::base::api::ModuleCompileInfo { sources };
+
+    // Compile sources
+    match hycore::base::api::compile_sources(&inst.0, compile_info) {
+        Ok(buf) => {
+            let len = buf.len() as usize;
+            if len >= u32::MAX as usize {
+                return HyResult::HyResultOutOfMemory;
+            }
+
+            unsafe {
+                let ptr = libc::malloc(len) as *mut u8;
+                if ptr.is_null() {
+                    return HyResult::HyResultOutOfMemory;
+                }
+                std::ptr::copy_nonoverlapping(buf.as_ptr(), ptr, len);
+                *pp_data_ptr = ptr;
+                *p_data_len = len as u32;
+            }
+
+            HyResult::HyResultSuccess
+        }
+        Err(err) => err.into(),
     }
 }
 

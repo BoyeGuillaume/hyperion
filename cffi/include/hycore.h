@@ -40,6 +40,10 @@
 
 
 enum HyLogLevelEXT
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
 {
   HY_LOG_LEVEL_TRACE = 0,
   HY_LOG_LEVEL_DEBUG = 1,
@@ -47,13 +51,32 @@ enum HyLogLevelEXT
   HY_LOG_LEVEL_WARN = 3,
   HY_LOG_LEVEL_ERROR = 4,
 };
+#ifndef __cplusplus
 typedef uint32_t HyLogLevelEXT;
+#endif // __cplusplus
+
+enum HyModuleSourceType
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
+{
+  HY_MODULE_SOURCE_TYPE_ASSEMBLY,
+};
+#ifndef __cplusplus
+typedef uint32_t HyModuleSourceType;
+#endif // __cplusplus
 
 enum HyResult
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
 {
   HY_RESULT_SUCCESS,
   HY_RESULT_INVALID_POINTER,
   HY_RESULT_IO_ERROR,
+  HY_RESULT_OUT_OF_MEMORY,
   HY_RESULT_MANIFEST_PARSE_ERROR,
   HY_RESULT_UNKNOWN,
   HY_RESULT_PLUGIN_NOT_FOUND,
@@ -62,16 +85,25 @@ enum HyResult
   HY_RESULT_KEY_NOT_FOUND,
   HY_RESULT_STRUCTURE_TYPE_MISMATCH,
 };
+#ifndef __cplusplus
 typedef uint32_t HyResult;
+#endif // __cplusplus
 
 enum HyStructureType
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
 {
   HY_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
   HY_STRUCTURE_TYPE_APPLICATION_INFO,
   HY_STRUCTURE_TYPE_MODULE_COMPILE_INFO,
+  HY_STRUCTURE_TYPE_MODULE_SOURCE_INFO,
   HY_STRUCTURE_TYPE_LOG_CREATE_INFO_EXT = 268435456,
 };
+#ifndef __cplusplus
 typedef uint32_t HyStructureType;
+#endif // __cplusplus
 
 typedef struct HyInstance HyInstance;
 
@@ -101,6 +133,21 @@ typedef struct HyInstanceCreateInfo
   void *pNext;
 } HyInstanceCreateInfo;
 
+typedef struct HyModuleSourceInfo
+{
+  HyStructureType sType;
+  HyModuleSourceType sourceType;
+  const char *filename;
+  const uint8_t *data;
+} HyModuleSourceInfo;
+
+typedef struct HyModuleCompileInfo
+{
+  HyStructureType sType;
+  const struct HyModuleSourceInfo *const *ppSources;
+  uint32_t sourcesCount;
+} HyModuleCompileInfo;
+
 typedef struct HyLogMessageEXT
 {
   HyLogLevelEXT level;
@@ -123,32 +170,52 @@ typedef struct HyLogCreateInfoEXT
   void *pNext;
 } HyLogCreateInfoEXT;
 
+#ifdef __cplusplus
+extern "C" {
+#endif // __cplusplus
+
 /**
  * Retrieves information about the version of the Hycore library.
  *
  * # Safety
- * The `out` pointer must be a valid, non-null pointer to a `HyVersionInfo` struct.
- *
+ * - The `pVersionInfo` pointer must be a valid, non-null pointer to a `HyVersionInfo` struct.
  */
-void hyGetVersionInfo(struct HyVersionInfo *out);
+void hyGetVersionInfo(struct HyVersionInfo *pVersionInfo);
 
 /**
  * Create an instance of the Hycore library.
  *
  * # Safety
- * The `info` pointer must be a valid, non-null pointer to a `HyInstanceCreateInfo` struct.
- * The `out_instance` pointer must be a valid, non-null pointer to a pointer to `HyInstance`.
- *
+ * - The `pInstanceCreateInfo` pointer must be a valid, non-null pointer to a `HyInstanceCreateInfo` struct.
+ * - The `pInstance` pointer must be a valid, non-null pointer to a pointer to `HyInstance`.
  */
-HyResult hyCreateInstance(const struct HyInstanceCreateInfo *info,
-                          struct HyInstance **out_instance);
+HyResult hyCreateInstance(const struct HyInstanceCreateInfo *pInstanceCreateInfo,
+                          struct HyInstance **pInstance);
 
 /**
  * Destroys an instance created by `hyCreateInstance`.
  *
  * # Safety
- * The `ptr` pointer must be a valid, non-null pointer to a `HyInstance`.
+ * - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
  */
-void hyDestroyInstance(struct HyInstance *ptr);
+void hyDestroyInstance(struct HyInstance *instance);
+
+/**
+ * Compile module sources into a binary format.
+ *
+ * # Safety
+ * - The `instance` pointer must be a valid, non-null pointer to a `HyInstance`.
+ * - The `pModuleCompileInfo` pointer must be a valid, non-null pointer to a `HyModuleCompileInfo`.
+ * - The `ppDataPtr` and `pDataLen` pointers must be valid, non-null pointers to receive the output data. The caller is responsible for freeing the allocated data using `libc::free`.
+ *
+ */
+HyResult hyCompileModule(const struct HyInstance *instance,
+                         const struct HyModuleCompileInfo *pModuleCompileInfo,
+                         uint8_t **ppDataPtr,
+                         uint32_t *pDataLen);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  /* _HYCORE_H */

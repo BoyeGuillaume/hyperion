@@ -61,7 +61,7 @@ fn main() {
             documentation: true,
             documentation_style: cbindgen::DocumentationStyle::Doxy,
             include_guard: Some("_HYCORE_H".to_string()),
-            cpp_compat: false,
+            cpp_compat: true,
             documentation_length: cbindgen::DocumentationLength::Full,
             tab_width: 2,
             constant: ConstantConfig {

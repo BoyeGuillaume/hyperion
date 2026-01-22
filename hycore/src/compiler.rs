@@ -186,15 +186,23 @@ pub fn compile_sources(
             source_info.filename.as_deref().unwrap_or("<unnamed>")
         );
 
-        if let Some(filename) = source_info.filename {
-            filenames.push(filename);
-        }
-
         match source_info.source_type {
             ModuleSourceType::Assembly => {
                 // Compile assembly source code into the module
-                extend_module_from_string(&mut module, &type_registry, &source_info.data)?;
+                extend_module_from_string(&mut module, &type_registry, &source_info.data)
+                    .inspect_err(|e| {
+                        hyerror!(
+                            instance,
+                            "Failed to compile assembly source \"{}\": {}",
+                            source_info.filename.as_deref().unwrap_or("<unnamed>"),
+                            e
+                        );
+                    })?;
             }
+        }
+
+        if let Some(filename) = source_info.filename {
+            filenames.push(filename);
         }
     }
 
