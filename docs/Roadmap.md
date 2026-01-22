@@ -1,34 +1,47 @@
 # Roadmap
 
-## Immediate Next Steps
+This document outlines the planned features and milestones for the Hyperion project. It serves as a guide for development priorities and helps track progress over time.
 
-- [x] Extend the specification language to support `meta-instructions` for assumptions and assertions.
-- [x] Implement parsing and serialization of specifications to/from a human-readable format (e.g., JSON or YAML).
-- [x] Add meta-instructions for complexity analysis (probabilistic time and space complexity).
-- [ ] Rework complexity analysis to support multi-function and complex complexity (like `O(n) call to f` inside a loop).
-- [ ] Implement instruction for insertion/extraction of (1) structured data and (2) arrays and vectors.
-- [ ] Implement the `meta-behavior` instruction family to check whether a function call
-  terminates, crashes, or loops based on the `HaltingBehavior` specification.
+## Draft for API
 
-## Mid-Term Goals
+- [x] Add `Instance` to represent a library instance
+- [x] Add EXTENSION mechanism for plugins
+- [x] Add compilation to internal representation from `IR`
+- [x] Add loading compiled `IR` from file/memory into `Module`
+- [ ] Add `OptimizerPipeline` with `create`, `destroy`, construct from passes
+- [ ] Add `Buffer`, `BufferView`
+- [ ] Add `Device` to represent CPU/GPU/TPU devices
+- [ ] Add list of `Device`s (multi-device, multi-node, multi-cloud) to form a `DeviceCluster`
+- [ ] Add `Network` to represent inter-device communication
+- [ ] Add `Executor` with `create`, `destroy`, `execute_function`. Execute on a `DeviceCluster` with `BufferView` inputs/outputs.
+- [ ] Add some low-level optimization passes
+- [ ] Add some smart pipelining/lazy eval/on-the-fly optimization passes
 
-- [ ] Develop derivers for simple specifications (find loop invariants, preconditions, postconditions).
-- [ ] Implement a verification engine that can check function equivalence based on provided specifications.
-- [ ] Implement searching of target conditions for equivalence using SMT solvers.
+## Short-term goals
 
-## Design Decisions: ProofView and TerminationScope
+- [x] Construct core IR data structures
+- [x] Build typesystem to support typed IR
+- [ ] Construct a type-checker for the IR
+- [x] Implement plugin system for extensibility
+- [x] Implement logging and error handling framework
+- [x] Add python bindings for core components
+- [x] Add C/C++ bindings for core components
+- [ ] Implement basic IR theorem-derivation and proof system
+- [ ] Implement theorem derivation strategies
+- [ ] Build equivalent function from theorem
 
-- Construct: ProofView (aka TheoremDerivationView) overlays an original function, keeps an explicit reference to it, and adds reasoning without mutating the source.
-- Reasoning model:
-  - Use existing IR ops (e.g., iadd, icmp) in side-effect-free PreBlock and PostBlocks.
-  - Employ !assume and !assert to express preconditions, invariants, and postconditions.
-  - Order is governed by SSA dependencies; values must be defined before use.
-- Termination analysis:
-  - Introduce TerminationScope for MetaAnalysisStat::TerminationBehavior:
-    - BlockExit: termination of the current block.
-    - FunctionExit: termination of the entire function.
-    - ReachPoint(label): termination defined as reaching a specific label.
-    - ReachAny(labels): termination if any label in the set is reached.
-    - ReachAll(labels): termination if all labels in the set are reached.
-- Quantified reasoning:
-  - Encode ∀ by treating ProofView PreBlock parameters as bound variables; constrain with !assume in PreBlock and conclude with !assert in PostBlocks.
+## Medium-term goals
+
+- [ ] Build executor to run compiled code
+- [ ] Build interpreter for IR
+- [ ] Integrate with LLVMs for codegen backend
+- [ ] Integrate basic codegen: x86, ARM
+- [ ] Integrate codegen on GPU: CUDA, ROCm. Integrate with their respective drivers.
+- [ ] Implement algorithm reusal and caching with pre-built proofs
+
+## Long-term goals
+
+- [ ] Conceptualize a language frontend for generating IR
+- [ ] Implement this frontned
+- [ ] Integrate with python trying to make it as seamless as possible
+- [ ] Build standard library of optimized routines
