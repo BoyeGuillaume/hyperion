@@ -13,7 +13,7 @@ SO_DIR := $(dir $(SO_PATH))
 SO_BASENAME := $(notdir $(SO_PATH))
 SO_STEM := $(patsubst lib%.so,%,$(SO_BASENAME))
 
-LDFLAGS := -L$(SO_DIR) -Wl,-rpath,$(SO_DIR) -l$(SO_STEM)
+LDFLAGS := -L$(SO_DIR) -Wl,-rpath,$(SO_DIR) -l$(SO_STEM) -lm
 
 all: sample.out
 

@@ -23,6 +23,10 @@ pub struct CompiledModuleStorage {
 }
 
 impl CompiledModuleStorage {
+    /// Distinguishing magic bytes for compiled module storage files
+    #[cfg(feature = "legacy_nozstd")]
+    pub const MAGIC_BYTES: [u8; 8] = *b"\x80HYMODIR";
+    #[cfg(not(feature = "legacy_nozstd"))]
     pub const MAGIC_BYTES: [u8; 8] = *b"\x7FHYMODIR";
 
     fn writer_header<W: std::io::Write>(
@@ -120,9 +124,15 @@ impl CompiledModuleStorage {
 
         self.writer_header(instance, &mut writer)
             .and_then(|_| {
-                let mut zstd_writer = zstd::stream::write::Encoder::new(writer, 3).unwrap();
-                borsh::BorshSerialize::serialize(&self, &mut zstd_writer)?;
-                zstd_writer.finish()?;
+                #[cfg(feature = "legacy_nozstd")]
+                borsh::BorshSerialize::serialize(&self, &mut writer)?;
+
+                #[cfg(not(feature = "legacy_nozstd"))]
+                {
+                    let mut zstd_writer = zstd::stream::write::Encoder::new(writer, 3).unwrap();
+                    borsh::BorshSerialize::serialize(&self, &mut zstd_writer)?;
+                    zstd_writer.finish()?;
+                }
                 Ok(())
             })
             .map_err(|e| {
@@ -150,8 +160,15 @@ impl CompiledModuleStorage {
         let mut reader = &data[..];
         Self::read_header(instance, &mut reader)
             .and_then(|_| {
-                let mut zstd_reader = zstd::stream::read::Decoder::new(reader).unwrap();
-                borsh::BorshDeserialize::deserialize_reader(&mut zstd_reader)
+                #[cfg(feature = "legacy_nozstd")]
+                {
+                    borsh::BorshDeserialize::deserialize_reader(&mut reader)
+                }
+                #[cfg(not(feature = "legacy_nozstd"))]
+                {
+                    let mut zstd_reader = zstd::stream::read::Decoder::new(reader).unwrap();
+                    borsh::BorshDeserialize::deserialize_reader(&mut zstd_reader)
+                }
             })
             .map_err(|e| {
                 hyerror!(

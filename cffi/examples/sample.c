@@ -1,5 +1,6 @@
 #include <hycore.h>
 #include <stdio.h>
+#include <math.h>
 
 static const char *hycore_c_str =
     "define i32 square(%a: i32) {\n"
@@ -63,7 +64,7 @@ static const char *log_level_to_string(HyLogLevelEXT level)
 }
 
 void callback_function(struct HyLogMessageEXT *message);
-void print_hex_ascii(const uint8_t *data, uint32_t length);
+void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats);
 
 int main(int argc, char **argv)
 {
@@ -171,7 +172,7 @@ int main(int argc, char **argv)
     printf("Module compiled successfully. Compiled data length: %u bytes\n", compiledDataLen);
     putchar('\n');
     printf("Compiled Module Data (Hex):\n");
-    print_hex_ascii(compiledData, compiledDataLen);
+    print_hex_ascii(compiledData, compiledDataLen, true);
     putchar('\n');
 
     /* Load the compiled module */
@@ -198,8 +199,10 @@ int main(int argc, char **argv)
     return 0;
 }
 
-void print_hex_ascii(const uint8_t *data, uint32_t length)
+void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats)
 {
+    uint32_t frequency[256] = {0};
+
     uint32_t offset = 0;
     while (offset < length)
     {
@@ -221,11 +224,32 @@ void print_hex_ascii(const uint8_t *data, uint32_t length)
                     printf("%c", c);
                 else
                     printf(".");
+
+                // Update frequency count
+                frequency[(uint8_t)c]++;
             }
         }
         printf("\n");
 
         offset += 16;
+    }
+
+    if (compute_stats)
+    {
+        // Compute shanon entropy of the data
+        double entropy = 0.0;
+        for (int i = 0; i < 256; i++)
+        {
+            if (frequency[i] > 0)
+            {
+                double p = (double)frequency[i] / length;
+                entropy -= p * log2(p);
+            }
+        }
+
+        // Display histogram
+        printf("Shannon Entropy: %.4f bits/byte (max 8.0000 bits/byte)\n", entropy);
+        printf("Number of bytes: %u\n", length);
     }
 }
 
