@@ -8,30 +8,101 @@ static const char *hycore_c_str =
     "  ret %result\n"
     "}\n";
 
+#if defined(_MSC_VER)
+#define COLOR_RESET ""
+#define COLOR_RED ""
+#define COLOR_GREEN ""
+#define COLOR_YELLOW ""
+#define COLOR_BLUE ""
+#define COLOR_BRIGHT_BLACK ""
+#else
+#define COLOR_RESET "\x1b[0m"
+#define COLOR_RED "\x1b[31m"
+#define COLOR_GREEN "\x1b[32m"
+#define COLOR_YELLOW "\x1b[33m"
+#define COLOR_BLUE "\x1b[34m"
+#define COLOR_BRIGHT_BLACK "\x1b[90m"
+#endif
+
+static const char *log_level_to_color(HyLogLevelEXT level)
+{
+    switch (level)
+    {
+    case HY_LOG_LEVEL_TRACE:
+        return COLOR_BRIGHT_BLACK;
+    case HY_LOG_LEVEL_DEBUG:
+        return COLOR_BLUE;
+    case HY_LOG_LEVEL_INFO:
+        return COLOR_GREEN;
+    case HY_LOG_LEVEL_WARN:
+        return COLOR_YELLOW;
+    case HY_LOG_LEVEL_ERROR:
+        return COLOR_RED;
+    default:
+        return COLOR_RESET;
+    }
+}
+
 static const char *log_level_to_string(HyLogLevelEXT level)
 {
     switch (level)
     {
     case HY_LOG_LEVEL_TRACE:
-        return "TRACE";
+        return "[TRACE]";
     case HY_LOG_LEVEL_DEBUG:
-        return "DEBUG";
+        return "[DEBUG ]";
     case HY_LOG_LEVEL_INFO:
-        return "INFO";
+        return "[INFO  ]";
     case HY_LOG_LEVEL_WARN:
-        return "WARN";
+        return "[WARN  ]";
     case HY_LOG_LEVEL_ERROR:
-        return "ERROR";
+        return "[ERROR]";
     default:
-        return "UNKNOWN";
+        return "[UNKNOWN]";
     }
 }
 
 void callback_function(struct HyLogMessageEXT *message);
 void print_hex_ascii(const uint8_t *data, uint32_t length);
 
-int main()
+int main(int argc, char **argv)
 {
+    if (argc < 1 || argc >= 3)
+    {
+        printf("Usage: %s <optional_assembly_file>\n", argv[0]);
+        return -1;
+    }
+
+    /* Read the assembly file if provided, overwise default to hycore_c_str */
+    const char *assembly_data = hycore_c_str;
+    bool assembly_data_allocated = false;
+
+    if (argc == 2)
+    {
+        const char *filename = argv[1];
+        FILE *file = fopen(filename, "rb");
+        if (!file)
+        {
+            printf("Failed to open file: %s\n", filename);
+            return -1;
+        }
+        fseek(file, 0, SEEK_END);
+        long fileSize = ftell(file);
+        fseek(file, 0, SEEK_SET);
+        char *fileData = (char *)malloc(fileSize + 1);
+        if (!fileData)
+        {
+            printf("Memory allocation failed for file data.\n");
+            fclose(file);
+            return -1;
+        }
+        fread(fileData, 1, fileSize, file);
+        fileData[fileSize] = '\0';
+        fclose(file);
+        assembly_data = fileData;
+        assembly_data_allocated = true;
+    }
+
     /* Retrieve and print Hycore version information */
     HyVersionInfo version;
     hyGetVersionInfo(&version);
@@ -64,6 +135,8 @@ int main()
     if (result != HY_RESULT_SUCCESS)
     {
         printf("Failed to create Hycore instance. Error code: %d\n", result);
+        if (assembly_data_allocated)
+            free((void *)assembly_data);
         return -1;
     }
 
@@ -75,7 +148,7 @@ int main()
     sourceInfo.sType = HY_STRUCTURE_TYPE_MODULE_SOURCE_INFO;
     sourceInfo.sourceType = HY_MODULE_SOURCE_TYPE_ASSEMBLY;
     sourceInfo.filename = "sample.c";
-    sourceInfo.data = (const uint8_t *)hycore_c_str;
+    sourceInfo.data = (const uint8_t *)assembly_data;
 
     const HyModuleSourceInfo *sources[] = {&sourceInfo};
     HyModuleCompileInfo compileInfo;
@@ -86,6 +159,8 @@ int main()
     uint8_t *compiledData = NULL;
     uint32_t compiledDataLen = 0;
     result = hyCompileModule(instance, &compileInfo, &compiledData, &compiledDataLen);
+    if (assembly_data_allocated)
+        free((void *)assembly_data);
     if (result != HY_RESULT_SUCCESS)
     {
         printf("Module compilation failed. Error code: %d\n", result);
@@ -156,5 +231,10 @@ void print_hex_ascii(const uint8_t *data, uint32_t length)
 
 void callback_function(struct HyLogMessageEXT *message)
 {
-    printf("[%s][%s:%u] -- %s\n", log_level_to_string(message->level), message->file, message->line, message->message);
+    printf("%s%s[%s:%u] -- %s\n" COLOR_RESET,
+           log_level_to_color(message->level),
+           log_level_to_string(message->level),
+           message->file,
+           message->line,
+           message->message);
 }

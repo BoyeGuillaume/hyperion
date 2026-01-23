@@ -24,5 +24,8 @@ sample.out: sample.c lib
 	echo $(SO_PATH)
 	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
+run: sample.out
+	./sample.out
+
 clean:
 	rm -f sample.out
