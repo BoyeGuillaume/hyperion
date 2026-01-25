@@ -106,7 +106,7 @@ entry:
     branch %empty, max_zero, max_init
 
 max_zero:
-    ret i32 0
+    trap
 
 max_init:
     %first_ptr: ptr = getelementptr %data, i32 0
