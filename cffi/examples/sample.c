@@ -141,9 +141,6 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    printf("Hycore instance created successfully.\n");
-    printf("Instance pointer: %p\n", (void *)instance);
-
     /* Compile a simple module */
     HyModuleSourceInfo sourceInfo;
     sourceInfo.sType = HY_STRUCTURE_TYPE_MODULE_SOURCE_INFO;
