@@ -6,14 +6,14 @@ use crate::modules::{
     operand::{Label, Name},
 };
 
-/// Represents a theorem derivation proof overlaying a target function.
+/// Represents an meta-function attached to an existing function for theorem derivation.
 ///
 /// This structure allows for the modification and extension of an existing function
 /// by overlaying additional instructions and assertions. It maintains its own
 /// labeling and naming scheme to avoid conflicts with the target function.
 ///
 #[derive(Debug, Clone)]
-pub struct TheoremDerivationProof {
+pub struct AttachedFunction {
     next_available_label: Label,
     next_available_name: Name,
 
@@ -23,15 +23,15 @@ pub struct TheoremDerivationProof {
     pub end_assert: Option<Vec<HyInstr>>,
 }
 
-impl TheoremDerivationProof {
+impl AttachedFunction {
     pub const BEGIN_LABEL: Label = Label(u32::MAX - 1);
     pub const END_LABEL: Label = Label(u32::MAX - 2);
 
-    /// Get the next available label for the theorem derivation proof.
+    /// Get the next available label for the attached function.
     pub fn next_available_label(&mut self) -> Label {
         assert!(
             self.next_available_label < Self::END_LABEL,
-            "Exceeded maximum number of labels available for theorem derivation proof."
+            "Exceeded maximum number of labels available for attached function."
         );
 
         let label = self.next_available_label;
@@ -39,21 +39,18 @@ impl TheoremDerivationProof {
         label
     }
 
-    /// Get the next available SSA name for the theorem derivation proof.
+    /// Get the next available SSA name for the attached function.
     pub fn next_available_name(&mut self) -> Name {
         let name = self.next_available_name;
         self.next_available_name = Name(self.next_available_name.0 + 1);
         name
     }
 
-    /// Create a new theorem derivation proof overlaying the given target function.
+    /// Create a new attached function overlaying the given target function.
     pub fn new(target: Arc<Function>) -> Self {
         assert!(
-            target
-                .body
-                .keys()
-                .all(|x| *x < TheoremDerivationProof::END_LABEL),
-            "Function contains reserved labels for theorem derivation proof."
+            target.body.keys().all(|x| *x < AttachedFunction::END_LABEL),
+            "Function contains reserved labels for attached function."
         );
 
         Self {
