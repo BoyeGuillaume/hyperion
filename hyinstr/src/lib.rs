@@ -14,8 +14,8 @@
 //! fields, then place them in basic blocks (`BasicBlock`) and functions
 //! (`Function`). A `Module` groups functions and external symbols.
 pub mod analysis;
+pub mod attached;
 pub mod consts;
 pub mod modules;
-pub mod proof;
 pub mod types;
 pub mod utils;

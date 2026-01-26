@@ -20,6 +20,7 @@ enum-map.workspace = true
 bitflags.workspace = true
 chumsky = { workspace = true, optional = true }
 borsh = { workspace = true, optional = true }
+slotmap = { workspace = true }
 
 [features]
 default = ["chumsky", "chumsky/either"]

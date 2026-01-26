@@ -283,18 +283,24 @@ pub struct InstructionRef {
     /// Label of the basic block containing the instruction.
     pub block: Label,
     /// Zero-based position of the instruction within the block.
-    pub index: usize,
+    pub index: u32,
+    /// Reserved for other use (check [`super::proof::AttachedFunction`] for examples).
+    pub reserved: u64,
 }
 
 impl From<(Label, usize)> for InstructionRef {
     fn from((block, index): (Label, usize)) -> Self {
-        Self { block, index }
+        Self {
+            block,
+            index: index as u32,
+            reserved: 0,
+        }
     }
 }
 
 impl From<InstructionRef> for (Label, usize) {
     fn from(reference: InstructionRef) -> Self {
-        (reference.block, reference.index)
+        (reference.block, reference.index as usize)
     }
 }
 
@@ -330,9 +336,17 @@ impl BasicBlock {
 
     /// Create a [`FunctionInstructionReference`] for the instruction at the given index.
     pub fn instruction_reference(&self, index: usize) -> InstructionRef {
+        assert!(
+            index < self.instructions.len() && index <= u32::MAX as usize,
+            "Instruction index out of bounds for basic block (label: {:?}, index: {})",
+            self.label,
+            index
+        );
+
         InstructionRef {
             block: self.label,
-            index,
+            index: index as u32,
+            reserved: 0,
         }
     }
 }
@@ -420,7 +434,7 @@ impl Function {
     pub const MAX_INSTR_PER_FUNC: usize = 1_000_000;
 
     /// Maximum allowed number of parameters in a function.
-    pub const MAX_PARAMS_PER_FUNC: usize = 1024;
+    pub const MAX_PARAMS_PER_FUNC: usize = 4096;
 
     /// Maximum allowed number of wildcard types in a function.
     pub const MAX_WILDCARD_TYPES_PER_FUNC: usize = 256;
@@ -446,7 +460,11 @@ impl Function {
                 }
             }
 
-            // Terminator do not reference any types (technically condition are always i1)
+            for typeref in bb.terminator.referenced_types() {
+                if let Some(wt) = typeref.try_as_wildcard() {
+                    wildcards.insert(wt);
+                }
+            }
         }
     }
 
@@ -764,7 +782,7 @@ impl Function {
     pub fn get(&self, reference: InstructionRef) -> Option<&HyInstr> {
         self.body
             .get(&reference.block)
-            .and_then(|bb| bb.instructions.get(reference.index))
+            .and_then(|bb| bb.instructions.get(reference.index as usize))
     }
 
     /// Analyzes the control flow of a function and constructs its control flow graph (CFG).

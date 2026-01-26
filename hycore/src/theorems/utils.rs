@@ -95,7 +95,8 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     let mut usage_graph: DiGraph<InstructionRef, ()> = DiGraph::new();
     const SOURCE_NODE: InstructionRef = InstructionRef {
         block: Label::NIL,
-        index: usize::MAX,
+        index: u32::MAX,
+        reserved: 0, // not used
     };
     let source_node_index = usage_graph.add_node(SOURCE_NODE);
 
@@ -157,6 +158,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
             let instr_ref = InstructionRef {
                 block: *block_label,
                 index: instr_index,
+                reserved: 0, // not used
             };
             instr_index += 1;
             let node_index = refs_to_node[&instr_ref];
