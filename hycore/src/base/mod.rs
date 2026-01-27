@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use dashmap::DashMap;
 use hyinstr::{modules::Module, types::TypeRegistry};
 use parking_lot::RwLock;
 use semver::Version;
@@ -213,7 +214,7 @@ impl InstanceContext {
             uuid,
             module,
             library: TheoremLibrary::new(),
-            funcs: BTreeMap::new(),
+            funcs: DashMap::new(),
             key: ModuleKey::null(),
             instance: weak_self,
         };

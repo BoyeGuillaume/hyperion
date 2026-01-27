@@ -1,9 +1,17 @@
-use std::{collections::BTreeMap, sync::Weak};
-
-use hyinstr::modules::{
-    InstructionRef, Module,
-    operand::{Label, Name},
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Weak},
 };
+
+use dashmap::DashMap;
+use hyinstr::{
+    attached::AttachedFunction,
+    modules::{
+        InstructionRef, Module,
+        operand::{Label, Name},
+    },
+};
+use parking_lot::RwLock;
 use petgraph::prelude::DiGraphMap;
 use uuid::Uuid;
 
@@ -20,6 +28,8 @@ pub struct FunctionContext {
     pub cfg: DiGraphMap<Label, Name>,
     /// The destination map of the function.
     pub dest_map: BTreeMap<Name, InstructionRef>,
+    /// A list of attached function specifications.
+    pub attached_specs: RwLock<Vec<Arc<RwLock<AttachedFunction>>>>,
 }
 
 /// Aggregates metadata and analysis state for a single module loaded in an instance.
@@ -37,7 +47,8 @@ pub struct ModuleContext {
     pub module: Module,
 
     /// Contexts for internal function analysis.
-    pub funcs: BTreeMap<Uuid, FunctionContext>,
+    /// Key ought to be the function UUID.
+    pub funcs: DashMap<Uuid, FunctionContext>,
 
     /// Library of properties and specifications (can be used to derive additional
     /// specifications).

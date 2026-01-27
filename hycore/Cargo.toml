@@ -15,10 +15,10 @@ thiserror.workspace = true
 parking_lot.workspace = true
 crossbeam.workspace = true
 build-info.workspace = true
-strum = { workspace = true, features = ["derive"] }
 bitflags = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
 nalgebra = { workspace = true, features = ["sparse"] }
-enum-map = { workspace = true }
+enum-map.workspace = true
 either.workspace = true
 slotmap.workspace = true
 bit-set.workspace = true
@@ -27,6 +27,7 @@ downcast-rs.workspace = true
 chrono.workspace = true
 inventory.workspace = true
 zstd.workspace = true
+dashmap.workspace = true
 pyo3 = { workspace = true, features = [
     "uuid",
     "extension-module",
