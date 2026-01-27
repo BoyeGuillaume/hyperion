@@ -83,6 +83,7 @@ enum HyResult
   HY_RESULT_INSTR_ERROR,
   HY_RESULT_KEY_NOT_FOUND,
   HY_RESULT_STRUCTURE_TYPE_MISMATCH,
+  HY_RESULT_DUPLICATED_KEY,
 };
 #ifndef __cplusplus
 typedef uint32_t HyResult;

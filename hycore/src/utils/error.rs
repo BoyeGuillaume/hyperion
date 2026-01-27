@@ -32,6 +32,9 @@ pub enum HyError {
 
     #[error("Failed to find {context} with key '{key}'")]
     KeyNotFound { key: String, context: String },
+
+    #[error("Duplicated {context} with key '{key}'")]
+    DuplicatedKey { key: String, context: String },
 }
 
 /// Convenience alias for fallible operations returning [`HyError`].

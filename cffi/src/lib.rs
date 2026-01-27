@@ -33,6 +33,7 @@ pub enum HyResult {
     HyResultInstrError,
     HyResultKeyNotFound,
     HyResultStructureTypeMismatch,
+    HyResultDuplicatedKey,
 }
 
 /// cbindgen:rename-all=ScreamingSnakeCase
@@ -79,6 +80,7 @@ impl From<hycore::utils::error::HyError> for HyResult {
             HyErrorType::Utf8Error => HyResult::HyResultUtf8Error,
             HyErrorType::HyInstrError => HyResult::HyResultInstrError,
             HyErrorType::KeyNotFound => HyResult::HyResultKeyNotFound,
+            HyErrorType::DuplicatedKey => HyResult::HyResultDuplicatedKey,
             HyErrorType::Unknown => HyResult::HyResultUnknown,
         }
     }
