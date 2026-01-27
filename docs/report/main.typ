@@ -127,7 +127,7 @@
 #include "sections/00-introduction.typ"
 #pagebreak()
 
-#include "sections/01-summary.typ"
+#include "sections/01-roadmap.typ"
 #pagebreak()
 
 #include "sections/02-codebase-overview.typ"
