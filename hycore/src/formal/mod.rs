@@ -1,13 +1,20 @@
 //! Entry point for formal verification functionalities.
 
-use std::{collections::BTreeMap, sync::Weak};
+use std::sync::{Arc, Weak};
 
-use uuid::Uuid;
+use downcast_rs::{DowncastSync, impl_downcast};
+use slotmap::{SlotMap, new_key_type};
 
 use crate::{
     base::InstanceContext,
-    utils::error::{HyError, HyResult},
+    hytrace,
+    utils::{
+        error::{HyError, HyResult},
+        opaque::OpaqueList,
+    },
 };
+
+pub mod axioms;
 
 /// Base trait for dynamic derivation strategies.
 ///
@@ -16,39 +23,44 @@ use crate::{
 /// implements this trait.
 ///
 pub trait DynDerivationStrategyBase: Send + Sync {
-    /// Returns the unique identifier for the derivation strategy.
+    /// Returns the name of the derivation strategy.
     ///
-    /// See [`DerivationStrategy::UUID`]
-    fn uuid(&self) -> Uuid;
+    /// This is a unique name used for identification purposes.
+    fn name(&self) -> &'static str;
 }
 
 /// Dynamic trait for derivation strategies.
-pub trait DynDerivationStrategy: DynDerivationStrategyBase {
+pub trait DynDerivationStrategy: DynDerivationStrategyBase + DowncastSync {
     /// Performs derivation.
     ///
     /// This is a placeholder method and should be implemented with actual logic.
     fn derive(&self);
+
+    /// Retrieves the unique identifier instance associated with this strategy.
+    fn instance(&self) -> &Weak<InstanceContext>;
 }
+impl_downcast!(sync DynDerivationStrategy);
 
 /// Static, non-dynamic trait for derivation strategies.
 pub trait DerivationStrategy: Sized + Send + Sync {
-    /// Unique identifier for the derivation strategy.
-    const UUID: Uuid;
+    /// Unique name used to identify the derivation strategy.
+    const NAME: &'static str;
 
     /// Constructs a new instance of the derivation strategy.
-    fn new(instance: Weak<InstanceContext>) -> HyResult<Self>;
+    fn new(instance: Weak<InstanceContext>, ext: &mut OpaqueList) -> HyResult<Self>;
 }
 
 impl<T: DerivationStrategy> DynDerivationStrategyBase for T {
-    fn uuid(&self) -> Uuid {
-        <T as DerivationStrategy>::UUID
+    fn name(&self) -> &'static str {
+        <T as DerivationStrategy>::NAME
     }
 }
 
 /// Inventory containing derivation strategy registrations.
 pub struct DerivationStrategyRegistry {
-    pub uuid: Uuid,
-    pub loader: fn(Weak<InstanceContext>) -> HyResult<Box<dyn DynDerivationStrategy>>,
+    pub name: &'static str,
+    pub loader:
+        fn(Weak<InstanceContext>, &mut OpaqueList) -> HyResult<Arc<dyn DynDerivationStrategy>>,
 }
 inventory::collect!(DerivationStrategyRegistry);
 
@@ -59,10 +71,10 @@ macro_rules! register_derivation_strategy {
     ) => {
         $crate::inventory::submit! {
             $crate::formal::DerivationStrategyRegistry {
-                uuid: <$strategy as $crate::formal::DerivationStrategy>::UUID,
-                loader: |instance: std::sync::Weak<$crate::base::InstanceContext>| -> $crate::utils::error::HyResult<Box<dyn $crate::formal::DynDerivationStrategy>> {
-                    let strategy = <$strategy as $crate::formal::DerivationStrategy>::new(instance)?;
-                    Ok(Box::new(strategy))
+                name: <$strategy as $crate::formal::DerivationStrategy>::NAME,
+                loader: |instance: std::sync::Weak<$crate::base::InstanceContext>, ext: &mut $crate::utils::opaque::OpaqueList| -> $crate::utils::error::HyResult<std::sync::Arc<dyn $crate::formal::DynDerivationStrategy>> {
+                    let strategy = <$strategy as $crate::formal::DerivationStrategy>::new(instance, ext)?;
+                    Ok(std::sync::Arc::new(strategy))
                 },
             }
         }
@@ -70,72 +82,79 @@ macro_rules! register_derivation_strategy {
     () => {};
 }
 
+new_key_type! {
+    /// Key type for registered derivation strategies.
+    pub struct DerivationStrategyKey;
+}
+
 /// Library managing registered derivation strategies.
 ///
-/// This is similar to [`DerivationStrategyRegistry`], but whereas
-/// the registry is static and global, the library is instantiated
-/// per instance context.
-/// This enables extensions to register only the strategies they need,
-/// reducing memory usage and potential conflicts. Add improving
-/// modularity.
+/// Notice that multiple similar-strategies can coexist
+/// in the library even if they have the same UUID. This is
+/// because strategies can be configured through their
+/// [`OpaqueList`] during construction.
 ///
 pub struct DerivationStrategyLibrary {
-    strategies: BTreeMap<Uuid, Box<dyn DynDerivationStrategy>>,
+    strategies: SlotMap<DerivationStrategyKey, Arc<dyn DynDerivationStrategy>>,
 }
 
 impl DerivationStrategyLibrary {
     /// Adds a new theorem inference strategy to the library by its UUID.
     pub fn add_derivation_by_uuid(
         &mut self,
-        uuid: Uuid,
-        instance: Weak<InstanceContext>,
-    ) -> HyResult<()> {
+        instance: &Arc<InstanceContext>,
+        name: &str,
+        ext: &mut OpaqueList,
+    ) -> HyResult<DerivationStrategyKey> {
         for registry in inventory::iter::<DerivationStrategyRegistry> {
-            if registry.uuid == uuid {
-                let strategy = (registry.loader)(instance)?;
+            if registry.name == name {
+                hytrace!(
+                    instance,
+                    "Loading derivation strategy with name {} using extensions: {:?}",
+                    name,
+                    ext
+                );
+                let strategy = (registry.loader)(Arc::downgrade(instance), ext)?;
                 assert!(
-                    strategy.uuid() == uuid,
-                    "Loaded derivation strategy UUID does not match the requested UUID"
+                    strategy.name() == name,
+                    "Loaded derivation strategy name does not match the requested name"
                 );
 
-                if self.strategies.contains_key(&uuid) {
-                    return Err(HyError::DuplicatedKey {
-                        key: uuid.to_string(),
-                        context: "derivation strategy".to_string(),
-                    });
-                }
-
-                self.strategies.insert(uuid, strategy);
-                return Ok(());
+                let key = self.strategies.insert(strategy);
+                return Ok(key);
             }
         }
 
         Err(HyError::KeyNotFound {
-            key: uuid.to_string(),
+            key: name.to_string(),
             context: "derivation strategy".to_string(),
         })
     }
 
     /// Adds a new derivation strategy that is not part of the global registry.
     /// This is useful for dynamically created strategies.
-    pub fn add_derivation_strategy(
+    pub fn push(
         &mut self,
-        strategy: Box<dyn DynDerivationStrategy>,
-    ) -> HyResult<()> {
-        let uuid = strategy.uuid();
-        if self.strategies.contains_key(&uuid) {
-            return Err(HyError::DuplicatedKey {
-                key: uuid.to_string(),
-                context: "derivation strategy".to_string(),
-            });
-        }
-
-        self.strategies.insert(uuid, strategy);
-        Ok(())
+        strategy: Arc<dyn DynDerivationStrategy>,
+    ) -> HyResult<DerivationStrategyKey> {
+        let key = self.strategies.insert(strategy);
+        Ok(key)
     }
 
-    /// Retrieves a reference to a registered derivation strategy by its UUID.
-    pub fn get(&self, uuid: &Uuid) -> Option<&Box<dyn DynDerivationStrategy>> {
-        self.strategies.get(uuid)
+    /// Removes a derivation strategy from the library by its key.
+    pub fn remove(&mut self, key: DerivationStrategyKey) -> HyResult<()> {
+        if self.strategies.remove(key).is_some() {
+            Ok(())
+        } else {
+            Err(HyError::KeyNotFound {
+                key: format!("{:?}", key),
+                context: "DerivationStrategyLibrary::remove".to_string(),
+            })
+        }
+    }
+
+    /// Retrieves a reference to a registered derivation strategy by its name.
+    pub fn get(&self, key: DerivationStrategyKey) -> Option<&Arc<dyn DynDerivationStrategy>> {
+        self.strategies.get(key)
     }
 }

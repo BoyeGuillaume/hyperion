@@ -21,7 +21,7 @@ macro_rules! register {
     (plugin $ty:ty) => {
         crate::register_plugin!($ty);
     };
-    (theorem_inference_strategy $ty:ty) => {
-        $crate::register_theorem_inference_strategy!($ty);
+    (derivation_strategy $ty:ty) => {
+        $crate::register_derivation_strategy!($ty);
     };
 }

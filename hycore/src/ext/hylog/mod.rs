@@ -170,6 +170,17 @@ pub struct LogMessageEXT {
 /// `ExtList` and invoked from Rust.
 pub struct LogCallbackEXT(pub Box<dyn Fn(LogMessageEXT) + Send + Sync>);
 
+impl std::fmt::Debug for LogCallbackEXT {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LogCallbackEXT")
+            .field(
+                "0",
+                &format!("{:p}", ::core::ptr::from_ref(self.0.as_ref())),
+            )
+            .finish()
+    }
+}
+
 #[cfg(feature = "pyo3")]
 impl<'a, 'py> FromPyObject<'a, 'py> for LogCallbackEXT {
     type Error = PyErr;
@@ -199,6 +210,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for LogCallbackEXT {
 
 /// Creation information for the logger extension.
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
+#[derive(Debug)]
 pub struct LogCreateInfoEXT {
     pub level: LogLevelEXT,
     pub callback: LogCallbackEXT,

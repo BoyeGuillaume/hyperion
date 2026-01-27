@@ -1,5 +1,6 @@
 //! Utilities that allow extensions to pass opaque configuration objects across
 //! the FFI boundary (notably from Python) into Rust plugins.
+use std::fmt::Debug;
 
 use downcast_rs::{DowncastSync, impl_downcast};
 #[cfg(feature = "pyo3")]
@@ -7,7 +8,7 @@ use pyo3::{FromPyObject, PyAny, PyResult};
 
 /// Marker trait implemented by per-extension configuration structs that need to
 /// cross API boundaries without the host knowing their concrete type upfront.
-pub trait OpaqueObject: DowncastSync {}
+pub trait OpaqueObject: DowncastSync + Debug {}
 impl_downcast!(sync OpaqueObject);
 
 #[cfg(feature = "pyo3")]
@@ -59,6 +60,7 @@ macro_rules! define_py_opaque_object_loaders {
 /// Bag of dynamically typed configuration entries supplied when an instance is
 /// created. Plugins inspect and extract the structs relevant to them.
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
+#[derive(Debug, Default)]
 pub struct OpaqueList(pub Vec<Box<dyn OpaqueObject>>);
 
 impl OpaqueList {
