@@ -157,7 +157,7 @@ impl CompiledModuleStorage {
             data.len()
         );
 
-        let mut reader = &data[..];
+        let mut reader = data;
         Self::read_header(instance, &mut reader)
             .and_then(|_| {
                 #[cfg(feature = "legacy_nozstd")]

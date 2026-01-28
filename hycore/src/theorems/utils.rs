@@ -105,7 +105,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     let mut refs_to_node: HashMap<InstructionRef, petgraph::graph::NodeIndex> = HashMap::new();
 
     for (instr, instr_ref) in func.iter() {
-        let node_index = usage_graph.add_node(instr_ref.clone());
+        let node_index = usage_graph.add_node(instr_ref);
         refs_to_node.insert(instr_ref, node_index);
 
         if let Some(dest) = instr.destination() {
@@ -125,11 +125,10 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     }
     for block in func.body.values() {
         block.terminator.operands().for_each(|operand| {
-            if let Some(name) = operand.try_as_reg_ref() {
-                if let Some(&src_node) = name_to_node.get(&name) {
+            if let Some(name) = operand.try_as_reg_ref()
+                && let Some(&src_node) = name_to_node.get(name) {
                     usage_graph.add_edge(source_node_index, src_node, ());
                 }
-            }
         });
     }
 
@@ -138,7 +137,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
 
         for name in instr.operands().filter_map(|x| x.try_as_reg_ref()) {
             // Can be None if the operand register refers to an argument of the function
-            if let Some(&src) = name_to_node.get(&name) {
+            if let Some(&src) = name_to_node.get(name) {
                 usage_graph.add_edge(dst, src, ());
             }
         }

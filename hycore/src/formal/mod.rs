@@ -61,11 +61,13 @@ impl<T: DerivationStrategy> DynDerivationStrategyBase for T {
     }
 }
 
+pub type DerivationStrategyLoaderFn =
+    fn(Weak<InstanceContext>, &mut OpaqueList) -> HyResult<Arc<dyn DynDerivationStrategy>>;
+
 /// Inventory containing derivation strategy registrations.
 pub struct DerivationStrategyRegistry {
     pub name: &'static str,
-    pub loader:
-        fn(Weak<InstanceContext>, &mut OpaqueList) -> HyResult<Arc<dyn DynDerivationStrategy>>,
+    pub loader: DerivationStrategyLoaderFn,
 }
 inventory::collect!(DerivationStrategyRegistry);
 

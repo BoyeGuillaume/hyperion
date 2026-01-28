@@ -161,14 +161,15 @@ pub enum FType {
     PPCFp128,
 }
 
-impl FType {
-    /// Parses a floating-point type from its string representation.
-    ///
-    /// Returns [`None`] if the string does not correspond to a valid floating-point type.
-    pub fn from_str(str: &str) -> Option<Self> {
-        FType::iter().find(|ftype| ftype.to_str() == str)
-    }
+impl std::str::FromStr for FType {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        FType::iter().find(|ftype| ftype.to_str() == s).ok_or(())
+    }
+}
+
+impl FType {
     /// Returns the string representation of the floating-point type.
     pub fn to_str(&self) -> &'static str {
         match self {

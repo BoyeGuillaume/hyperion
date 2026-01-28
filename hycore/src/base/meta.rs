@@ -60,7 +60,7 @@ impl HyMetaConfig {
 
     /// Load HyperionMetaInfo from a TOML string.
     pub fn load_from_toml(path: &Path) -> HyResult<Self> {
-        let toml_str = fs::read_to_string(path).map_err(|e| HyError::IoError(e))?;
+        let toml_str = fs::read_to_string(path).map_err(HyError::IoError)?;
 
         toml::from_str(&toml_str).map_err(|e| HyError::ManifestParseError {
             source: e,
@@ -80,10 +80,10 @@ impl HyMetaConfig {
 
         // Attempt to create parent directories if they don't exist
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| HyError::IoError(e))?;
+            fs::create_dir_all(parent).map_err(HyError::IoError)?;
         }
 
         // Write the TOML string to the specified path
-        fs::write(path, toml_str).map_err(|e| HyError::IoError(e))
+        fs::write(path, toml_str).map_err(HyError::IoError)
     }
 }

@@ -19,7 +19,7 @@ pub extern crate inventory;
 #[macro_export]
 macro_rules! register {
     (plugin $ty:ty) => {
-        crate::register_plugin!($ty);
+        $crate::register_plugin!($ty);
     };
     (derivation_strategy $ty:ty) => {
         $crate::register_derivation_strategy!($ty);

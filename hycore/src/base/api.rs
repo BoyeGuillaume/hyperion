@@ -19,12 +19,12 @@ pub struct VersionInfo {
     pub patch: u16,
 }
 
-impl Into<semver::Version> for VersionInfo {
-    fn into(self) -> semver::Version {
+impl From<VersionInfo> for semver::Version {
+    fn from(val: VersionInfo) -> Self {
         semver::Version {
-            major: self.major as u64,
-            minor: self.minor as u64,
-            patch: self.patch as u64,
+            major: val.major as u64,
+            minor: val.minor as u64,
+            patch: val.patch as u64,
             pre: semver::Prerelease::EMPTY,
             build: semver::BuildMetadata::EMPTY,
         }

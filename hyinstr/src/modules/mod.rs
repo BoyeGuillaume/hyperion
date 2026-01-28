@@ -251,20 +251,25 @@ impl CallingConvention {
             CallingConvention::Numbered(n) => format!("cc{}", n).into(),
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for CallingConvention {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match CallingConvention::iter()
             .filter(|x| !matches!(x, CallingConvention::Numbered(_)))
             .find(|cc| cc.to_string().as_ref() == s)
         {
-            Some(cc) => Some(cc),
+            Some(cc) => Ok(cc),
             None => {
-                if let Some(num_str) = s.strip_prefix("cc") {
-                    if let Ok(num) = num_str.parse::<u32>() {
-                        return Some(CallingConvention::Numbered(num));
-                    }
+                if let Some(num_str) = s.strip_prefix("cc")
+                    && let Ok(num) = num_str.parse::<u32>()
+                {
+                    return Ok(CallingConvention::Numbered(num));
                 }
-                None
+
+                Err(())
             }
         }
     }
@@ -903,15 +908,15 @@ impl Function {
         // Remap parameter types
         for (_, typeref) in self.params.iter_mut() {
             if let Some(new_type) = mapping.get(typeref) {
-                *typeref = new_type.clone();
+                *typeref = *new_type;
             }
         }
 
         // Remap return type
-        if let Some(ret_type) = &self.return_type {
-            if let Some(new_type) = mapping.get(ret_type) {
-                self.return_type = Some(new_type.clone());
-            }
+        if let Some(ret_type) = &self.return_type
+            && let Some(new_type) = mapping.get(ret_type)
+        {
+            self.return_type = Some(*new_type);
         }
 
         // Remap types in each instruction
@@ -1076,7 +1081,7 @@ impl Module {
 
         // Remap types in each external function
         for ext_func in self.external_functions.values_mut() {
-            ext_func.remap_types(|ty| mapping.get(&ty).cloned());
+            ext_func.remap_types(|ty| mapping.get(ty).cloned());
         }
     }
 }

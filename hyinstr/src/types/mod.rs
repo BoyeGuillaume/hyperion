@@ -519,6 +519,12 @@ impl TypeRegistry {
     pub fn len(&self) -> usize {
         self.array.read().len()
     }
+
+    /// Check whether the registry is empty. Should be used for debugging
+    /// because of concurrency.
+    pub fn is_empty(&self) -> bool {
+        self.array.read().is_empty()
+    }
 }
 
 #[cfg(test)]

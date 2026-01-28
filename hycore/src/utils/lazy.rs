@@ -24,7 +24,7 @@ pub struct LazyGuard<'a, K: ?Sized> {
 
 impl<'a, K: ?Sized> AsRef<K> for LazyGuard<'a, K> {
     fn as_ref(&self) -> &'_ K {
-        &*self.guard
+        &self.guard
     }
 }
 
@@ -32,7 +32,7 @@ impl<'a, K: ?Sized> Deref for LazyGuard<'a, K> {
     type Target = K;
 
     fn deref(&self) -> &'_ Self::Target {
-        &*self.guard
+        &self.guard
     }
 }
 

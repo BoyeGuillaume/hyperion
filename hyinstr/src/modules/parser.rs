@@ -3,6 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
     rc::Rc,
+    str::FromStr,
     sync::Arc,
     u16,
 };
@@ -528,7 +529,7 @@ fn identifier_parser<'src>()
                 return Token::Visibility(visibility);
             }
 
-            if !is_meta && let Some(cc) = CallingConvention::from_str(s) {
+            if !is_meta && let Ok(cc) = CallingConvention::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -560,7 +561,7 @@ fn identifier_parser<'src>()
             }
 
             if other.is_empty() && !is_meta {
-                if let Some(ftype) = FType::from_str(s) {
+                if let Ok(ftype) = FType::from_str(s) {
                     return Token::FType(ftype);
                 }
 

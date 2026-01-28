@@ -247,6 +247,7 @@ fn attached_function_dedup_correctly() {
     assert_eq!(instr_deduped_ref, instr_unique_ref,);
 }
 
+#[test]
 fn attached_function_do_not_dedup_non_simple() {
     let (function, type_registry) = build_chain_function();
     let op_a = function
@@ -263,7 +264,7 @@ fn attached_function_do_not_dedup_non_simple() {
 
     // Perform the operation idiv %a, %b (should be unique, therefore not deduped)
     let mut attached = AttachedFunction::new(Arc::clone(&function));
-    let (op_b, cast_ref) = {
+    let op_b = {
         let dest = attached.next_available_name();
         let instr = Cast {
             dest,
@@ -275,7 +276,7 @@ fn attached_function_do_not_dedup_non_simple() {
         let new_dest = new_dest.expect("cast instruction should define a value");
         assert_eq!(new_dest, dest);
         assert_ne!(cast_ref.reserved, 0);
-        (dest, cast_ref)
+        dest
     };
 
     // Perform the operation mload %b (should NOT be deduped)
