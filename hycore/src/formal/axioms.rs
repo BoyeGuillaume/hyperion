@@ -1,7 +1,10 @@
 use std::sync::Weak;
 
+use hyinstr::attached::AttachedFunction;
+use parking_lot::RwLock;
+
 use crate::{
-    base::InstanceContext,
+    base::{InstanceContext, module::FunctionContext},
     formal::{DerivationStrategy, DynDerivationStrategy},
     register,
     utils::opaque::{OpaqueList, OpaqueObject},
@@ -32,7 +35,12 @@ impl DynDerivationStrategy for AxiomStrategy {
         &self.instance
     }
 
-    fn derive(&self) {
+    fn derive(
+        &self,
+        _context: &FunctionContext,
+        _attached_function: &RwLock<AttachedFunction>,
+        _ext: Option<&dyn OpaqueObject>,
+    ) {
         // Implementation of derivation logic goes here.
     }
 }

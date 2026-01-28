@@ -1,18 +1,11 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use dashmap::DashMap;
 use hyinstr::{
     attached::AttachedFunction,
-    modules::{
-        InstructionRef, Module,
-        operand::{Label, Name},
-    },
+    modules::{Function, FunctionAnalysis, Module},
 };
 use parking_lot::RwLock;
-use petgraph::prelude::DiGraphMap;
 use uuid::Uuid;
 
 use crate::{
@@ -24,12 +17,27 @@ use crate::{
 pub struct FunctionContext {
     /// Unique information about this function.
     pub uuid: Uuid,
-    /// The control flow graph of the function.
-    pub cfg: DiGraphMap<Label, Name>,
-    /// The destination map of the function.
-    pub dest_map: BTreeMap<Name, InstructionRef>,
+    /// Pointer to the function being analyzed.
+    pub function: Arc<Function>,
+    /// Function analysis provided by the [`hyinstr`] crate.
+    pub analysis: FunctionAnalysis,
     /// A list of attached function specifications.
     pub attached_specs: RwLock<Vec<Arc<RwLock<AttachedFunction>>>>,
+}
+
+impl FunctionContext {
+    /// Creates a new function context.
+    pub fn new(function: Arc<Function>) -> Self {
+        let uuid = function.uuid;
+        // This cloning only clones the Arc pointer, not the underlying data.
+        let analysis = function.clone().analyze();
+        Self {
+            uuid,
+            function,
+            analysis,
+            attached_specs: RwLock::new(Vec::new()),
+        }
+    }
 }
 
 /// Aggregates metadata and analysis state for a single module loaded in an instance.

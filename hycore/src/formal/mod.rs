@@ -3,14 +3,16 @@
 use std::sync::{Arc, Weak};
 
 use downcast_rs::{DowncastSync, impl_downcast};
+use hyinstr::attached::AttachedFunction;
+use parking_lot::RwLock;
 use slotmap::{SlotMap, new_key_type};
 
 use crate::{
-    base::InstanceContext,
+    base::{InstanceContext, module::FunctionContext},
     hytrace,
     utils::{
         error::{HyError, HyResult},
-        opaque::OpaqueList,
+        opaque::{OpaqueList, OpaqueObject},
     },
 };
 
@@ -32,9 +34,12 @@ pub trait DynDerivationStrategyBase: Send + Sync {
 /// Dynamic trait for derivation strategies.
 pub trait DynDerivationStrategy: DynDerivationStrategyBase + DowncastSync {
     /// Performs derivation.
-    ///
-    /// This is a placeholder method and should be implemented with actual logic.
-    fn derive(&self);
+    fn derive(
+        &self,
+        context: &FunctionContext,
+        attached_function: &RwLock<AttachedFunction>,
+        ext: Option<&dyn OpaqueObject>,
+    );
 
     /// Retrieves the unique identifier instance associated with this strategy.
     fn instance(&self) -> &Weak<InstanceContext>;

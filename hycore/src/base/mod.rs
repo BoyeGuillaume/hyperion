@@ -8,7 +8,7 @@ use slotmap::{Key, SlotMap, new_key_type};
 use uuid::Uuid;
 
 use crate::{
-    base::module::ModuleContext,
+    base::module::{FunctionContext, ModuleContext},
     ext::{DynPluginEXT, StaticPluginEXT, hylog::LogMessageEXT, load_plugin_by_name},
     hyinfo, hytrace,
     theorems::library::TheoremLibrary,
@@ -218,6 +218,12 @@ impl InstanceContext {
             key: ModuleKey::null(),
             instance: weak_self,
         };
+
+        // Populate function contexts
+        for function in module_context.module.functions.values() {
+            let func_ctx = FunctionContext::new(function.clone());
+            module_context.funcs.insert(func_ctx.uuid, func_ctx);
+        }
 
         // Add the module context to the instance
         hyinfo!(

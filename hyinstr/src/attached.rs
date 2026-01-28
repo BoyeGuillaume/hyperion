@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use slotmap::{DefaultKey, Key, KeyData, SlotMap};
+use smallvec::SmallVec;
 
 use crate::modules::{
     Function, InstructionRef,
@@ -22,6 +23,10 @@ pub struct AttachedFunction {
     next_available_name: Name,
     derive_dest_map: BTreeMap<Name, (InstructionRef, u16)>,
     overlay: BTreeMap<Label, SlotMap<DefaultKey, HyInstr>>,
+    /// Map from hash to instruction indices in the overlay. Allow to optimize
+    /// simple deduplication of instructions. u64 should be the hash of the
+    /// instruction with nil destination (if any).
+    index_dedup_instr: BTreeMap<u64, SmallVec<InstructionRef, 1>>,
     begin_assert: SlotMap<DefaultKey, HyInstr>,
     end_assert: SlotMap<DefaultKey, HyInstr>,
 }
@@ -29,6 +34,25 @@ pub struct AttachedFunction {
 impl AttachedFunction {
     pub const BEGIN_LABEL: Label = Label(u32::MAX - 1);
     pub const END_LABEL: Label = Label(u32::MAX - 2);
+
+    fn compute_hash(instr: &mut HyInstr, label: Label) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let destination = instr.destination();
+        if destination.is_some() {
+            instr.set_destination(Name(0)); // Ignore destination for hashing
+        }
+
+        let mut hasher = std::hash::DefaultHasher::new();
+        instr.hash(&mut hasher);
+        label.hash(&mut hasher);
+
+        if let Some(dest_name) = destination {
+            instr.set_destination(dest_name); // Restore original destination
+        }
+
+        return hasher.finish();
+    }
 
     /// Get the next available label for the attached function.
     pub fn next_available_label(&mut self) -> Label {
@@ -69,9 +93,22 @@ impl AttachedFunction {
             })
             .collect();
 
+        let mut index_dedup_instr: BTreeMap<u64, SmallVec<InstructionRef, 1>> = BTreeMap::new();
+        for (instr, instr_ref) in target.iter() {
+            if instr.is_simple() {
+                // This clone is suboptimal as the cloned instruction will be discarded
+                // right after computing the hash. However, this is necessary because of
+                // borrow checking and whatnot.
+                let mut instr_clone = instr.clone();
+                let hash = Self::compute_hash(&mut instr_clone, instr_ref.block);
+                index_dedup_instr.entry(hash).or_default().push(instr_ref);
+            }
+        }
+
         Self {
             next_available_label: target.next_available_label(),
             next_available_name: target.next_available_name(),
+            index_dedup_instr,
             derive_dest_map,
             target,
             overlay: BTreeMap::new(),
@@ -117,8 +154,46 @@ impl AttachedFunction {
     }
 
     /// Add a new instruction to the overlay at the specified label.
-    pub fn push(&mut self, label: Label, instr: HyInstr) -> InstructionRef {
+    ///
+    /// Returns the destination name **that may change** due to optimizations.
+    /// Indeed we only push the instruction if there is no existing instruction
+    /// that does the same thing.
+    pub fn push(&mut self, label: Label, mut instr: HyInstr) -> (Option<Name>, InstructionRef) {
         let destination = instr.destination();
+        let is_simple_instr = instr.is_simple();
+        assert!(
+            destination.is_none() || !self.derive_dest_map.contains_key(&destination.unwrap()),
+            "Cannot add instruction with duplicate derivation destination."
+        );
+
+        // Check for existing identical instruction (ignoring destination)
+        let mut hash = 0;
+        if is_simple_instr {
+            hash = Self::compute_hash(&mut instr, label);
+
+            // Attempt to find existing identical instruction
+            if let Some(existing_refs) = self.index_dedup_instr.get(&hash) {
+                for existing_ref in existing_refs.iter() {
+                    if let Some(existing_instr) = self.get(*existing_ref) {
+                        // Set the destination to match for comparison (we want to ignore it)
+                        if let Some(dest_name) = existing_instr.destination() {
+                            instr.set_destination(dest_name);
+                        }
+
+                        // Attempt to compare instructions
+                        if *existing_instr == instr {
+                            // Found existing identical instruction
+                            return (existing_instr.destination(), *existing_ref);
+                        }
+                    }
+                }
+            }
+
+            // Restore original destination if not found
+            if let Some(dest_name) = destination {
+                instr.set_destination(dest_name);
+            }
+        }
 
         // Increase counter for instructions associated with a derivation destination
         for op in instr.operands().filter_map(Operand::try_as_reg_ref) {
@@ -176,11 +251,20 @@ impl AttachedFunction {
             }
         };
 
+        // Update the derive_dest_map (map from destination name to instruction ref and ref counter)
         if let Some(dest_name) = destination {
             self.derive_dest_map.insert(dest_name, (instruction_ref, 0));
         }
 
-        instruction_ref
+        // Update the index_of_map (for deduplication)
+        if is_simple_instr {
+            self.index_dedup_instr
+                .entry(hash)
+                .or_default()
+                .push(instruction_ref);
+        }
+
+        (destination, instruction_ref)
     }
 
     /// Pop the instruction at the specified InstructionRef. Crashes if the ref is invalid or

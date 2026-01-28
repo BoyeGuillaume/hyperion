@@ -890,7 +890,7 @@ impl Function {
     }
 
     /// Get analysis context for the function.
-    pub fn generate_analysis_context(self: Arc<Self>) -> FunctionAnalysis {
+    pub fn analyze(self: Arc<Self>) -> FunctionAnalysis {
         FunctionAnalysis {
             cfg: self.derive_function_flow(),
             dest_map: self.derive_dest_map(),

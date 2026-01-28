@@ -443,7 +443,7 @@ fn function_analysis_helpers_produce_expected_graphs() {
         .collect();
     assert!(phis.len() >= 2);
 
-    let ctx = func.generate_analysis_context();
+    let ctx = func.analyze();
     assert_eq!(ctx.cfg.node_count(), cfg.node_count());
     assert_eq!(ctx.dest_map.len(), dest_map.len());
 }
