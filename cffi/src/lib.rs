@@ -60,13 +60,13 @@ pub enum HyStructureType {
 
 impl Into<HyLogLevelEXT> for LogLevelEXT {
     fn into(self) -> HyLogLevelEXT {
-        HyLogLevelEXT::from_repr(self as u32).unwrap()
+        HyLogLevelEXT::from_repr(self as u32).expect("Invalid LogLevelEXT value")
     }
 }
 
 impl From<HyLogLevelEXT> for LogLevelEXT {
     fn from(value: HyLogLevelEXT) -> Self {
-        LogLevelEXT::from_repr(value as u32).unwrap()
+        LogLevelEXT::from_repr(value as u32).expect("Invalid HyLogLevelEXT value")
     }
 }
 

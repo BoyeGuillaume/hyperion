@@ -119,6 +119,7 @@ int main(int argc, char **argv)
 
     HyLogCreateInfoEXT logCreateInfo;
     logCreateInfo.sType = HY_STRUCTURE_TYPE_LOG_CREATE_INFO_EXT;
+    logCreateInfo.level = HY_LOG_LEVEL_TRACE;
     logCreateInfo.callback = callback_function;
     logCreateInfo.pNext = NULL;
 
