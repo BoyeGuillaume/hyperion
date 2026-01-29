@@ -125,9 +125,14 @@ impl AnalysisStatisticOp {
             AnalysisStatisticOp::ExecutionCount => "excnt",
         }
     }
+}
 
-    /// Parse from string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        AnalysisStatisticOp::iter().find(|op| op.to_str() == s)
+impl std::str::FromStr for AnalysisStatisticOp {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        AnalysisStatisticOp::iter()
+            .find(|op| op.to_str() == s)
+            .ok_or(())
     }
 }

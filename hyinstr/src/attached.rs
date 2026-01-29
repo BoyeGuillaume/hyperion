@@ -51,7 +51,7 @@ impl AttachedFunction {
             instr.set_destination(dest_name); // Restore original destination
         }
 
-        return hasher.finish();
+        hasher.finish()
     }
 
     /// Get the next available label for the attached function.
@@ -198,9 +198,7 @@ impl AttachedFunction {
         // Increase counter for instructions associated with a derivation destination
         for op in instr.operands().filter_map(Operand::try_as_reg_ref) {
             if let Some((_, counter)) = self.derive_dest_map.get_mut(op) {
-                if *counter != u16::MAX {
-                    *counter += 1;
-                }
+                *counter = counter.saturating_add(1);
             }
         }
 
@@ -289,28 +287,27 @@ impl AttachedFunction {
         let instr = instructions
             .get(key)
             .expect("Cannot remove non-existent instruction from overlay.");
-        if let Some(dest_name) = instr.destination() {
-            if let Some((_, counter)) = self.derive_dest_map.get(&dest_name) {
-                assert!(
-                    *counter == 0,
-                    "Cannot remove instruction with associated derivation destinations."
-                );
-            }
+        if let Some(dest_name) = instr.destination()
+            && let Some((_, counter)) = self.derive_dest_map.get(&dest_name)
+        {
+            assert!(
+                *counter == 0,
+                "Cannot remove instruction with associated derivation destinations."
+            );
         }
 
         // Decrease counter for instructions associated with a derivation destination
         for op in instr.operands().filter_map(Operand::try_as_reg_ref) {
-            if let Some((_, counter)) = self.derive_dest_map.get_mut(op) {
-                if *counter != u16::MAX {
-                    *counter -= 1;
-                }
+            if let Some((_, counter)) = self.derive_dest_map.get_mut(op)
+                && *counter != u16::MAX
+            {
+                *counter -= 1;
             }
         }
 
         // Remove the instruction
-        let instr = instructions
+        instructions
             .remove(key)
-            .expect("Cannot remove non-existent instruction from overlay.");
-        instr
+            .expect("Cannot remove non-existent instruction from overlay.")
     }
 }

@@ -98,7 +98,13 @@ fn merge_aggregates_dependency_order() {
     );
     assert_eq!(
         reg_a.get(a_array).as_deref(),
-        Some(&ArrayType { ty: a_i32, num_elements: 3 }.into())
+        Some(
+            &ArrayType {
+                ty: a_i32,
+                num_elements: 3
+            }
+            .into()
+        )
     );
 
     // Re-merge should be idempotent (map to the same A typerefs)
@@ -115,7 +121,13 @@ fn merge_with_wildcard_refs() {
 
     // Array with wildcard element typeref in B
     let wc = Typeref::new_wildcard(7);
-    let b_array_wc = reg_b.search_or_insert(ArrayType { ty: wc, num_elements: 2 }.into());
+    let b_array_wc = reg_b.search_or_insert(
+        ArrayType {
+            ty: wc,
+            num_elements: 2,
+        }
+        .into(),
+    );
 
     let mapping = reg_a.merge_with(&reg_b);
     let a_array_wc = mapping[&b_array_wc];
@@ -123,6 +135,12 @@ fn merge_with_wildcard_refs() {
     // Wildcard should be preserved inside the aggregate
     assert_eq!(
         reg_a.get(a_array_wc).as_deref(),
-        Some(&ArrayType { ty: wc, num_elements: 2 }.into())
+        Some(
+            &ArrayType {
+                ty: wc,
+                num_elements: 2
+            }
+            .into()
+        )
     );
 }

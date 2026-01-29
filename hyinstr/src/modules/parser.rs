@@ -5,7 +5,6 @@ use std::{
     rc::Rc,
     str::FromStr,
     sync::Arc,
-    u16,
 };
 
 use crate::analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope};
@@ -310,15 +309,14 @@ fn numeral_parser<'src>()
         .repeated()
         .at_least(1);
     let signed_exponent = (just('e').or(just('E')))
-        .ignore_then(sign.clone())
-        .ignore_then(decimal_digits.clone());
+        .ignore_then(sign)
+        .ignore_then(decimal_digits);
 
     let float_with_fraction = sign
-        .clone()
-        .ignore_then(decimal_digits.clone())
+        .ignore_then(decimal_digits)
         .then_ignore(just('.'))
-        .then(decimal_digits.clone())
-        .then(signed_exponent.clone().or_not())
+        .then(decimal_digits)
+        .then(signed_exponent.or_not())
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
@@ -334,9 +332,8 @@ fn numeral_parser<'src>()
         );
 
     let float_with_exponent = sign
-        .clone()
-        .ignore_then(decimal_digits.clone())
-        .then(signed_exponent.clone())
+        .ignore_then(decimal_digits)
+        .then(signed_exponent)
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
@@ -352,7 +349,6 @@ fn numeral_parser<'src>()
         );
 
     let hex_int = sign
-        .clone()
         .ignore_then(just("0x").or(just("0X")))
         .ignore_then(
             any()
@@ -384,7 +380,6 @@ fn numeral_parser<'src>()
         });
 
     let octal_int = sign
-        .clone()
         .ignore_then(just("0o").or(just("0O")))
         .ignore_then(
             any()
@@ -416,7 +411,6 @@ fn numeral_parser<'src>()
         });
 
     let binary_int = sign
-        .clone()
         .ignore_then(just("0b").or(just("0B")))
         .ignore_then(
             any()
@@ -516,7 +510,7 @@ fn identifier_parser<'src>()
                 }
             }
 
-            if !is_meta && let Some(visibility) = Visibility::from_str(s) {
+            if !is_meta && let Ok(visibility) = Visibility::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -542,11 +536,11 @@ fn identifier_parser<'src>()
                 return Token::CallingConvention(cc);
             }
 
-            if let Some(instr_op) = HyInstrOp::from_str(s) {
+            if let Ok(instr_op) = HyInstrOp::from_str(s) {
                 return Token::InstrOp(instr_op, other);
             }
 
-            if let Some(terminator_op) = HyTerminatorOp::from_str(s) {
+            if let Ok(terminator_op) = HyTerminatorOp::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -565,7 +559,7 @@ fn identifier_parser<'src>()
                     return Token::FType(ftype);
                 }
 
-                if let Some(ordering) = MemoryOrdering::from_str(s) {
+                if let Ok(ordering) = MemoryOrdering::from_str(s) {
                     return Token::Ordering(ordering);
                 }
 
@@ -685,11 +679,9 @@ where
                     .unwrap_or(false)
         })
         .map(|token| match token {
-            Token::IType(itype) => PrimaryBasicType::Int(itype).into(),
-            Token::FType(ftype) => PrimaryBasicType::Float(ftype).into(),
-            Token::Identifier(s, v) if s == "ptr" && v.is_empty() => {
-                PrimaryBasicType::Ptr(PtrType).into()
-            }
+            Token::IType(itype) => PrimaryBasicType::Int(itype),
+            Token::FType(ftype) => PrimaryBasicType::Float(ftype),
+            Token::Identifier(s, v) if s == "ptr" && v.is_empty() => PrimaryBasicType::Ptr(PtrType),
             _ => unreachable!(),
         })
 }
@@ -1035,9 +1027,7 @@ where
             else if op == HyInstrOp::Phi && matches!(operand, Either::Left(_)) {
                 emit.emit(Rich::custom(
                     extra.span(),
-                    format!(
-                        "syntax error for phi instruction: expected [operand, label] pairs, got operands separated by commas instead",
-                    )
+                    "syntax error for phi instruction: expected [operand, label] pairs, got operands separated by commas instead".to_string(),
                 ));
 
                 return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
@@ -1070,7 +1060,10 @@ where
 
             // Only authorize label lists for !analysis.term.reach (future-proof: parsed for all)
             if let Some(lbls) = labels.as_ref() {
-                if !lbls.is_empty() && !(op == HyInstrOp::MetaAnalysisStat && variant.get(0).copied() == Some("term") && variant.get(1).copied() == Some("reach")) {
+                let first_variant = variant.first().copied();
+                let second_variant = variant.get(1).copied();
+
+                if !(lbls.is_empty() || op == HyInstrOp::MetaAnalysisStat && first_variant == Some("term") && second_variant == Some("reach")) {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!(
@@ -1118,11 +1111,11 @@ where
                         if variant.is_empty() {
                             1
                         } else {
-                            match AnalysisStatisticOp::from_str(&variant[0]) {
-                                Some(AnalysisStatisticOp::ExecutionCount) => 1,
-                                Some(AnalysisStatisticOp::InstructionCount) => 1,
-                                Some(AnalysisStatisticOp::TerminationBehavior) => 2,
-                                None => 1,
+                            match AnalysisStatisticOp::from_str(variant[0]) {
+                                Ok(AnalysisStatisticOp::ExecutionCount) => 1,
+                                Ok(AnalysisStatisticOp::InstructionCount) => 1,
+                                Ok(AnalysisStatisticOp::TerminationBehavior) => 2,
+                                Err(()) => 1,
                             }
                         }
                     }
@@ -1188,9 +1181,9 @@ where
                 HyInstrOp::IAdd | HyInstrOp::ISub | HyInstrOp::IMul => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match OverflowSignednessPolicy::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match OverflowSignednessPolicy::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1216,9 +1209,9 @@ where
                 HyInstrOp::IDiv | HyInstrOp::IRem => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let signedness = match IntegerSignedness::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let signedness = match IntegerSignedness::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1243,9 +1236,9 @@ where
                 HyInstrOp::ISht => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match IShiftVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match IShiftVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1307,9 +1300,9 @@ where
                 HyInstrOp::FCmp => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match FCmpVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match FCmpVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1331,9 +1324,9 @@ where
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
 
-                    let variant = match ICmpVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match ICmpVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1358,9 +1351,9 @@ where
                         None
                     } else {
                         Some(
-                            match MemoryOrdering::from_str(&variant[0]) {
-                                Some(op) => op,
-                                None => {
+                            match MemoryOrdering::from_str(variant[0]) {
+                                Ok(op) => op,
+                                Err(()) => {
                                     emit.emit(Rich::custom(
                                         extra.span(),
                                         format!(
@@ -1386,9 +1379,9 @@ where
                         None
                     } else {
                         Some(
-                            match MemoryOrdering::from_str(&variant[0]) {
-                                Some(op) => op,
-                                None => {
+                            match MemoryOrdering::from_str(variant[0]) {
+                                Ok(op) => op,
+                                Err(()) => {
                                     emit.emit(Rich::custom(
                                         extra.span(),
                                         format!(
@@ -1441,7 +1434,7 @@ where
                         None => (None, None),
                     };
 
-                    if operands.len() < 1 {
+                    if operands.is_empty() {
                         emit.emit(Rich::custom(
                             extra.span(),
                             format!(
@@ -1471,9 +1464,9 @@ where
                 HyInstrOp::Cast => {
                     let [value] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match CastVariant::from_str(&variant[0]) {
-                        Some(op) => op,
-                        None => {
+                    let variant = match CastVariant::from_str(variant[0]) {
+                        Ok(op) => op,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1529,7 +1522,7 @@ where
                                 ));
                                 continue;
                             }
-                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                            indices.push(digits.first().cloned().unwrap_or(0));
                         } else {
                             emit.emit(Rich::custom(
                                 extra.span(),
@@ -1577,7 +1570,7 @@ where
                                 ));
                                 continue;
                             }
-                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                            indices.push(digits.first().cloned().unwrap_or(0));
                         } else {
                             emit.emit(Rich::custom(
                                 extra.span(),
@@ -1606,9 +1599,9 @@ where
                 }
                 HyInstrOp::MetaProb => {
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match MetaProbVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match MetaProbVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1666,23 +1659,22 @@ where
                         return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                     }
 
-                    let stat = match AnalysisStatisticOp::from_str(&variant[0]) {
-                        Some(AnalysisStatisticOp::ExecutionCount) => {
-                            if let Either::Left(ops) = operand.as_ref() {
-                                if !ops.is_empty() {
-                                    emit.emit(Rich::custom(
-                                        extra.span(),
-                                        format!(
-                                            "arity mismatch for !analysis.icnt: expected 0 operands, got {}",
-                                            ops.len()
-                                        ),
-                                    ));
-                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
-                                }
+                    let stat = match AnalysisStatisticOp::from_str(variant[0]) {
+                        Ok(AnalysisStatisticOp::ExecutionCount) => {
+                            if let Either::Left(ops) = operand.as_ref()
+                                && !ops.is_empty() {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.icnt: expected 0 operands, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                             }
                             AnalysisStatistic::ExecutionCount
                         }
-                        Some(AnalysisStatisticOp::InstructionCount) => {
+                        Ok(AnalysisStatisticOp::InstructionCount) => {
                             let ops = match operand.as_ref() {
                                 Either::Left(ops) => ops,
                                 Either::Right(_) => {
@@ -1719,18 +1711,17 @@ where
                                 }
                             }
                         }
-                        Some(AnalysisStatisticOp::TerminationBehavior) => {
-                            if let Either::Left(ops) = operand.as_ref() {
-                                if !ops.is_empty() {
-                                    emit.emit(Rich::custom(
-                                        extra.span(),
-                                        format!(
-                                            "arity mismatch for !analysis.term: expected 0 operands, got {}",
-                                            ops.len()
-                                        ),
-                                    ));
-                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
-                                }
+                        Ok(AnalysisStatisticOp::TerminationBehavior) => {
+                            if let Either::Left(ops) = operand.as_ref()
+                                && !ops.is_empty() {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.term: expected 0 operands, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                             }
                             let scope_name = variant.get(1).copied().unwrap_or("");
                             if scope_name == "reach" {
@@ -1761,7 +1752,7 @@ where
                                 AnalysisStatistic::TerminationBehavior(scope)
                             }
                         }
-                        None => {
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1778,17 +1769,16 @@ where
                 }
                 HyInstrOp::MetaForall => {
                     let (dest, ty) = dest_and_ty.unwrap();
-                    if let Either::Left(ops) = operand.as_ref() {
-                        if !ops.is_empty() {
-                            emit.emit(Rich::custom(
-                                extra.span(),
-                                format!(
-                                    "arity mismatch for !forall: expected 0 operands, got {}",
-                                    ops.len()
-                                ),
-                            ));
-                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
-                        }
+                    if let Either::Left(ops) = operand.as_ref()
+                        && !ops.is_empty() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for !forall: expected 0 operands, got {}",
+                                ops.len()
+                            ),
+                        ));
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                     }
                     MetaForall { dest, ty }.into()
                 }
@@ -1808,9 +1798,9 @@ where
         .then(label_parser())
         .map(|((cond, target_true), target_false)| {
             Branch {
-                cond: cond,
-                target_true: target_true,
-                target_false: target_false,
+                cond,
+                target_true,
+                target_false,
             }
             .into()
         });
@@ -1819,7 +1809,7 @@ where
 
     let jump = just(Token::TerminatorOp(HyTerminatorOp::Jump))
         .ignore_then(label_parser())
-        .map(|target| Jump { target: target }.into());
+        .map(|target| Jump { target }.into());
 
     let ret = just(Token::TerminatorOp(HyTerminatorOp::Ret))
         .ignore_then(
@@ -1855,9 +1845,9 @@ where
         .then(parse_terminator())
         .then_ignore(just(Token::Newline).or_not())
         .map(|((label, instructions), terminator)| BasicBlock {
-            label: label,
+            label,
             instructions,
-            terminator: terminator,
+            terminator,
         });
 
     let meta_arguments = any()
@@ -1948,8 +1938,8 @@ where
                 params,
                 return_type: ty.left(),
                 body: blocks.into_iter().map(|block| (block.label, block)).collect(),
-                visibility: visibility,
-                cconv: cconv,
+                visibility,
+                cconv,
                 meta_function: is_meta_func,
                 ..Default::default()
             };
@@ -2108,8 +2098,7 @@ pub fn extend_module_from_path(
             }
         });
 
-        let uuid_generator = Rc::new(|| Uuid::new_v4());
-
+        let uuid_generator = Rc::new(Uuid::new_v4);
         let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
@@ -2184,7 +2173,7 @@ pub fn extend_module_from_path(
         // Find the function in the list_added_internal_functions
         let matching_functions: Vec<_> = list_added_internal_functions
             .iter()
-            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .filter(|f| f.name.as_ref() == Some(name))
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
@@ -2225,8 +2214,7 @@ pub fn extend_module_from_path(
             {
                 if let Some(func_ptr) = operands
                     .try_as_imm_mut()
-                    .map(|imm| imm.try_as_func_ptr_mut())
-                    .flatten()
+                    .and_then(|imm| imm.try_as_func_ptr_mut())
                 {
                     match func_ptr {
                         FunctionPointer::Internal(uuid) => {
@@ -2311,18 +2299,17 @@ pub fn extend_module_from_string(
                     FunctionPointerType::External => *unresolved_external_functions
                         .borrow_mut()
                         .entry(name)
-                        .or_insert_with(|| Uuid::new_v4()),
+                        .or_insert_with(Uuid::new_v4),
                     FunctionPointerType::Internal => *unresolved_internal_functions
                         .borrow_mut()
                         .entry(name)
-                        .or_insert_with(|| Uuid::new_v4()),
+                        .or_insert_with(Uuid::new_v4),
                 };
                 Some(uuid)
             }
         });
 
-        let uuid_generator = Rc::new(|| Uuid::new_v4());
-
+        let uuid_generator = Rc::new(Uuid::new_v4);
         let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
@@ -2395,7 +2382,7 @@ pub fn extend_module_from_string(
     for (name, uuid) in unresolved_internal_functions.borrow().iter() {
         let matching_functions: Vec<_> = list_added_internal_functions
             .iter()
-            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .filter(|f| f.name.as_ref() == Some(name))
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);

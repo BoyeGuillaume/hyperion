@@ -291,10 +291,13 @@ impl CastVariant {
             CastVariant::Bitcast => "bitcast",
         }
     }
+}
 
-    /// Parses a string to return the corresponding cast operation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        CastVariant::iter().find(|op| op.to_str() == s)
+impl std::str::FromStr for CastVariant {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        CastVariant::iter().find(|op| op.to_str() == s).ok_or(())
     }
 }
 

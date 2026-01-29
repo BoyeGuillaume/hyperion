@@ -39,12 +39,17 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
-impl MemoryOrdering {
-    /// Parse a textual memory ordering mnemonic (for example `acq_rel`).
-    pub fn from_str(s: &str) -> Option<Self> {
-        MemoryOrdering::iter().find(|ord| ord.to_str() == s)
-    }
+impl std::str::FromStr for MemoryOrdering {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        MemoryOrdering::iter()
+            .find(|ord| ord.to_str() == s)
+            .ok_or(())
+    }
+}
+
+impl MemoryOrdering {
     /// Return the canonical mnemonic for this memory ordering.
     pub fn to_str(&self) -> &'static str {
         match self {

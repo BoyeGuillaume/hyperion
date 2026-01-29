@@ -159,10 +159,10 @@ pub trait Instruction {
     /// Remap operands according to a mapping
     fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
         for operand in self.operands_mut() {
-            if let Operand::Reg(name) = operand {
-                if let Some(new_name) = mapping(*name) {
-                    *name = new_name;
-                }
+            if let Operand::Reg(name) = operand
+                && let Some(new_name) = mapping(*name)
+            {
+                *name = new_name;
             }
         }
     }
@@ -345,10 +345,13 @@ impl HyInstrOp {
                 | HyInstrOp::IRem
         )
     }
+}
 
-    /// Parse a mnemonic into its corresponding discriminator.
-    pub fn from_str(s: &str) -> Option<Self> {
-        HyInstrOp::iter().find(|op| op.opname() == s)
+impl std::str::FromStr for HyInstrOp {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HyInstrOp::iter().find(|op| op.opname() == s).ok_or(())
     }
 }
 

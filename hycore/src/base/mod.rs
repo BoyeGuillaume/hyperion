@@ -196,7 +196,8 @@ impl InstanceContext {
                 .version_control
                 .as_ref()
                 .and_then(|x| x.git())
-                .and_then(|x| x.branch.as_ref()).cloned()
+                .and_then(|x| x.branch.as_ref())
+                .cloned()
                 .unwrap_or_else(|| "<unnamed>".to_string())
         );
 
@@ -231,7 +232,9 @@ impl InstanceContext {
             module_context.uuid,
             module_context
                 .module
-                .functions.values().map(|v| v.name.clone().unwrap_or_else(|| format!("@{}", v.uuid)))
+                .functions
+                .values()
+                .map(|v| v.name.clone().unwrap_or_else(|| format!("@{}", v.uuid)))
                 .collect::<Vec<_>>()
         );
         let mut modules = self.modules.write();

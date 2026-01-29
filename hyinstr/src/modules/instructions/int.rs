@@ -57,12 +57,17 @@ pub enum OverflowSignednessPolicy {
     UTrap,
 }
 
-impl OverflowSignednessPolicy {
-    /// Creates an [`OverflowSignednessPolicy`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        OverflowSignednessPolicy::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for OverflowSignednessPolicy {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        OverflowSignednessPolicy::iter()
+            .find(|op| op.to_str() == s)
+            .ok_or(())
+    }
+}
+
+impl OverflowSignednessPolicy {
     /// Returns the string representation of the [`OverflowSignednessPolicy`].
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -100,12 +105,17 @@ pub enum IntegerSignedness {
     Unsigned,
 }
 
-impl IntegerSignedness {
-    /// Creates an [`IntegerSignedness`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        IntegerSignedness::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for IntegerSignedness {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        IntegerSignedness::iter()
+            .find(|op| op.to_str() == s)
+            .ok_or(())
+    }
+}
+
+impl IntegerSignedness {
     /// Returns the string representation of the [`IntegerSignedness`].
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -145,12 +155,15 @@ pub enum ICmpVariant {
     Sle,
 }
 
-impl ICmpVariant {
-    /// Creates an [`ICmpOp`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        ICmpVariant::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for ICmpVariant {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ICmpVariant::iter().find(|op| op.to_str() == s).ok_or(())
+    }
+}
+
+impl ICmpVariant {
     /// Returns the string representation of the [`ICmpOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -214,12 +227,15 @@ pub enum IShiftVariant {
     Ror,
 }
 
-impl IShiftVariant {
-    /// Creates an [`IShiftOp`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        IShiftVariant::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for IShiftVariant {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        IShiftVariant::iter().find(|op| op.to_str() == s).ok_or(())
+    }
+}
+
+impl IShiftVariant {
     /// Returns the string representation of the [`IShiftOp`].
     pub fn to_str(&self) -> &'static str {
         match self {

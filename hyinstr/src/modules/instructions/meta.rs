@@ -310,10 +310,15 @@ impl MetaProbVariant {
             MetaProbVariant::Variance => "var",      /* numeric */
         }
     }
+}
 
-    /// Create variant from string
-    pub fn from_str(s: &str) -> Option<MetaProbVariant> {
-        MetaProbVariant::iter().find(|variant| variant.to_str() == s)
+impl std::str::FromStr for MetaProbVariant {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<MetaProbVariant, Self::Err> {
+        MetaProbVariant::iter()
+            .find(|variant| variant.to_str() == s)
+            .ok_or(())
     }
 }
 

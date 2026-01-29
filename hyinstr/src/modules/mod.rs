@@ -113,9 +113,13 @@ impl Visibility {
             Visibility::Protected => "protected",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        Visibility::iter().find(|v| v.to_str() == s)
+impl std::str::FromStr for Visibility {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Visibility::iter().find(|v| v.to_str() == s).ok_or(())
     }
 }
 

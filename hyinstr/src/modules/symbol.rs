@@ -55,10 +55,10 @@ impl ExternalFunction {
                 *param_type = new_type;
             }
         }
-        if let Some(ret_type) = &mut self.return_type {
-            if let Some(new_type) = mapping(ret_type) {
-                *ret_type = new_type;
-            }
+        if let Some(ret_type) = &mut self.return_type
+            && let Some(new_type) = mapping(ret_type)
+        {
+            *ret_type = new_type;
         }
     }
 }

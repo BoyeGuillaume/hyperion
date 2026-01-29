@@ -126,9 +126,10 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     for block in func.body.values() {
         block.terminator.operands().for_each(|operand| {
             if let Some(name) = operand.try_as_reg_ref()
-                && let Some(&src_node) = name_to_node.get(name) {
-                    usage_graph.add_edge(source_node_index, src_node, ());
-                }
+                && let Some(&src_node) = name_to_node.get(name)
+            {
+                usage_graph.add_edge(source_node_index, src_node, ());
+            }
         });
     }
 

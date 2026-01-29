@@ -261,10 +261,12 @@ impl HyTerminatorOp {
             HyTerminatorOp::Trap => "trap",
         }
     }
+}
+impl std::str::FromStr for HyTerminatorOp {
+    type Err = ();
 
-    /// Parse a mnemonic into its corresponding terminator kind.
-    pub fn from_str(s: &str) -> Option<Self> {
-        HyTerminatorOp::iter().find(|op| op.opname() == s)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HyTerminatorOp::iter().find(|op| op.opname() == s).ok_or(())
     }
 }
 

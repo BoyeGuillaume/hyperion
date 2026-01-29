@@ -51,12 +51,15 @@ pub enum FCmpVariant {
     Ord,
 }
 
-impl FCmpVariant {
-    /// Creates an [`FCmpOp`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        FCmpVariant::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for FCmpVariant {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        FCmpVariant::iter().find(|op| op.to_str() == s).ok_or(())
+    }
+}
+
+impl FCmpVariant {
     /// Returns the string representation of the [`FCmpOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
