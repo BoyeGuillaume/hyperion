@@ -4,7 +4,6 @@ use hyinstr::{
     types::TypeRegistry,
     utils::Error,
 };
-use std::panic::AssertUnwindSafe;
 
 fn registry() -> TypeRegistry {
     TypeRegistry::new([0; 6])
@@ -955,7 +954,6 @@ entry:
 }
 "#;
     let ok_module = parse_module(&registry, ok_ir);
-    let ok_func = get_function(&ok_module, "cast_ok");
     assert!(
         get_function(&ok_module, "cast_ok")
             .type_check(&registry)
@@ -970,7 +968,6 @@ entry:
 }
 "#;
     let ok_module2 = parse_module(&registry, ok_ir2);
-    let ok_func2 = get_function(&ok_module2, "cast_ok2");
     assert!(
         get_function(&ok_module2, "cast_ok2")
             .type_check(&registry)
@@ -985,7 +982,6 @@ entry:
 }
 "#;
     let ok_module3 = parse_module(&registry, ok_ir3);
-    let ok_func3 = get_function(&ok_module3, "cast_ok3");
     assert!(
         get_function(&ok_module3, "cast_ok3")
             .type_check(&registry)
