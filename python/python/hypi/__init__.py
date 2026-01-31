@@ -7,7 +7,7 @@ import sys
 import hypi._sys as lib  # type: ignore
 import hypi.api as api
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 if "HY_LD_PATH" not in os.environ:
     search_roots = [join(path, "target", "release") for path in sys.path]
