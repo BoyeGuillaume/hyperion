@@ -966,6 +966,9 @@ where
             just_match(TokenDiscriminants::InstrOp)
                 .map(|x| x.try_as_instr_op().unwrap()),
         )
+        .then(
+            type_parser().then_ignore(just(Token::Comma)).or_not()
+        )
         .then(operand_parser)
         .then(
             label_parser()
@@ -1005,13 +1008,35 @@ where
         )
         .validate(move |(((elem, labels), align), volatile), extra, emit| {
             let state: &mut SimpleState<State<'src>> = extra.state();
-            let ((destination, op), operand) = elem;
+            let (((destination, op), op_additional_ty), operand) = elem;
             let (op, variant) = op;
             let dest_and_ty = if let Some((dest, ty)) = destination {
                 Some((state.get_register(dest), ty))
             } else {
                 None
             };
+
+            if op_additional_ty.is_some() != matches!(op, HyInstrOp::MGetElementPtr) {
+                if op_additional_ty.is_some() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: unexpected additional type",
+                            op.opname()
+                        ),
+                    ));
+                } else {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: missing additional type",
+                            op.opname()
+                        ),
+                    ));
+                }
+
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+            }
 
             if op != HyInstrOp::Phi && matches!(operand, Either::Right(_)) {
                 emit.emit(Rich::custom(
@@ -1410,6 +1435,7 @@ where
                 HyInstrOp::MGetElementPtr => {
                     let mut indices = operand.unwrap_left();
                     let (dest, ty) = dest_and_ty.unwrap();
+                    let op_additional_ty = op_additional_ty.unwrap();
 
                     if indices.is_empty() {
                         emit.emit(Rich::custom(
@@ -1425,7 +1451,7 @@ where
 
                     let base = indices.remove(0);
 
-                    MGetElementPtr { dest, ty, base, indices }.into()
+                    MGetElementPtr { dest, ty, in_ty: op_additional_ty, base, indices }.into()
                 }
                 HyInstrOp::Invoke => {
                     let mut operands = operand.unwrap_left();

@@ -31,6 +31,7 @@ use crate::types::{
     primary::{PrimaryType, WType},
 };
 pub mod aggregate;
+pub mod checker;
 pub mod primary;
 
 /// A stable reference to a type stored inside a `TypeRegistry`.

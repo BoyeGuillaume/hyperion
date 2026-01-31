@@ -93,10 +93,4 @@ pub enum Operand {
     Imm(AnyConst),
     /// Type-tagged undefined SSA value.
     Undef(Typeref),
-    /// Meta operand (only used internally in attributes/properties)
-    ///
-    /// Notice: Meta operands should not appear in regular instructions and
-    /// are prohibited in well-formed modules. They should only be used
-    /// in attributes/properties.
-    Meta(MetaLabel),
 }

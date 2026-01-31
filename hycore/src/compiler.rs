@@ -223,6 +223,33 @@ pub fn compile_sources(
         }
     }
 
+    // Verify and type check the module
+    hytrace!(instance, "Verifying compiled module");
+    module.verify().inspect_err(|e| {
+        hyerror!(instance, "Module verification failed: {}", e);
+    })?;
+
+    hytrace!(instance, "Type checking compiled module");
+    for func in module.functions.values() {
+        hytrace!(
+            instance,
+            "Type checking function '{}'",
+            func.name
+                .clone()
+                .unwrap_or_else(|| format!("@{}", func.uuid))
+        );
+        func.type_check(&type_registry).inspect_err(|e| {
+            hyerror!(
+                instance,
+                "Type check failed for function '{}': {}",
+                func.name
+                    .clone()
+                    .unwrap_or_else(|| format!("@{}", func.uuid)),
+                e
+            );
+        })?;
+    }
+
     // Produce compiled module storage or further processing here
     let storage = CompiledModuleStorage {
         module,

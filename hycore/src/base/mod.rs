@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::{
     base::module::{FunctionContext, ModuleContext},
     ext::{DynPluginEXT, StaticPluginEXT, hylog::LogMessageEXT, load_plugin_by_name},
-    hyinfo, hytrace,
+    hyerror, hyinfo, hytrace,
     theorems::library::TheoremLibrary,
     utils::error::{HyError, HyResult},
 };
@@ -205,7 +205,30 @@ impl InstanceContext {
     }
 
     pub fn add_module(self: &Arc<Self>, module: Module) -> HyResult<ModuleKey> {
+        // Verify and type check the module before adding it to the instance
+        hytrace!(self, "Verifying module before adding to instance");
         module.verify()?;
+
+        for func in module.functions.values() {
+            hytrace!(
+                self,
+                "Type checking function '{}'",
+                func.name
+                    .clone()
+                    .unwrap_or_else(|| format!("@{}", func.uuid))
+            );
+            func.type_check(&self.type_registry).inspect_err(|e| {
+                hyerror!(
+                    self,
+                    "Type check failed for function '{}': {}",
+                    func.name
+                        .clone()
+                        .unwrap_or_else(|| format!("@{}", func.uuid)),
+                    e
+                );
+            })?;
+        }
+
         let weak_self = Arc::downgrade(self);
 
         // Create a new module context

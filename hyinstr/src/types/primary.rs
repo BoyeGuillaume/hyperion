@@ -406,12 +406,18 @@ pub struct VcType {
     pub size: VcSize,
 }
 
+impl std::fmt::Display for VcSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VcSize::Fixed(num) => write!(f, "{}", num),
+            VcSize::Scalable(num) => write!(f, "vscale {}", num),
+        }
+    }
+}
+
 impl std::fmt::Display for VcType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.size {
-            VcSize::Fixed(num) => write!(f, "<{} x {}>", num, self.ty),
-            VcSize::Scalable(num) => write!(f, "<vscale {} x {}>", num, self.ty),
-        }
+        write!(f, "<{} x {}>", self.size, self.ty)
     }
 }
 

@@ -49,8 +49,6 @@ impl Operand {
                             write!(f, "undef")
                         }
                     }
-                    // Operand::Lbl(label) => write!(f, "{:#}", label),
-                    Operand::Meta(meta) => write!(f, "M_{}", meta.0),
                 }
             }
         }
@@ -115,6 +113,10 @@ impl HyInstr {
                     }
                     HyInstr::ISht(isht) => {
                         write!(f, ".{} ", isht.variant.to_str())?;
+                        Ok(false)
+                    }
+                    HyInstr::MGetElementPtr(element_ptr) => {
+                        write!(f, " {}, ", self.registry.fmt(element_ptr.in_ty),)?;
                         Ok(false)
                     }
                     HyInstr::MLoad(load) => {

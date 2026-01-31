@@ -254,8 +254,10 @@ impl Instruction for MAlloca {
 pub struct MGetElementPtr {
     /// Destination SSA name receiving the computed address.
     pub dest: Name,
-    /// Resulting pointer type.
+    /// Resulting pointer type (always `ptr`).
     pub ty: Typeref,
+    /// Type to interpret `base` as pointing to.
+    pub in_ty: Typeref,
     /// Base pointer operand.
     pub base: Operand,
     /// Index operands applied successively to `base`.
@@ -288,10 +290,10 @@ impl Instruction for MGetElementPtr {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
-        std::iter::once(self.ty)
+        std::iter::once(self.ty).chain(std::iter::once(self.in_ty))
     }
 
     fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
-        std::iter::once(&mut self.ty)
+        std::iter::once(&mut self.ty).chain(std::iter::once(&mut self.in_ty))
     }
 }

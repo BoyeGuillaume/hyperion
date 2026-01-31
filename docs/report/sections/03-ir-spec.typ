@@ -289,8 +289,8 @@ Memory operations are the only instructions that can observe or update memory st
   columns: (1fr, 1fr, 2fr),
   table.header([*Operation*], [*Type*], [*Meaning / notes*]),
 
-  [`alloca <ty>`], [`<ty>`], [Allocate stack storage (lifetime scoped to the function).],
-  [`getelementptr <ptr>, <idx...>`], [`ptr`], [Compute a derived address.],
+  [`alloca <num>`], [`<ty>`], [Allocate stack storage (lifetime scoped to the function).],
+  [`getelementptr <ty>, <ptr>, <idx...>`], [`ptr`], [Compute a derived address.],
   [`load <ptr>`], [any], [Read from memory.],
   [`store <ptr>, <val>`], [N/A], [Write to memory.],
 )

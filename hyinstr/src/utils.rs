@@ -182,4 +182,25 @@ pub enum Error {
         name: String,
         func_type: FunctionPointerType,
     },
+
+    /// Type mismatch encountered during type checking.
+    #[error(
+        "Type mismatch in instruction `{instr}`: expected type `{expected}`, but found type `{found}`."
+    )]
+    TypeMismatch {
+        instr: String,
+        expected: String,
+        found: String,
+    },
+
+    /// Type index is out of bounds.
+    #[error(
+        "The provided index `{index}` is out of bounds for type `{ty}` with maximum index `{max}` in instruction `{instr}`."
+    )]
+    ElementIndexOutOfBounds {
+        ty: String,
+        instr: String,
+        index: usize,
+        max: usize,
+    },
 }

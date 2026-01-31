@@ -281,7 +281,7 @@ fn function_verify_rejects_meta_elements_in_non_meta_function() {
     let meta_op_instr = HyInstr::from(IAdd {
         dest: Name(1),
         ty,
-        lhs: Operand::Meta(modules::operand::MetaLabel(0)),
+        lhs: Operand::Imm(0u32.into()),
         rhs: Operand::Imm(0u32.into()),
         variant: OverflowSignednessPolicy::Wrap,
     });

@@ -26,7 +26,7 @@ use crate::{
         symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
         terminator::Trap,
     },
-    types::{Typeref, primary::WType},
+    types::{TypeRegistry, Typeref, primary::WType},
     utils::Error,
 };
 use petgraph::prelude::DiGraphMap;
@@ -498,19 +498,6 @@ impl Function {
         Ok(())
     }
 
-    fn verify_no_meta_operands(&self) -> Result<(), Error> {
-        for bb in self.body.values() {
-            for instr in &bb.instructions {
-                for operand in instr.operands() {
-                    if let Operand::Meta(_) = operand {
-                        return Err(Error::MetaOperandNotAllowed);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn verify_phi_first_instr_of_block(&self) -> Result<(), Error> {
         for bb in self.body.values() {
             let mut found_non_phi = false;
@@ -723,7 +710,6 @@ impl Function {
     pub fn verify(&self) -> Result<(), Error> {
         self.verify_wildcards_soundness()?;
         if !self.meta_function {
-            self.verify_no_meta_operands()?;
             self.verify_no_meta_instruction()?;
         }
         self.verify_phi_first_instr_of_block()?;
@@ -738,6 +724,19 @@ impl Function {
 
         // TODO: Verify that all SSA names are defined before use (topological order)
         Ok(())
+    }
+
+    /// Perform type checking on the function.
+    ///
+    /// See [`super::types::checker::type_check`] function for more details.
+    pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        super::types::checker::type_check(
+            type_registry,
+            self.params.iter().copied(),
+            self.body.iter().flat_map(|x| x.1.instructions.iter()),
+            self.body.iter().map(|x| &x.1.terminator),
+            self.return_type,
+        )
     }
 
     /// Normalize SSA names in the function to ensure uniqueness and sequential ordering.
@@ -825,6 +824,7 @@ impl Function {
     /// Derive the dest-map, for each SSA name, find the instruction that defines it.
     ///
     /// You can use this to quickly lookup the instruction that defines a particular SSA name.
+    /// Notice that some [`Name`]s may not be present in the map, typically function parameters.
     ///
     pub fn derive_dest_map(&self) -> BTreeMap<Name, InstructionRef> {
         let mut dest_map = BTreeMap::new();
@@ -1067,6 +1067,15 @@ impl Module {
             let function = func.as_ref();
             function.verify()?;
             self.verify_func(function)?;
+        }
+
+        Ok(())
+    }
+
+    /// Type check each function in the module.
+    pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        for func in self.functions.values() {
+            func.type_check(type_registry)?;
         }
 
         Ok(())
