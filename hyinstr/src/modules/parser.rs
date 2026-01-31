@@ -1116,7 +1116,7 @@ where
                     return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                 }
             }
-            if op.has_variant() == variant.is_empty() {
+            else if op.has_variant() == variant.is_empty() {
                 emit.emit(Rich::custom(
                     extra.span(),
                     format!(
@@ -1293,10 +1293,15 @@ where
 
                     INeg { dest, ty, value }.into()
                 }
+                HyInstrOp::INot => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    INot { dest, ty, value }.into()
+                }
                 HyInstrOp::IAnd |
                 HyInstrOp::IOr |
                 HyInstrOp::IXor |
-                HyInstrOp::INot |
                 HyInstrOp::IImplies |
                 HyInstrOp::IEquiv |
                 HyInstrOp::FAdd |
@@ -1375,6 +1380,19 @@ where
                     let ordering = if variant.is_empty() {
                         None
                     } else {
+                        if variant.len() != 1 {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "arity mismatch for {} instruction variant: expected 1 variant operand, got {}",
+                                    op.opname(),
+                                    variant.len()
+                                ),
+                            ));
+
+                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                        }
+
                         Some(
                             match MemoryOrdering::from_str(variant[0]) {
                                 Ok(op) => op,

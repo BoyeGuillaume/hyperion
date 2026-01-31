@@ -611,8 +611,6 @@ pub fn type_check<'a>(
                         }
                     }
                 };
-
-                todo!()
             }
             InsertValue | ExtractValue => {
                 // Constraints is that a_typeref[indices...] == b_typeref
