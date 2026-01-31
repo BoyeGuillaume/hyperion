@@ -1,0 +1,62 @@
+name: Build C FFI Artifacts
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build cffi on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact: cffi-linux-x86_64
+            lib_name: libhycore_cffi.so
+          - os: macos-latest
+            artifact: cffi-macos
+            lib_name: libhycore_cffi.dylib
+          - os: windows-latest
+            artifact: cffi-windows
+            lib_name: hycore_cffi.dll
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: cffi-${{ matrix.os }}
+
+      - name: Build hycore-cffi library
+        run: cargo build -p hycore-cffi --release
+
+      - name: Collect headers and libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="cffi-artifacts/${{ matrix.artifact }}"
+          mkdir -p "$DEST/include" "$DEST/lib"
+          cp cffi/include/hycore.h "$DEST/include/"
+          cp "target/release/${{ matrix.lib_name }}" "$DEST/lib/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: cffi-artifacts/${{ matrix.artifact }}
