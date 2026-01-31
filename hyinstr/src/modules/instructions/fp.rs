@@ -18,6 +18,10 @@ use crate::{
 /// Floating-point comparison operations
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum FCmpVariant {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
     Oeq,
@@ -47,12 +51,15 @@ pub enum FCmpVariant {
     Ord,
 }
 
-impl FCmpVariant {
-    /// Creates an [`FCmpOp`] from its string representation.
-    pub fn from_str(s: &str) -> Option<Self> {
-        FCmpVariant::iter().find(|op| op.to_str() == s)
-    }
+impl std::str::FromStr for FCmpVariant {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        FCmpVariant::iter().find(|op| op.to_str() == s).ok_or(())
+    }
+}
+
+impl FCmpVariant {
     /// Returns the string representation of the [`FCmpOp`].
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -76,6 +83,10 @@ impl FCmpVariant {
 /// Floating-point addition instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FAdd {
     /// Destination SSA name receiving the sum.
     pub dest: Name,
@@ -112,6 +123,10 @@ impl Instruction for FAdd {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -120,6 +135,10 @@ impl Instruction for FAdd {
 /// Floating-point subtraction instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FSub {
     /// Destination SSA name receiving the difference.
     pub dest: Name,
@@ -156,6 +175,10 @@ impl Instruction for FSub {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -164,6 +187,10 @@ impl Instruction for FSub {
 /// Floating-point multiplication instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FMul {
     /// Destination SSA name receiving the product.
     pub dest: Name,
@@ -200,6 +227,10 @@ impl Instruction for FMul {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -208,6 +239,10 @@ impl Instruction for FMul {
 /// Floating-point division instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FDiv {
     /// Destination SSA name receiving the quotient.
     pub dest: Name,
@@ -244,6 +279,10 @@ impl Instruction for FDiv {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -252,6 +291,10 @@ impl Instruction for FDiv {
 /// Floating-point remainder instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FRem {
     /// Destination SSA name receiving the remainder.
     pub dest: Name,
@@ -288,6 +331,10 @@ impl Instruction for FRem {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -296,6 +343,10 @@ impl Instruction for FRem {
 /// Floating-point negation instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FNeg {
     /// Destination SSA name receiving the negated value.
     pub dest: Name,
@@ -330,6 +381,10 @@ impl Instruction for FNeg {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -338,6 +393,10 @@ impl Instruction for FNeg {
 /// Floating-point comparison instruction
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct FCmp {
     /// Destination SSA name receiving the comparison result.
     pub dest: Name,
@@ -375,6 +434,10 @@ impl Instruction for FCmp {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {

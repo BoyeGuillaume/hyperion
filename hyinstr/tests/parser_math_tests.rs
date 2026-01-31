@@ -85,8 +85,8 @@ dot_loop:
     branch %done, dot_exit, dot_iter
 
 dot_iter:
-    %offset_a: ptr = getelementptr %a_data, %idx
-    %offset_b: ptr = getelementptr %b_data, %idx
+    %offset_a: ptr = getelementptr fp32, %a_data, %idx
+    %offset_b: ptr = getelementptr fp32, %b_data, %idx
     %aval: fp32 = load %offset_a, align 4
     %bval: fp32 = load %offset_b, align 4
     %prod: fp32 = fmul %aval, %bval
@@ -107,7 +107,7 @@ max_zero:
     ret i32 0
 
 max_init:
-    %first_ptr: ptr = getelementptr %data, i32 0
+    %first_ptr: ptr = getelementptr i32, %data, i32 0
     %current: i32 = load %first_ptr
     jump max_loop
 
@@ -118,7 +118,7 @@ max_loop:
     branch %done, max_exit, max_iter
 
 max_iter:
-    %ptr_i: ptr = getelementptr %data, %idx
+    %ptr_i: ptr = getelementptr i32, %data, %idx
     %value: i32 = load %ptr_i
     %cmp: i1 = icmp.ugt %value, %max
     %max_next: i32 = select %cmp, %value, %max

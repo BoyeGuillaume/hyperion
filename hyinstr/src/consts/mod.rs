@@ -6,6 +6,7 @@
 use crate::{
     consts::{fp::FConst, int::IConst},
     modules::{Module, symbol::FunctionPointer},
+    types::{TypeRegistry, Typeref, primary::PtrType},
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,10 @@ pub mod int;
 /// A constant value (integer or floating‑point) usable as an immediate.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum AnyConst {
     /// Integer constant
     Int(IConst),
@@ -29,6 +34,15 @@ pub enum AnyConst {
 }
 
 impl AnyConst {
+    /// Retrieve the type of the constant.
+    pub fn typeref(&self, type_registry: &TypeRegistry) -> Typeref {
+        match self {
+            AnyConst::Int(ic) => type_registry.search_or_insert(ic.ty.into()),
+            AnyConst::Float(fc) => type_registry.search_or_insert(fc.ty.into()),
+            AnyConst::FuncPtr(_) => type_registry.search_or_insert(PtrType.into()),
+        }
+    }
+
     /// Format the constant as a string.
     pub fn fmt<'a>(&'a self, module: Option<&'a Module>) -> impl std::fmt::Display + 'a {
         pub struct Fmt<'a> {

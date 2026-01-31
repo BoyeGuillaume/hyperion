@@ -1,4 +1,4 @@
-use hycore::specifications::utils::{remove_unused_op, simple_simplify_function};
+use hycore::theorems::utils::{remove_unused_op, simple_simplify_function};
 use hyinstr::{
     modules::{Module, parser::extend_module_from_string},
     types::TypeRegistry,

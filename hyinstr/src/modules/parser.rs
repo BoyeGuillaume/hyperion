@@ -3,9 +3,11 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
     rc::Rc,
-    u16,
+    str::FromStr,
+    sync::Arc,
 };
 
+use crate::analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope};
 use bigdecimal::BigDecimal;
 use chumsky::{
     container::Seq,
@@ -25,7 +27,9 @@ use crate::{
     consts::{AnyConst, fp::FConst, int::IConst},
     modules::{
         BasicBlock, CallingConvention, Function, Instruction, Module, Visibility,
-        instructions::{HyInstr, HyInstrOp, fp::*, int::*, mem::*, meta::*, misc::*},
+        instructions::{
+            HyInstr, HyInstrOp, InstructionFlags, fp::*, int::*, mem::*, meta::*, misc::*,
+        },
         operand::{Label, Name, Operand},
         symbol::{FunctionPointer, FunctionPointerType},
         terminator::*,
@@ -104,6 +108,9 @@ enum Token<'a> {
 
     /// Equals '='
     Equals,
+
+    /// Newline '\n'
+    Newline,
 }
 
 impl std::fmt::Display for Token<'_> {
@@ -154,6 +161,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Comma => write!(f, ","),
             Token::Colon => write!(f, ":"),
             Token::Equals => write!(f, "="),
+            Token::Newline => write!(f, "\\n"),
         }
     }
 }
@@ -301,15 +309,14 @@ fn numeral_parser<'src>()
         .repeated()
         .at_least(1);
     let signed_exponent = (just('e').or(just('E')))
-        .ignore_then(sign.clone())
-        .ignore_then(decimal_digits.clone());
+        .ignore_then(sign)
+        .ignore_then(decimal_digits);
 
     let float_with_fraction = sign
-        .clone()
-        .ignore_then(decimal_digits.clone())
+        .ignore_then(decimal_digits)
         .then_ignore(just('.'))
-        .then(decimal_digits.clone())
-        .then(signed_exponent.clone().or_not())
+        .then(decimal_digits)
+        .then(signed_exponent.or_not())
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
@@ -325,9 +332,8 @@ fn numeral_parser<'src>()
         );
 
     let float_with_exponent = sign
-        .clone()
-        .ignore_then(decimal_digits.clone())
-        .then(signed_exponent.clone())
+        .ignore_then(decimal_digits)
+        .then(signed_exponent)
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
@@ -343,7 +349,6 @@ fn numeral_parser<'src>()
         );
 
     let hex_int = sign
-        .clone()
         .ignore_then(just("0x").or(just("0X")))
         .ignore_then(
             any()
@@ -375,7 +380,6 @@ fn numeral_parser<'src>()
         });
 
     let octal_int = sign
-        .clone()
         .ignore_then(just("0o").or(just("0O")))
         .ignore_then(
             any()
@@ -407,7 +411,6 @@ fn numeral_parser<'src>()
         });
 
     let binary_int = sign
-        .clone()
         .ignore_then(just("0b").or(just("0B")))
         .ignore_then(
             any()
@@ -507,7 +510,7 @@ fn identifier_parser<'src>()
                 }
             }
 
-            if !is_meta && let Some(visibility) = Visibility::from_str(s) {
+            if !is_meta && let Ok(visibility) = Visibility::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -520,7 +523,7 @@ fn identifier_parser<'src>()
                 return Token::Visibility(visibility);
             }
 
-            if !is_meta && let Some(cc) = CallingConvention::from_str(s) {
+            if !is_meta && let Ok(cc) = CallingConvention::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -533,11 +536,11 @@ fn identifier_parser<'src>()
                 return Token::CallingConvention(cc);
             }
 
-            if let Some(instr_op) = HyInstrOp::from_str(s) {
+            if let Ok(instr_op) = HyInstrOp::from_str(s) {
                 return Token::InstrOp(instr_op, other);
             }
 
-            if let Some(terminator_op) = HyTerminatorOp::from_str(s) {
+            if let Ok(terminator_op) = HyTerminatorOp::from_str(s) {
                 if !other.is_empty() {
                     emit.emit(Rich::custom(
                         extra.span(),
@@ -552,11 +555,11 @@ fn identifier_parser<'src>()
             }
 
             if other.is_empty() && !is_meta {
-                if let Some(ftype) = FType::from_str(s) {
+                if let Ok(ftype) = FType::from_str(s) {
                     return Token::FType(ftype);
                 }
 
-                if let Some(ordering) = MemoryOrdering::from_str(s) {
+                if let Ok(ordering) = MemoryOrdering::from_str(s) {
                     return Token::Ordering(ordering);
                 }
 
@@ -621,7 +624,9 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'s
 fn ignoring_parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> + Clone
 {
     choice((
-        any().filter(|c: &char| c.is_whitespace()).to(()),
+        any()
+            .filter(|c: &char| c.is_whitespace() && *c != '\n')
+            .to(()),
         comment_parser(),
     ))
     .repeated()
@@ -644,6 +649,11 @@ fn lexer<'src>()
         just(",").to(Token::Comma),
         just(":").to(Token::Colon),
         just("=").to(Token::Equals),
+        just("\n")
+            .padded_by(ignoring_parser())
+            .repeated()
+            .at_least(1)
+            .to(Token::Newline),
         register_parser().map(Token::Register),
         identifier_parser(),
     ))
@@ -669,11 +679,9 @@ where
                     .unwrap_or(false)
         })
         .map(|token| match token {
-            Token::IType(itype) => PrimaryBasicType::Int(itype).into(),
-            Token::FType(ftype) => PrimaryBasicType::Float(ftype).into(),
-            Token::Identifier(s, v) if s == "ptr" && v.is_empty() => {
-                PrimaryBasicType::Ptr(PtrType).into()
-            }
+            Token::IType(itype) => PrimaryBasicType::Int(itype),
+            Token::FType(ftype) => PrimaryBasicType::Float(ftype),
+            Token::Identifier(s, v) if s == "ptr" && v.is_empty() => PrimaryBasicType::Ptr(PtrType),
             _ => unreachable!(),
         })
 }
@@ -958,7 +966,16 @@ where
             just_match(TokenDiscriminants::InstrOp)
                 .map(|x| x.try_as_instr_op().unwrap()),
         )
+        .then(
+            type_parser().then_ignore(just(Token::Comma)).or_not()
+        )
         .then(operand_parser)
+        .then(
+            label_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
         .then(
             just(Token::Comma)
             .ignore_then(
@@ -989,15 +1006,37 @@ where
                 ).to(())
                 .or_not(),
         )
-        .validate(move |((elem, align), volatile), extra, emit| {
+        .validate(move |(((elem, labels), align), volatile), extra, emit| {
             let state: &mut SimpleState<State<'src>> = extra.state();
-            let ((destination, op), operand) = elem;
+            let (((destination, op), op_additional_ty), operand) = elem;
             let (op, variant) = op;
             let dest_and_ty = if let Some((dest, ty)) = destination {
                 Some((state.get_register(dest), ty))
             } else {
                 None
             };
+
+            if op_additional_ty.is_some() != matches!(op, HyInstrOp::MGetElementPtr) {
+                if op_additional_ty.is_some() {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: unexpected additional type",
+                            op.opname()
+                        ),
+                    ));
+                } else {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: missing additional type",
+                            op.opname()
+                        ),
+                    ));
+                }
+
+                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+            }
 
             if op != HyInstrOp::Phi && matches!(operand, Either::Right(_)) {
                 emit.emit(Rich::custom(
@@ -1013,9 +1052,7 @@ where
             else if op == HyInstrOp::Phi && matches!(operand, Either::Left(_)) {
                 emit.emit(Rich::custom(
                     extra.span(),
-                    format!(
-                        "syntax error for phi instruction: expected [operand, label] pairs, got operands separated by commas instead",
-                    )
+                    "syntax error for phi instruction: expected [operand, label] pairs, got operands separated by commas instead".to_string(),
                 ));
 
                 return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
@@ -1046,6 +1083,24 @@ where
                 return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
             }
 
+            // Only authorize label lists for !analysis.term.reach (future-proof: parsed for all)
+            if let Some(lbls) = labels.as_ref() {
+                let first_variant = variant.first().copied();
+                let second_variant = variant.get(1).copied();
+
+                if !(lbls.is_empty() || op == HyInstrOp::MetaAnalysisStat && first_variant == Some("term") && second_variant == Some("reach")) {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "syntax error for {} instruction: unexpected label list",
+                            op.opname()
+                        ),
+                    ));
+
+                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                }
+            }
+
             if matches!(op, HyInstrOp::MLoad | HyInstrOp::MStore) {
                 /* Load and store instructions can both have one or zero variant operands */
                 if variant.len() > 1 {
@@ -1061,7 +1116,7 @@ where
                     return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
                 }
             }
-            if op.has_variant() == variant.is_empty() {
+            else if op.has_variant() == variant.is_empty() {
                 emit.emit(Rich::custom(
                     extra.span(),
                     format!(
@@ -1077,6 +1132,18 @@ where
 
             if op.has_variant() {
                 let num_variant_operands = match op {
+                    HyInstrOp::MetaAnalysisStat => {
+                        if variant.is_empty() {
+                            1
+                        } else {
+                            match AnalysisStatisticOp::from_str(variant[0]) {
+                                Ok(AnalysisStatisticOp::ExecutionCount) => 1,
+                                Ok(AnalysisStatisticOp::InstructionCount) => 1,
+                                Ok(AnalysisStatisticOp::TerminationBehavior) => 2,
+                                Err(()) => 1,
+                            }
+                        }
+                    }
                     _ => 1,
                 };
 
@@ -1139,9 +1206,9 @@ where
                 HyInstrOp::IAdd | HyInstrOp::ISub | HyInstrOp::IMul => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match OverflowSignednessPolicy::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match OverflowSignednessPolicy::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1167,9 +1234,9 @@ where
                 HyInstrOp::IDiv | HyInstrOp::IRem => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let signedness = match IntegerSignedness::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let signedness = match IntegerSignedness::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1194,9 +1261,9 @@ where
                 HyInstrOp::ISht => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match IShiftVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match IShiftVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1226,10 +1293,15 @@ where
 
                     INeg { dest, ty, value }.into()
                 }
+                HyInstrOp::INot => {
+                    let [value] = operand.unwrap_left().try_into().unwrap();
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    INot { dest, ty, value }.into()
+                }
                 HyInstrOp::IAnd |
                 HyInstrOp::IOr |
                 HyInstrOp::IXor |
-                HyInstrOp::INot |
                 HyInstrOp::IImplies |
                 HyInstrOp::IEquiv |
                 HyInstrOp::FAdd |
@@ -1258,9 +1330,9 @@ where
                 HyInstrOp::FCmp => {
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match FCmpVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match FCmpVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1282,9 +1354,9 @@ where
                     let [lhs, rhs] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
 
-                    let variant = match ICmpVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match ICmpVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1308,10 +1380,23 @@ where
                     let ordering = if variant.is_empty() {
                         None
                     } else {
+                        if variant.len() != 1 {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "arity mismatch for {} instruction variant: expected 1 variant operand, got {}",
+                                    op.opname(),
+                                    variant.len()
+                                ),
+                            ));
+
+                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                        }
+
                         Some(
-                            match MemoryOrdering::from_str(&variant[0]) {
-                                Some(op) => op,
-                                None => {
+                            match MemoryOrdering::from_str(variant[0]) {
+                                Ok(op) => op,
+                                Err(()) => {
                                     emit.emit(Rich::custom(
                                         extra.span(),
                                         format!(
@@ -1337,9 +1422,9 @@ where
                         None
                     } else {
                         Some(
-                            match MemoryOrdering::from_str(&variant[0]) {
-                                Some(op) => op,
-                                None => {
+                            match MemoryOrdering::from_str(variant[0]) {
+                                Ok(op) => op,
+                                Err(()) => {
                                     emit.emit(Rich::custom(
                                         extra.span(),
                                         format!(
@@ -1368,6 +1453,7 @@ where
                 HyInstrOp::MGetElementPtr => {
                     let mut indices = operand.unwrap_left();
                     let (dest, ty) = dest_and_ty.unwrap();
+                    let op_additional_ty = op_additional_ty.unwrap();
 
                     if indices.is_empty() {
                         emit.emit(Rich::custom(
@@ -1383,7 +1469,7 @@ where
 
                     let base = indices.remove(0);
 
-                    MGetElementPtr { dest, ty, base, indices }.into()
+                    MGetElementPtr { dest, ty, in_ty: op_additional_ty, base, indices }.into()
                 }
                 HyInstrOp::Invoke => {
                     let mut operands = operand.unwrap_left();
@@ -1392,7 +1478,7 @@ where
                         None => (None, None),
                     };
 
-                    if operands.len() < 1 {
+                    if operands.is_empty() {
                         emit.emit(Rich::custom(
                             extra.span(),
                             format!(
@@ -1422,9 +1508,9 @@ where
                 HyInstrOp::Cast => {
                     let [value] = operand.unwrap_left().try_into().unwrap();
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match CastVariant::from_str(&variant[0]) {
-                        Some(op) => op,
-                        None => {
+                    let variant = match CastVariant::from_str(variant[0]) {
+                        Ok(op) => op,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1480,7 +1566,7 @@ where
                                 ));
                                 continue;
                             }
-                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                            indices.push(digits.first().cloned().unwrap_or(0));
                         } else {
                             emit.emit(Rich::custom(
                                 extra.span(),
@@ -1528,7 +1614,7 @@ where
                                 ));
                                 continue;
                             }
-                            indices.push(digits.get(0).cloned().unwrap_or(0));
+                            indices.push(digits.first().cloned().unwrap_or(0));
                         } else {
                             emit.emit(Rich::custom(
                                 extra.span(),
@@ -1557,9 +1643,9 @@ where
                 }
                 HyInstrOp::MetaProb => {
                     let (dest, ty) = dest_and_ty.unwrap();
-                    let variant = match MetaProbVariant::from_str(&variant[0]) {
-                        Some(variant) => variant,
-                        None => {
+                    let variant = match MetaProbVariant::from_str(variant[0]) {
+                        Ok(variant) => variant,
+                        Err(()) => {
                             emit.emit(Rich::custom(
                                 extra.span(),
                                 format!(
@@ -1606,6 +1692,140 @@ where
 
                     MetaProb { dest, ty, operand }.into()
                 }
+                HyInstrOp::MetaAnalysisStat => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+
+                    if variant.is_empty() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "missing variant for !analysis",
+                        ));
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+
+                    let stat = match AnalysisStatisticOp::from_str(variant[0]) {
+                        Ok(AnalysisStatisticOp::ExecutionCount) => {
+                            if let Either::Left(ops) = operand.as_ref()
+                                && !ops.is_empty() {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.icnt: expected 0 operands, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                            }
+                            AnalysisStatistic::ExecutionCount
+                        }
+                        Ok(AnalysisStatisticOp::InstructionCount) => {
+                            let ops = match operand.as_ref() {
+                                Either::Left(ops) => ops,
+                                Either::Right(_) => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        "syntax error for !analysis.icnt: expected 1 immediate integer operand",
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            };
+                            if ops.len() != 1 {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.icnt: expected 1 operand, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                            }
+                            let [value] = operand.unwrap_left().try_into().unwrap();
+                            match value {
+                                Operand::Imm(AnyConst::Int(ic)) => {
+                                    let bits = ic.value.to_u32_digits().1.into_iter().next().unwrap_or_default();
+                                    let flags = InstructionFlags::from_bits_truncate(bits);
+                                    AnalysisStatistic::InstructionCount(flags)
+                                }
+                                _ => {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        "type error for !analysis.icnt: expected integer immediate operand",
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                            }
+                        }
+                        Ok(AnalysisStatisticOp::TerminationBehavior) => {
+                            if let Either::Left(ops) = operand.as_ref()
+                                && !ops.is_empty() {
+                                emit.emit(Rich::custom(
+                                    extra.span(),
+                                    format!(
+                                        "arity mismatch for !analysis.term: expected 0 operands, got {}",
+                                        ops.len()
+                                    ),
+                                ));
+                                return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                            }
+                            let scope_name = variant.get(1).copied().unwrap_or("");
+                            if scope_name == "reach" {
+                                let lbls = labels.clone().unwrap_or_default();
+                                if lbls.is_empty() {
+                                    emit.emit(Rich::custom(
+                                        extra.span(),
+                                        "syntax error for !analysis.term.reach: expected at least 1 label",
+                                    ));
+                                    return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                }
+                                AnalysisStatistic::TerminationBehavior(TerminationScope::ReachAny(lbls))
+                            } else {
+                                let scope = match scope_name {
+                                    "blockexit" => TerminationScope::BlockExit,
+                                    "funcexit" => TerminationScope::FunctionExit,
+                                    _ => {
+                                        emit.emit(Rich::custom(
+                                            extra.span(),
+                                            format!(
+                                                "unknown termination scope variant: {} (expected one of: blockexit, funcexit, reach)",
+                                                scope_name
+                                            ),
+                                        ));
+                                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                                    }
+                                };
+                                AnalysisStatistic::TerminationBehavior(scope)
+                            }
+                        }
+                        Err(()) => {
+                            emit.emit(Rich::custom(
+                                extra.span(),
+                                format!(
+                                    "unknown analysis statistic op: {} (expected one of: {})",
+                                    variant[0],
+                                    crate::analysis::AnalysisStatisticOp::iter().map(|op| op.to_str()).collect::<Vec<_>>().join(", ")
+                                ),
+                            ));
+                            return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                        }
+                    };
+
+                    MetaAnalysisStat { dest, ty, statistic: stat }.into()
+                }
+                HyInstrOp::MetaForall => {
+                    let (dest, ty) = dest_and_ty.unwrap();
+                    if let Either::Left(ops) = operand.as_ref()
+                        && !ops.is_empty() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!(
+                                "arity mismatch for !forall: expected 0 operands, got {}",
+                                ops.len()
+                            ),
+                        ));
+                        return HyInstr::MetaAssert(MetaAssert { condition: Operand::Imm(IConst::from(1u64).into()) });
+                    }
+                    MetaForall { dest, ty }.into()
+                }
             }
         }).boxed()
 }
@@ -1622,9 +1842,9 @@ where
         .then(label_parser())
         .map(|((cond, target_true), target_false)| {
             Branch {
-                cond: cond,
-                target_true: target_true,
-                target_false: target_false,
+                cond,
+                target_true,
+                target_false,
             }
             .into()
         });
@@ -1633,7 +1853,7 @@ where
 
     let jump = just(Token::TerminatorOp(HyTerminatorOp::Jump))
         .ignore_then(label_parser())
-        .map(|target| Jump { target: target }.into());
+        .map(|target| Jump { target }.into());
 
     let ret = just(Token::TerminatorOp(HyTerminatorOp::Ret))
         .ignore_then(
@@ -1655,15 +1875,23 @@ fn parse_function<'src, I>() -> impl Parser<'src, I, Function, Extra<'src>> + Cl
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let block_label = label_parser().then_ignore(just(Token::Colon));
+    let block_label = label_parser()
+        .then_ignore(just(Token::Colon))
+        .then_ignore(just(Token::Newline).or_not());
 
     let block = block_label
-        .then(parse_instruction().repeated().collect::<Vec<_>>())
+        .then(
+            parse_instruction()
+                .separated_by(just(Token::Newline))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::Newline).or_not())
         .then(parse_terminator())
+        .then_ignore(just(Token::Newline).or_not())
         .map(|((label, instructions), terminator)| BasicBlock {
-            label: label,
+            label,
             instructions,
-            terminator: terminator,
+            terminator,
         });
 
     let meta_arguments = any()
@@ -1730,7 +1958,7 @@ where
             block.repeated()
             .collect::<Vec<_>>()
             .delimited_by(
-                just(Token::LBrace),
+                just(Token::LBrace).ignore_then(just(Token::Newline).or_not()),
                 just(Token::RBrace),
             )
         )
@@ -1754,10 +1982,10 @@ where
                 params,
                 return_type: ty.left(),
                 body: blocks.into_iter().map(|block| (block.label, block)).collect(),
-                visibility: visibility,
-                cconv: cconv,
-                wildcard_types: Default::default(),
+                visibility,
+                cconv,
                 meta_function: is_meta_func,
+                ..Default::default()
             };
 
             // Check if function should be meta-function
@@ -1794,6 +2022,29 @@ where
                 .map(|token| token.try_as_string_literal().unwrap()),
         )
         .labelled("import statement")
+}
+
+// Final parser, import + function definitions
+enum Item {
+    Import(String),
+    Function(Function),
+}
+
+fn final_parser<'src, I>() -> impl Parser<'src, I, Vec<Item>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    fast_boxed!(
+        just(Token::Newline)
+            .or_not()
+            .ignore_then(choice((
+                import_parser().map(Item::Import),
+                parse_function().map(Item::Function),
+            )))
+            .then_ignore(just(Token::Newline).or_not())
+            .repeated()
+            .collect()
+    )
 }
 
 /// Extend a module by parsing a file at the given path, including handling imports
@@ -1871,12 +2122,6 @@ pub fn extend_module_from_path(
         let (tokens, spans): (Vec<_>, Vec<_>) =
             lexer_result.into_output().unwrap().into_iter().unzip();
 
-        // Final parser, import + function definitions
-        enum Item {
-            Import(String),
-            Function(Function),
-        }
-
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
             if let Some(func_ptr) = module
                 .find_function_uuid_by_name(&name, func_type)
@@ -1897,14 +2142,8 @@ pub fn extend_module_from_path(
             }
         });
 
-        let uuid_generator = Rc::new(|| Uuid::new_v4());
-
-        let parser = choice((
-            import_parser().map(Item::Import),
-            parse_function().map(Item::Function),
-        ))
-        .repeated()
-        .collect::<Vec<_>>();
+        let uuid_generator = Rc::new(Uuid::new_v4);
+        let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
@@ -1978,7 +2217,7 @@ pub fn extend_module_from_path(
         // Find the function in the list_added_internal_functions
         let matching_functions: Vec<_> = list_added_internal_functions
             .iter()
-            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .filter(|f| f.name.as_ref() == Some(name))
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
@@ -2019,8 +2258,7 @@ pub fn extend_module_from_path(
             {
                 if let Some(func_ptr) = operands
                     .try_as_imm_mut()
-                    .map(|imm| imm.try_as_func_ptr_mut())
-                    .flatten()
+                    .and_then(|imm| imm.try_as_func_ptr_mut())
                 {
                     match func_ptr {
                         FunctionPointer::Internal(uuid) => {
@@ -2035,7 +2273,7 @@ pub fn extend_module_from_path(
         }
 
         // Add it to the module
-        module.functions.insert(func.uuid, func);
+        module.functions.insert(func.uuid, Arc::new(func));
     }
 
     // Verify module
@@ -2089,11 +2327,6 @@ pub fn extend_module_from_string(
     let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result.into_output().unwrap().into_iter().unzip();
 
     // Final parser, import + function definitions
-    enum Item {
-        Import(String),
-        Function(Function),
-    }
-
     let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let mut list_added_internal_functions = vec![];
@@ -2110,24 +2343,18 @@ pub fn extend_module_from_string(
                     FunctionPointerType::External => *unresolved_external_functions
                         .borrow_mut()
                         .entry(name)
-                        .or_insert_with(|| Uuid::new_v4()),
+                        .or_insert_with(Uuid::new_v4),
                     FunctionPointerType::Internal => *unresolved_internal_functions
                         .borrow_mut()
                         .entry(name)
-                        .or_insert_with(|| Uuid::new_v4()),
+                        .or_insert_with(Uuid::new_v4),
                 };
                 Some(uuid)
             }
         });
 
-        let uuid_generator = Rc::new(|| Uuid::new_v4());
-
-        let parser = choice((
-            import_parser().map(Item::Import),
-            parse_function().map(Item::Function),
-        ))
-        .repeated()
-        .collect::<Vec<_>>();
+        let uuid_generator = Rc::new(Uuid::new_v4);
+        let parser = final_parser();
 
         let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
         let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
@@ -2199,7 +2426,7 @@ pub fn extend_module_from_string(
     for (name, uuid) in unresolved_internal_functions.borrow().iter() {
         let matching_functions: Vec<_> = list_added_internal_functions
             .iter()
-            .filter(|f| f.name.as_ref().map_or(false, |n| n == name))
+            .filter(|f| f.name.as_ref() == Some(name))
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
@@ -2256,7 +2483,7 @@ pub fn extend_module_from_string(
             }
         }
 
-        module.functions.insert(func.uuid, func.clone());
+        module.functions.insert(func.uuid, Arc::new(func));
     }
 
     // Verify module integrity

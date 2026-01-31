@@ -1,11 +1,11 @@
 use crate::{
     base::InstanceContext,
-    define_plugin,
     ext::{
         PluginEXT, StaticPluginEXT,
         hylog::{LogCallbackEXT, LogCreateInfoEXT, LogLevelEXT, LogMessageEXT},
     },
     magic::{HYPERION_LOGGER_NAME_EXT, HYPERION_LOGGER_UUID_EXT},
+    register,
     utils::{error::HyResult, opaque::OpaqueList},
 };
 use std::sync::Weak;
@@ -18,7 +18,7 @@ pub struct LogPluginEXT {
     callback: Option<LogCallbackEXT>,
     min_level: LogLevelEXT,
 }
-define_plugin!(LogPluginEXT);
+register!(plugin LogPluginEXT);
 
 impl StaticPluginEXT for LogPluginEXT {
     const UUID: Uuid = HYPERION_LOGGER_UUID_EXT;

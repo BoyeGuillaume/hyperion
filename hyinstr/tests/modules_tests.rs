@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -54,15 +55,13 @@ fn function(
     meta_function: bool,
 ) -> Function {
     Function {
-        uuid: Uuid::new_v4(),
         name: Some(name.to_string()),
         params,
         return_type,
         body: blocks.into_iter().map(|bb| (bb.label, bb)).collect(),
-        visibility: None,
-        cconv: None,
         wildcard_types,
         meta_function,
+        ..Default::default()
     }
 }
 
@@ -282,7 +281,7 @@ fn function_verify_rejects_meta_elements_in_non_meta_function() {
     let meta_op_instr = HyInstr::from(IAdd {
         dest: Name(1),
         ty,
-        lhs: Operand::Meta(modules::operand::MetaLabel(0)),
+        lhs: Operand::Imm(0u32.into()),
         rhs: Operand::Imm(0u32.into()),
         variant: OverflowSignednessPolicy::Wrap,
     });
@@ -424,6 +423,7 @@ fn function_analysis_helpers_produce_expected_graphs() {
         false,
     );
     func.verify().unwrap();
+    let func = Arc::new(func);
 
     let cfg = func.derive_function_flow();
     assert!(cfg.contains_node(Label::NIL));
@@ -443,7 +443,7 @@ fn function_analysis_helpers_produce_expected_graphs() {
         .collect();
     assert!(phis.len() >= 2);
 
-    let ctx = func.generate_analysis_context();
+    let ctx = func.analyze();
     assert_eq!(ctx.cfg.node_count(), cfg.node_count());
     assert_eq!(ctx.dest_map.len(), dest_map.len());
 }
@@ -536,12 +536,9 @@ fn module_verify_succeeds_when_functions_resolved() {
                 }),
             ),
         )]),
-        visibility: None,
-        cconv: None,
-        wildcard_types: BTreeSet::new(),
-        meta_function: false,
+        ..Default::default()
     };
-    module.functions.insert(callee_uuid, callee.clone());
+    module.functions.insert(callee_uuid, Arc::new(callee));
 
     // Caller referencing callee
     let call_instr = HyInstr::from(Invoke {
@@ -565,7 +562,7 @@ fn module_verify_succeeds_when_functions_resolved() {
         BTreeSet::new(),
         false,
     );
-    module.functions.insert(caller.uuid, caller);
+    module.functions.insert(caller.uuid, Arc::new(caller));
 
     module.verify().unwrap();
 }
@@ -713,6 +710,53 @@ entry:
 }
 
 #[test]
+fn parser_parses_meta_forall_zero_arity_and_bool_type() {
+    let reg = registry();
+    let mut module = Module::default();
+    let src = r#"
+        define void !quant() {
+        entry:
+            %x: i1 = !forall
+            !assume %x
+            ret void
+        }
+    "#;
+
+    extend_module_from_string(&mut module, &reg, src).unwrap();
+    let uuid = module
+        .find_internal_function_uuid_by_name("quant")
+        .expect("function should exist");
+    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    assert!(func.meta_function);
+    let first = &func.body[&Label::NIL].instructions[0];
+    if let HyInstr::MetaForall(mf) = first {
+        use hyinstr::types::primary::IType;
+        let ty = reg.search_or_insert(IType::I1.into());
+        assert_eq!(mf.destination(), Some(Name(0))); // normalized to first SSA
+        assert_eq!(mf.destination_type(), Some(ty));
+    } else {
+        panic!("expected MetaForall as first instruction");
+    }
+}
+
+#[test]
+fn meta_analysis_stat_termination_scope_flags() {
+    use hyinstr::analysis::{AnalysisStatistic, TerminationScope};
+
+    let reg = registry();
+    let ty = i32(&reg);
+
+    let instr = HyInstr::from(modules::instructions::meta::MetaAnalysisStat {
+        dest: Name(1),
+        ty,
+        statistic: AnalysisStatistic::TerminationBehavior(TerminationScope::FunctionExit),
+    });
+
+    assert!(instr.is_meta_instruction());
+    assert!(instr.is_simple());
+}
+
+#[test]
 fn parser_reports_unresolved_external_function() {
     let reg = registry();
     let mut module = Module::default();
@@ -730,4 +774,73 @@ fn parser_reports_unresolved_external_function() {
     assert!(
         matches!(err, Error::UnresolvedFunction { func_type, .. } if func_type == FunctionPointerType::External)
     );
+}
+
+#[test]
+fn parser_parses_meta_analysis_stat_termination_variant() {
+    use hyinstr::analysis::{AnalysisStatistic, TerminationScope};
+
+    let reg = registry();
+    let mut module = Module::default();
+    let src = r#"
+        define void !ana() {
+        entry:
+            %x: i32 = !analysis.term.funcexit
+            ret void
+        }
+    "#;
+
+    extend_module_from_string(&mut module, &reg, src).unwrap();
+    let uuid = module
+        .find_internal_function_uuid_by_name("ana")
+        .expect("function should exist");
+    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    assert!(func.meta_function);
+    let first = &func.body[&Label::NIL].instructions[0];
+    if let HyInstr::MetaAnalysisStat(mas) = first {
+        let ty = i32(&reg);
+        assert_eq!(mas.destination(), Some(Name(0)));
+        assert_eq!(mas.destination_type(), Some(ty));
+        assert_eq!(
+            mas.statistic,
+            AnalysisStatistic::TerminationBehavior(TerminationScope::FunctionExit)
+        );
+    } else {
+        panic!("expected MetaAnalysisStat as first instruction");
+    }
+}
+
+#[test]
+fn parser_parses_meta_analysis_stat_instruction_count_operand() {
+    use hyinstr::analysis::AnalysisStatistic;
+    use hyinstr::modules::instructions::InstructionFlags;
+
+    let reg = registry();
+    let mut module = Module::default();
+    let src = r#"
+        define void !ana2() {
+        entry:
+            %x: i32 = !analysis.icnt i32 0x400
+            ret void
+        }
+    "#;
+
+    extend_module_from_string(&mut module, &reg, src).unwrap();
+    let uuid = module
+        .find_internal_function_uuid_by_name("ana2")
+        .expect("function should exist");
+    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    assert!(func.meta_function);
+    let first = &func.body[&Label::NIL].instructions[0];
+    if let HyInstr::MetaAnalysisStat(mas) = first {
+        let ty = i32(&reg);
+        assert_eq!(mas.destination(), Some(Name(0)));
+        assert_eq!(mas.destination_type(), Some(ty));
+        assert_eq!(
+            mas.statistic,
+            AnalysisStatistic::InstructionCount(InstructionFlags::MEMORY)
+        );
+    } else {
+        panic!("expected MetaAnalysisStat as first instruction");
+    }
 }

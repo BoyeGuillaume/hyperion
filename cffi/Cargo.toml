@@ -1,0 +1,25 @@
+[package]
+name = "hycore-cffi"
+version = "0.1.2"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc.workspace = true
+semver.workspace = true
+strum = { workspace = true, features = ["derive"] }
+hycore = { workspace = true, features = ["ext_all"] }
+
+[build-dependencies]
+cbindgen = "0.27"
+semver.workspace = true
+hycore.workspace = true
+
+[features]
+# No default features; consumers enable hycore features as needed
+default = []
+
+legacy_nozstd = ["hycore/legacy_nozstd"]

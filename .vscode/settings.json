@@ -9,6 +9,8 @@
         "**/target": true,
         "**/__pycache__": true,
         "**/_sys.abi3.so": true,
+        "**/.crush": true,
+        "Cargo.lock": true,
     },
     "editor.formatOnSave": true,
     "files.associations": {
@@ -16,6 +18,6 @@
         "stdint.h": "c"
     },
     "rust-analyzer.cargo.features": [
-        "ext_all"
+        "ext_all",
     ]
 }

@@ -1,6 +1,6 @@
 [package]
 name = "hyinstr"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
@@ -19,12 +19,15 @@ either.workspace = true
 enum-map.workspace = true
 bitflags.workspace = true
 chumsky = { workspace = true, optional = true }
+borsh = { workspace = true, optional = true }
+slotmap = { workspace = true }
 
 [features]
 default = ["chumsky", "chumsky/either"]
 serde = [
     "dep:serde",
     "serde/serde_derive",
+    "serde/rc",
     "uuid/serde",
     "num-bigint/serde",
     "bigdecimal/serde",
@@ -32,3 +35,4 @@ serde = [
     "bitflags/serde",
 ]
 chumsky = ["dep:chumsky"]
+borsh = ["dep:borsh", "borsh/derive", "borsh/rc", "uuid/borsh"]

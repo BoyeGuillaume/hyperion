@@ -23,6 +23,10 @@ use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 /// be provided by the derivation engine or external tools.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAssert {
     /// The condition to assert. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -46,6 +50,10 @@ impl Instruction for MetaAssert {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::empty()
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
         std::iter::empty()
     }
 
@@ -80,6 +88,10 @@ impl Instruction for MetaAssert {
 /// while `assert %cond` signifies that ∵ `%cond` is true.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAssume {
     /// The condition to assume. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -106,6 +118,10 @@ impl Instruction for MetaAssume {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -128,6 +144,10 @@ impl Instruction for MetaAssume {
 /// Check whether an operand is fully defined (no undef/poison content).
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaIsDef {
     /// Destination SSA name holding the boolean result.
     pub dest: Name,
@@ -162,6 +182,10 @@ impl Instruction for MetaIsDef {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -181,6 +205,58 @@ impl Instruction for MetaIsDef {
     }
 }
 
+/// Create a universally quantified ghost value.
+///
+/// This meta-instruction introduces a side-effect-free, unbound SSA value of a
+/// given type to support quantified reasoning (∀). It produces a destination
+/// register of the requested type and has no operands.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
+pub struct MetaForall {
+    /// Destination SSA name holding the quantified value.
+    pub dest: Name,
+    /// The type of the quantified value.
+    pub ty: Typeref,
+}
+
+impl Instruction for MetaForall {
+    fn flags(&self) -> InstructionFlags {
+        InstructionFlags::META
+    }
+
+    fn operands(&self) -> impl Iterator<Item = &Operand> {
+        std::iter::empty()
+    }
+
+    fn operands_mut(&mut self) -> impl Iterator<Item = &mut Operand> {
+        std::iter::empty()
+    }
+
+    fn destination(&self) -> Option<Name> {
+        Some(self.dest)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
+    fn set_destination(&mut self, name: Name) {
+        self.dest = name;
+    }
+
+    fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
+        std::iter::once(self.ty)
+    }
+
+    fn destination_type(&self) -> Option<Typeref> {
+        Some(self.ty)
+    }
+}
+
 /// Probability operand types
 ///
 /// Models different kinds of probability-related operands that can be used in
@@ -189,6 +265,10 @@ impl Instruction for MetaIsDef {
 #[strum_discriminants(name(MetaProbVariant))]
 #[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum MetaProbOperand {
     /// Operand (boolean) value, this is the probability that the given operand is true. Input
     /// should be a boolean value.
@@ -230,10 +310,15 @@ impl MetaProbVariant {
             MetaProbVariant::Variance => "var",      /* numeric */
         }
     }
+}
 
-    /// Create variant from string
-    pub fn from_str(s: &str) -> Option<MetaProbVariant> {
-        MetaProbVariant::iter().find(|variant| variant.to_str() == s)
+impl std::str::FromStr for MetaProbVariant {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<MetaProbVariant, Self::Err> {
+        MetaProbVariant::iter()
+            .find(|variant| variant.to_str() == s)
+            .ok_or(())
     }
 }
 
@@ -244,6 +329,10 @@ impl MetaProbVariant {
 /// for modeling and reasoning about probabilistic computations.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaProb {
     /// The destination SSA name for the result of the probability function.
     pub dest: Name,
@@ -290,6 +379,10 @@ impl Instruction for MetaProb {
         std::iter::once(self.ty)
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         Some(self.ty)
     }
@@ -303,6 +396,10 @@ impl Instruction for MetaProb {
 ///
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MetaAnalysisStat {
     /// The destination SSA name for the result of the analysis statistic instruction.
     pub dest: Name,
@@ -336,6 +433,10 @@ impl Instruction for MetaAnalysisStat {
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
     }
 
     fn destination_type(&self) -> Option<Typeref> {

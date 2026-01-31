@@ -30,6 +30,10 @@ pub trait Terminator: Instruction {
 /// See `Label` in `operand.rs` for more information about code labels.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Branch {
     /// The condition operand; should evaluate to a boolean value.
     ///
@@ -63,6 +67,10 @@ impl Instruction for Branch {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -83,6 +91,10 @@ impl Terminator for Branch {
 /// See `Label` in `operand.rs` for more information about code labels.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Jump {
     /// The label to jump to.
     pub target: Label,
@@ -109,6 +121,10 @@ impl Instruction for Jump {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -125,6 +141,10 @@ impl Terminator for Jump {
 /// If `value` is `None`, it indicates a `void` return.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Ret {
     pub value: Option<Operand>,
 }
@@ -150,6 +170,10 @@ impl Instruction for Ret {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -164,6 +188,10 @@ impl Terminator for Ret {
 /// Trap instruction to indicate an unrecoverable error or exceptional condition.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Trap;
 
 impl Instruction for Trap {
@@ -187,6 +215,10 @@ impl Instruction for Trap {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -203,7 +235,15 @@ impl Terminator for Trap {
 #[strum_discriminants(name(HyTerminatorOp))]
 #[strum_discriminants(derive(EnumIter))]
 #[cfg_attr(feature = "serde", strum_discriminants(derive(Serialize, Deserialize)))]
+#[cfg_attr(
+    feature = "borsh",
+    strum_discriminants(derive(borsh::BorshSerialize, borsh::BorshDeserialize))
+)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum HyTerminator {
     Branch(Branch),
     Jump(Jump),
@@ -221,10 +261,12 @@ impl HyTerminatorOp {
             HyTerminatorOp::Trap => "trap",
         }
     }
+}
+impl std::str::FromStr for HyTerminatorOp {
+    type Err = ();
 
-    /// Parse a mnemonic into its corresponding terminator kind.
-    pub fn from_str(s: &str) -> Option<Self> {
-        HyTerminatorOp::iter().find(|op| op.opname() == s)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HyTerminatorOp::iter().find(|op| op.opname() == s).ok_or(())
     }
 }
 
@@ -287,6 +329,13 @@ macro_rules! define_instr_any_instr {
             fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
                 match self {
                     $(HyTerminator::$variant(instr) => instr.referenced_types(),)*
+                }
+            }
+
+            #[auto_enum(Iterator)]
+            fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+                match self {
+                    $(HyTerminator::$variant(instr) => instr.referenced_types_mut(),)*
                 }
             }
 

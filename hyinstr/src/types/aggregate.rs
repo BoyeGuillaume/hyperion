@@ -24,6 +24,10 @@ use uuid::Uuid;
 ///    3) must have a fixed size (ie., unlike [`super::primary::VcSize`])
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ArrayType {
     /// Element type of the array.
     pub ty: Typeref,
@@ -75,6 +79,10 @@ impl ArrayType {
 /// index within the structure.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct StructType {
     /// Element types of the structure, in order.
     pub element_types: Vec<Typeref>,

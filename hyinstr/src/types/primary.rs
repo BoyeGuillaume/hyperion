@@ -28,6 +28,10 @@ use uuid::Uuid;
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 #[repr(transparent)]
 pub struct IType {
     num_bits: u32,
@@ -120,6 +124,10 @@ impl std::fmt::Display for IType {
 /// formats. Not all floating-point types may be supported on all targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum FType {
     /// 16-bit floating point value (IEEE-754 binary16)
     /// Also known as "half precision".
@@ -153,14 +161,15 @@ pub enum FType {
     PPCFp128,
 }
 
-impl FType {
-    /// Parses a floating-point type from its string representation.
-    ///
-    /// Returns [`None`] if the string does not correspond to a valid floating-point type.
-    pub fn from_str(str: &str) -> Option<Self> {
-        FType::iter().find(|ftype| ftype.to_str() == str)
-    }
+impl std::str::FromStr for FType {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        FType::iter().find(|ftype| ftype.to_str() == s).ok_or(())
+    }
+}
+
+impl FType {
     /// Returns the string representation of the floating-point type.
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -202,6 +211,10 @@ impl std::fmt::Display for FType {
 /// defined by the target.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct ExtType {
     /// Unique identifier describing the external type class.
     pub ext: Uuid,
@@ -239,6 +252,10 @@ impl std::fmt::Display for ExtType {
 /// to coexist in the same function or module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct WType {
     /// Ordinal identifier used to distinguish wildcard placeholders.
     pub id: u16,
@@ -262,6 +279,10 @@ impl std::fmt::Display for WType {
 /// to ensure behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct PtrType;
 
 impl std::fmt::Display for PtrType {
@@ -273,6 +294,10 @@ impl std::fmt::Display for PtrType {
 /// Primary base types used for vector types and other constructs.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumTryAs, EnumIs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum PrimaryBasicType {
     Int(IType),
     Float(FType),
@@ -338,6 +363,10 @@ impl std::fmt::Display for PrimaryBasicType {
 /// Size of a vector type, either fixed or scalable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum VcSize {
     /// Fixed size vector with the given number of elements.
     ///
@@ -366,6 +395,10 @@ pub enum VcSize {
 /// considered primary types and can be embedded inside other type descriptors.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct VcType {
     /// Element type stored in the vector lanes.
     pub ty: PrimaryBasicType,
@@ -373,12 +406,18 @@ pub struct VcType {
     pub size: VcSize,
 }
 
+impl std::fmt::Display for VcSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VcSize::Fixed(num) => write!(f, "{}", num),
+            VcSize::Scalable(num) => write!(f, "vscale {}", num),
+        }
+    }
+}
+
 impl std::fmt::Display for VcType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.size {
-            VcSize::Fixed(num) => write!(f, "<{} x {}>", num, self.ty),
-            VcSize::Scalable(num) => write!(f, "<vscale {} x {}>", num, self.ty),
-        }
+        write!(f, "<{} x {}>", self.size, self.ty)
     }
 }
 
@@ -406,6 +445,10 @@ impl From<usize> for VcSize {
 /// are local to a function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct LblType;
 
 impl std::fmt::Display for LblType {
@@ -420,6 +463,10 @@ impl std::fmt::Display for LblType {
 /// extension types, pointers, vectors and labels.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum PrimaryType {
     /// Integer type
     ///

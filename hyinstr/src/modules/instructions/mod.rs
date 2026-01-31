@@ -78,6 +78,21 @@ bitflags! {
     }
 }
 
+#[cfg(feature = "borsh")]
+impl borsh::BorshSerialize for InstructionFlags {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.bits(), writer)
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl borsh::BorshDeserialize for InstructionFlags {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let bits = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        Ok(InstructionFlags::from_bits_truncate(bits))
+    }
+}
+
 /// Common interface implemented by every instruction node.
 ///
 /// This trait provides lightweight, zero‑allocation iteration over an
@@ -115,6 +130,9 @@ pub trait Instruction {
     /// Any types referenced by this instruction.
     fn referenced_types(&self) -> impl Iterator<Item = Typeref>;
 
+    /// Any types referenced by this instruction mutably.
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref>;
+
     /// Update the destination SSA name for this instruction. No-op if the
     /// instruction does not produce a result.
     fn set_destination(&mut self, _name: Name) {}
@@ -138,13 +156,22 @@ pub trait Instruction {
         })
     }
 
-    // Remap operands according to a mapping
+    /// Remap operands according to a mapping
     fn remap_operands(&mut self, mapping: impl Fn(Name) -> Option<Name>) {
         for operand in self.operands_mut() {
-            if let Operand::Reg(name) = operand {
-                if let Some(new_name) = mapping(*name) {
-                    *name = new_name;
-                }
+            if let Operand::Reg(name) = operand
+                && let Some(new_name) = mapping(*name)
+            {
+                *name = new_name;
+            }
+        }
+    }
+
+    /// Remap types according to a mapping
+    fn remap_types(&mut self, mapping: impl Fn(Typeref) -> Option<Typeref>) {
+        for ty in self.referenced_types_mut() {
+            if let Some(new_ty) = mapping(*ty) {
+                *ty = new_ty;
             }
         }
     }
@@ -158,6 +185,10 @@ pub trait Instruction {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIs, EnumTryAs, EnumDiscriminants)]
 #[strum_discriminants(name(HyInstrOp), derive(EnumIter))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum HyInstr {
     // Integer instructions
     IAdd(int::IAdd),
@@ -205,6 +236,8 @@ pub enum HyInstr {
     MetaAssume(meta::MetaAssume),
     MetaIsDef(meta::MetaIsDef),
     MetaProb(meta::MetaProb),
+    MetaAnalysisStat(meta::MetaAnalysisStat),
+    MetaForall(meta::MetaForall),
 }
 
 impl HyInstrOp {
@@ -251,6 +284,8 @@ impl HyInstrOp {
             HyInstrOp::MetaAssume => "!assume",
             HyInstrOp::MetaIsDef => "!isdef",
             HyInstrOp::MetaProb => "!prob",
+            HyInstrOp::MetaAnalysisStat => "!analysis",
+            HyInstrOp::MetaForall => "!forall",
         }
     }
 
@@ -288,6 +323,8 @@ impl HyInstrOp {
             HyInstrOp::MetaAssert | HyInstrOp::MetaAssume => Some(1), // condition
             HyInstrOp::MetaIsDef => Some(1),
             HyInstrOp::MetaProb => None, // variable arity depending on variant
+            HyInstrOp::MetaAnalysisStat => None, // variable arity depending on analysis op
+            HyInstrOp::MetaForall => Some(0),
         }
     }
 
@@ -300,6 +337,7 @@ impl HyInstrOp {
                 | HyInstrOp::Cast
                 | HyInstrOp::ISht
                 | HyInstrOp::MetaProb
+                | HyInstrOp::MetaAnalysisStat
                 | HyInstrOp::IAdd
                 | HyInstrOp::ISub
                 | HyInstrOp::IMul
@@ -307,10 +345,13 @@ impl HyInstrOp {
                 | HyInstrOp::IRem
         )
     }
+}
 
-    /// Parse a mnemonic into its corresponding discriminator.
-    pub fn from_str(s: &str) -> Option<Self> {
-        HyInstrOp::iter().find(|op| op.opname() == s)
+impl std::str::FromStr for HyInstrOp {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        HyInstrOp::iter().find(|op| op.opname() == s).ok_or(())
     }
 }
 
@@ -377,6 +418,15 @@ macro_rules! define_instr_any_instr {
                 }
             }
 
+            #[auto_enum(Iterator)]
+            fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut crate::types::Typeref> {
+                match self {
+                    $(
+                        HyInstr::$variant(instr) => instr.referenced_types_mut(),
+                    )*
+                }
+            }
+
             fn destination_type(&self) -> Option<crate::types::Typeref> {
                 match self {
                     $(
@@ -424,6 +474,8 @@ define_instr_any_instr! {
     MetaAssume,
     MetaIsDef,
     MetaProb,
+    MetaAnalysisStat,
+    MetaForall,
 }
 
 macro_rules! define_hyinstr_from {
@@ -475,3 +527,5 @@ define_hyinstr_from!(meta::MetaAssert, MetaAssert);
 define_hyinstr_from!(meta::MetaAssume, MetaAssume);
 define_hyinstr_from!(meta::MetaIsDef, MetaIsDef);
 define_hyinstr_from!(meta::MetaProb, MetaProb);
+define_hyinstr_from!(meta::MetaAnalysisStat, MetaAnalysisStat);
+define_hyinstr_from!(meta::MetaForall, MetaForall);

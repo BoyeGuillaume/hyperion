@@ -15,6 +15,7 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
 
 use crate::{
@@ -23,8 +24,9 @@ use crate::{
         instructions::{HyInstr, Instruction},
         operand::{Label, Name, Operand},
         symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
+        terminator::Trap,
     },
-    types::{Typeref, primary::WType},
+    types::{TypeRegistry, Typeref, primary::WType},
     utils::Error,
 };
 use petgraph::prelude::DiGraphMap;
@@ -44,6 +46,10 @@ pub mod terminator;
 /// All Global Variables and Functions have one of the following types of linkage:
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum Linkage {
     /// Global values with `Linkage::private` linkage are only directly accessible by objects in the current module.
     ///
@@ -70,6 +76,10 @@ pub enum Linkage {
 /// Note: A symbol with internal or private linkage must have default visibility.
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum Visibility {
     /// Default visibility
     ///
@@ -103,9 +113,13 @@ impl Visibility {
             Visibility::Protected => "protected",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        Visibility::iter().find(|v| v.to_str() == s)
+impl std::str::FromStr for Visibility {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Visibility::iter().find(|v| v.to_str() == s).ok_or(())
     }
 }
 
@@ -114,6 +128,10 @@ impl Visibility {
 /// and more may be added in the future:
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum CallingConvention {
     /// The C calling convention
     ///
@@ -237,20 +255,25 @@ impl CallingConvention {
             CallingConvention::Numbered(n) => format!("cc{}", n).into(),
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for CallingConvention {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match CallingConvention::iter()
             .filter(|x| !matches!(x, CallingConvention::Numbered(_)))
             .find(|cc| cc.to_string().as_ref() == s)
         {
-            Some(cc) => Some(cc),
+            Some(cc) => Ok(cc),
             None => {
-                if let Some(num_str) = s.strip_prefix("cc") {
-                    if let Ok(num) = num_str.parse::<u32>() {
-                        return Some(CallingConvention::Numbered(num));
-                    }
+                if let Some(num_str) = s.strip_prefix("cc")
+                    && let Ok(num) = num_str.parse::<u32>()
+                {
+                    return Ok(CallingConvention::Numbered(num));
                 }
-                None
+
+                Err(())
             }
         }
     }
@@ -261,22 +284,32 @@ impl CallingConvention {
 /// This structure identifies an instruction by the basic block label it resides in
 /// and the index of the instruction within that block.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct InstructionRef {
     /// Label of the basic block containing the instruction.
     pub block: Label,
     /// Zero-based position of the instruction within the block.
-    pub index: usize,
+    pub index: u32,
+    /// Reserved for other use (check [`super::proof::AttachedFunction`] for examples).
+    pub reserved: u64,
 }
 
 impl From<(Label, usize)> for InstructionRef {
     fn from((block, index): (Label, usize)) -> Self {
-        Self { block, index }
+        Self {
+            block,
+            index: index as u32,
+            reserved: 0,
+        }
     }
 }
 
 impl From<InstructionRef> for (Label, usize) {
     fn from(reference: InstructionRef) -> Self {
-        (reference.block, reference.index)
+        (reference.block, reference.index as usize)
     }
 }
 
@@ -290,6 +323,11 @@ impl From<InstructionRef> for (Label, usize) {
 /// the next block to execute. This structure allows for the representation
 /// of complex control flow within functions.
 #[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct BasicBlock {
     /// Unique block label.
     pub label: Label,
@@ -307,9 +345,17 @@ impl BasicBlock {
 
     /// Create a [`FunctionInstructionReference`] for the instruction at the given index.
     pub fn instruction_reference(&self, index: usize) -> InstructionRef {
+        assert!(
+            index < self.instructions.len() && index <= u32::MAX as usize,
+            "Instruction index out of bounds for basic block (label: {:?}, index: {})",
+            self.label,
+            index
+        );
+
         InstructionRef {
             block: self.label,
-            index,
+            index: index as u32,
+            reserved: 0,
         }
     }
 }
@@ -332,6 +378,11 @@ impl BasicBlock {
 /// contain arbitrary control flow, including loops and recursion.
 ///
 #[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Function {
     /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
@@ -351,6 +402,34 @@ pub struct Function {
     pub wildcard_types: BTreeSet<WType>,
     /// Indicates whether this function is a meta-function (i.e., used for verification or analysis purposes).
     pub meta_function: bool,
+    /// If this function was derived from another, holds the source function UUID.
+    pub derived_from: Option<Uuid>,
+}
+
+impl Default for Function {
+    fn default() -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
+            name: None,
+            params: vec![],
+            return_type: None,
+            body: [(
+                Label::NIL,
+                BasicBlock {
+                    label: Label::NIL,
+                    instructions: vec![],
+                    terminator: terminator::HyTerminator::Trap(Trap),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            visibility: None,
+            cconv: None,
+            wildcard_types: Default::default(),
+            meta_function: false,
+            derived_from: Default::default(),
+        }
+    }
 }
 
 impl Function {
@@ -364,7 +443,7 @@ impl Function {
     pub const MAX_INSTR_PER_FUNC: usize = 1_000_000;
 
     /// Maximum allowed number of parameters in a function.
-    pub const MAX_PARAMS_PER_FUNC: usize = 1024;
+    pub const MAX_PARAMS_PER_FUNC: usize = 4096;
 
     /// Maximum allowed number of wildcard types in a function.
     pub const MAX_WILDCARD_TYPES_PER_FUNC: usize = 256;
@@ -390,7 +469,11 @@ impl Function {
                 }
             }
 
-            // Terminator do not reference any types (technically condition are always i1)
+            for typeref in bb.terminator.referenced_types() {
+                if let Some(wt) = typeref.try_as_wildcard() {
+                    wildcards.insert(wt);
+                }
+            }
         }
     }
 
@@ -412,19 +495,6 @@ impl Function {
             });
         }
 
-        Ok(())
-    }
-
-    fn verify_no_meta_operands(&self) -> Result<(), Error> {
-        for bb in self.body.values() {
-            for instr in &bb.instructions {
-                for operand in instr.operands() {
-                    if let Operand::Meta(_) = operand {
-                        return Err(Error::MetaOperandNotAllowed);
-                    }
-                }
-            }
-        }
         Ok(())
     }
 
@@ -564,6 +634,11 @@ impl Function {
     }
 
     /// Check whether the function should be treated as a meta-function.
+    ///
+    /// A function is considered a meta-function if it contains any meta-instructions.
+    /// Meta-functions are used for verification or analysis purposes and cannot be
+    /// executed directly, hence the distinction.
+    ///
     pub fn should_be_meta_function(&self) -> bool {
         // If any instruction is a meta-instruction, the function is meta
         for bb in self.body.values() {
@@ -619,13 +694,22 @@ impl Function {
         Label(max_index + 1)
     }
 
-    /// Verify SSA form:
-    /// 1) Each operand refers to a defined name.
-    /// 2) Each name is defined exactly once.
+    /// Verify the soundness of the function.
+    ///
+    /// This method performs a series of checks to ensure the integrity and correctness
+    /// of the function's structure and contents. It verifies:
+    /// - Wildcard types are sound.
+    /// - No meta-operands are present in non-meta functions.
+    /// - No meta-instructions are present in non-meta functions.
+    /// - Phi instructions are the first instructions in their respective blocks.
+    /// - Target basic blocks referenced by terminators exist.
+    /// - SSA form is maintained (all names are defined before use).
+    /// - Size constraints for blocks and functions are respected.
+    /// - The existence of an entry block.
+    ///
     pub fn verify(&self) -> Result<(), Error> {
         self.verify_wildcards_soundness()?;
         if !self.meta_function {
-            self.verify_no_meta_operands()?;
             self.verify_no_meta_instruction()?;
         }
         self.verify_phi_first_instr_of_block()?;
@@ -642,9 +726,25 @@ impl Function {
         Ok(())
     }
 
-    /// Normalize the function by ensuring that all SSA names are sequentially
-    /// numbered from zero upwards without gaps. Because of the use of `BTreeMap`
-    /// for basic blocks, ordering is always deterministic.
+    /// Perform type checking on the function.
+    ///
+    /// See [`super::types::checker::type_check`] function for more details.
+    pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        super::types::checker::type_check(
+            type_registry,
+            self.params.iter().copied(),
+            self.body.iter().flat_map(|x| x.1.instructions.iter()),
+            self.body.iter().map(|x| &x.1.terminator),
+            self.return_type,
+        )
+    }
+
+    /// Normalize SSA names in the function to ensure uniqueness and sequential ordering.
+    ///
+    /// This method remaps all SSA names used in the function's parameters and instructions
+    /// to a new set of unique names starting from `Name(0)`. It ensures that each SSA name
+    /// is used exactly once as a destination and that all operands refer to the newly assigned names.
+    ///
     pub fn normalize_ssa(&mut self) {
         let mut name_mapping = BTreeMap::new();
         let mut next_name = Name(0);
@@ -683,14 +783,23 @@ impl Function {
         }
     }
 
-    /// Retrieve instruction from a [`FunctionInstructionReference`].
+    /// Retrieve instruction from a [`InstructionRef`].
+    ///
+    /// Returns `None` if the block or instruction index is invalid.
+    ///
     pub fn get(&self, reference: InstructionRef) -> Option<&HyInstr> {
         self.body
             .get(&reference.block)
-            .and_then(|bb| bb.instructions.get(reference.index))
+            .and_then(|bb| bb.instructions.get(reference.index as usize))
     }
 
     /// Analyzes the control flow of a function and constructs its control flow graph (CFG).
+    ///
+    /// The CFG is represented as a directed graph where nodes are basic block labels
+    /// and edges represent possible control flow transitions between blocks. Each edge
+    /// is annotated with an optional condition operand that determines whether the transition
+    /// occurs.
+    ///
     pub fn derive_function_flow(&self) -> DiGraphMap<Label, Option<Operand>> {
         let mut graph = DiGraphMap::with_capacity(self.body.len(), self.body.len() * 3);
 
@@ -712,7 +821,11 @@ impl Function {
         graph
     }
 
-    /// Derive the dest-map, for each SSA name associate 1) the defining block label and 2) the instruction index within the block.
+    /// Derive the dest-map, for each SSA name, find the instruction that defines it.
+    ///
+    /// You can use this to quickly lookup the instruction that defines a particular SSA name.
+    /// Notice that some [`Name`]s may not be present in the map, typically function parameters.
+    ///
     pub fn derive_dest_map(&self) -> BTreeMap<Name, InstructionRef> {
         let mut dest_map = BTreeMap::new();
 
@@ -786,11 +899,37 @@ impl Function {
     }
 
     /// Get analysis context for the function.
-    pub fn generate_analysis_context(&'_ self) -> FunctionAnalysisContext<'_> {
-        FunctionAnalysisContext {
-            function: self,
+    pub fn analyze(self: Arc<Self>) -> FunctionAnalysis {
+        FunctionAnalysis {
             cfg: self.derive_function_flow(),
             dest_map: self.derive_dest_map(),
+            function: self,
+        }
+    }
+
+    /// Remap types in the function according to the provided mapping.
+    pub fn remap_types(&mut self, mapping: &BTreeMap<Typeref, Typeref>) {
+        // Remap parameter types
+        for (_, typeref) in self.params.iter_mut() {
+            if let Some(new_type) = mapping.get(typeref) {
+                *typeref = *new_type;
+            }
+        }
+
+        // Remap return type
+        if let Some(ret_type) = &self.return_type
+            && let Some(new_type) = mapping.get(ret_type)
+        {
+            self.return_type = Some(*new_type);
+        }
+
+        // Remap types in each instruction
+        for bb in self.body.values_mut() {
+            for instr in bb.instructions.iter_mut() {
+                instr.remap_types(|ty| mapping.get(&ty).cloned());
+            }
+
+            bb.terminator.remap_types(|ty| mapping.get(&ty).cloned());
         }
     }
 }
@@ -800,9 +939,9 @@ impl Function {
 /// This contains a list of acceleration structures to speed up analysis and
 /// ease lookups when dealing with functions.
 #[derive(Debug, Clone)]
-pub struct FunctionAnalysisContext<'a> {
+pub struct FunctionAnalysis {
     /// The function being analyzed.
-    pub function: &'a Function,
+    pub function: Arc<Function>,
     /// The control flow graph of the function.
     pub cfg: DiGraphMap<Label, Option<Operand>>,
     /// The destination map of the function.
@@ -815,9 +954,14 @@ pub struct FunctionAnalysisContext<'a> {
 /// Functions defined here appear in `functions`; references to symbols not
 /// defined locally are listed in `external_functions`.
 #[derive(Debug, Default, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Module {
     /// Defined functions keyed by their UUID.
-    pub functions: BTreeMap<Uuid, Function>,
+    pub functions: BTreeMap<Uuid, Arc<Function>>,
     /// Declared external functions keyed by their UUID.
     pub external_functions: BTreeMap<Uuid, ExternalFunction>,
 }
@@ -883,8 +1027,8 @@ impl Module {
             FunctionPointerType::Internal => self
                 .functions
                 .values()
-                .find(|f| f.name.as_deref() == Some(name))
-                .map(|f| FunctionPointer::Internal(f.uuid)),
+                .find(|f| f.as_ref().name.as_deref() == Some(name))
+                .map(|f| FunctionPointer::Internal(f.as_ref().uuid)),
             FunctionPointerType::External => self
                 .external_functions
                 .values()
@@ -901,27 +1045,56 @@ impl Module {
     pub fn find_internal_function_uuid_by_name(&self, name: &str) -> Option<Uuid> {
         self.functions
             .values()
-            .find(|f| f.name.as_deref() == Some(name))
-            .map(|f| f.uuid)
+            .find(|f| f.as_ref().name.as_deref() == Some(name))
+            .map(|f| f.as_ref().uuid)
     }
 
     /// Retrieve a particular function from its Uuid
     pub fn get_internal_function_by_uuid(&self, uuid: Uuid) -> Option<&Function> {
-        self.functions.get(&uuid)
+        self.functions.get(&uuid).map(|f| f.as_ref())
     }
 
     /// Retrieve a particular function from its Uuid (mutable)
     pub fn get_internal_function_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Function> {
-        self.functions.get_mut(&uuid)
+        self.functions
+            .get_mut(&uuid)
+            .and_then(|arc| Arc::get_mut(arc))
     }
 
     /// Check each function in the module for SSA validity.
     pub fn verify(&self) -> Result<(), Error> {
-        for function in self.functions.values() {
+        for func in self.functions.values() {
+            let function = func.as_ref();
             function.verify()?;
             self.verify_func(function)?;
         }
 
         Ok(())
+    }
+
+    /// Type check each function in the module.
+    pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        for func in self.functions.values() {
+            func.type_check(type_registry)?;
+        }
+
+        Ok(())
+    }
+
+    /// Remap types in the module according to the provided mapping.
+    pub fn remap_types(&mut self, mapping: &BTreeMap<Typeref, Typeref>) {
+        // Remap types in each function
+        for func in self.functions.values_mut() {
+            // Get mutable reference to the function
+            let function = Arc::get_mut(func).expect(
+                "Cannot remap types in function behind Arc; no other references should exist",
+            );
+            function.remap_types(mapping);
+        }
+
+        // Remap types in each external function
+        for ext_func in self.external_functions.values_mut() {
+            ext_func.remap_types(|ty| mapping.get(ty).cloned());
+        }
     }
 }

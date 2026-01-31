@@ -41,7 +41,6 @@ CMakeCache.txt
 CMakeFiles
 CMakeScripts
 Testing
-Makefile
 cmake_install.cmake
 install_manifest.txt
 compile_commands.json
@@ -275,3 +274,9 @@ tags
 # Added by cargo
 Cargo.lock
 /target
+
+# I don't know why i try to use AI agents when
+# I always need to rewrite everything myself cause
+# they are shit.
+AGENTS.md
+

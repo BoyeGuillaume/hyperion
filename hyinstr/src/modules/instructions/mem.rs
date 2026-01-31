@@ -26,6 +26,10 @@ use crate::{
 /// You can also check LLVM's documentation on [Ordering](https://llvm.org/docs/LangRef.html#atomic-memory-ordering) for more details.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, EnumIter)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum MemoryOrdering {
     Unordered,
     Monotonic,
@@ -35,12 +39,17 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
-impl MemoryOrdering {
-    /// Parse a textual memory ordering mnemonic (for example `acq_rel`).
-    pub fn from_str(s: &str) -> Option<Self> {
-        MemoryOrdering::iter().find(|ord| ord.to_str() == s)
-    }
+impl std::str::FromStr for MemoryOrdering {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        MemoryOrdering::iter()
+            .find(|ord| ord.to_str() == s)
+            .ok_or(())
+    }
+}
+
+impl MemoryOrdering {
     /// Return the canonical mnemonic for this memory ordering.
     pub fn to_str(&self) -> &'static str {
         match self {
@@ -61,6 +70,10 @@ impl MemoryOrdering {
 /// is specified, the load is considered atomic with the given ordering.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MLoad {
     /// Destination SSA name receiving the loaded value.
     pub dest: Name,
@@ -109,6 +122,10 @@ impl Instruction for MLoad {
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
     }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
 }
 
 /// Store a value to memory.
@@ -118,6 +135,10 @@ impl Instruction for MLoad {
 /// is specified, the store is considered atomic with the given ordering.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MStore {
     /// Pointer operand describing the destination address.
     pub addr: Operand,
@@ -153,6 +174,10 @@ impl Instruction for MStore {
         std::iter::empty()
     }
 
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::empty()
+    }
+
     fn destination_type(&self) -> Option<Typeref> {
         None
     }
@@ -167,6 +192,10 @@ impl Instruction for MStore {
 /// on the stack and let the optimizer handle promoting to registers if possible.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MAlloca {
     /// Destination SSA name receiving the pointer to the allocated storage.
     pub dest: Name,
@@ -206,6 +235,10 @@ impl Instruction for MAlloca {
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
         std::iter::once(self.ty)
     }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty)
+    }
 }
 
 /// `getelementptr` instruction is used to get the address of a sub-element
@@ -214,11 +247,17 @@ impl Instruction for MAlloca {
 /// instruction can also be used to calculate a vector of such addresses
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct MGetElementPtr {
     /// Destination SSA name receiving the computed address.
     pub dest: Name,
-    /// Resulting pointer type.
+    /// Resulting pointer type (always `ptr`).
     pub ty: Typeref,
+    /// Type to interpret `base` as pointing to.
+    pub in_ty: Typeref,
     /// Base pointer operand.
     pub base: Operand,
     /// Index operands applied successively to `base`.
@@ -251,6 +290,10 @@ impl Instruction for MGetElementPtr {
     }
 
     fn referenced_types(&self) -> impl Iterator<Item = Typeref> {
-        std::iter::once(self.ty)
+        std::iter::once(self.ty).chain(std::iter::once(self.in_ty))
+    }
+
+    fn referenced_types_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        std::iter::once(&mut self.ty).chain(std::iter::once(&mut self.in_ty))
     }
 }

@@ -52,6 +52,7 @@ impl<U, T: AsRef<U>> PartialEq for RefId<U, T> {
     }
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl<U, T: AsRef<U>> PartialOrd for RefId<U, T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let a = self.inner.as_ref() as *const U;

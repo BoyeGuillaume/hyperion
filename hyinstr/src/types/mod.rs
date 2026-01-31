@@ -17,6 +17,7 @@ use std::{
     ops::Deref,
 };
 
+use auto_enums::auto_enum;
 use log::{debug, info};
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 #[cfg(feature = "serde")]
@@ -30,11 +31,16 @@ use crate::types::{
     primary::{PrimaryType, WType},
 };
 pub mod aggregate;
+pub mod checker;
 pub mod primary;
 
 /// A stable reference to a type stored inside a `TypeRegistry`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub struct Typeref(Uuid);
 
 impl Typeref {
@@ -99,6 +105,10 @@ impl Typeref {
 /// deduplicated by the [`TypeRegistry`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIs, EnumTryAs)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
 pub enum AnyType {
     /// Primary types
     ///
@@ -168,6 +178,26 @@ impl AnyType {
         }
     }
 
+    /// Iterate over all [`Typeref`]s referenced by this type.
+    #[auto_enum(Iterator)]
+    pub fn iter_referenced_typerefs(&self) -> impl Iterator<Item = Typeref> {
+        match self {
+            AnyType::Primary(_) => std::iter::empty(),
+            AnyType::Array(array_type) => std::iter::once(array_type.ty),
+            AnyType::Struct(struct_type) => struct_type.element_types.iter().cloned(),
+        }
+    }
+
+    /// Mutably iterate over all [`Typeref`]s referenced by this type.
+    #[auto_enum(Iterator)]
+    pub fn iter_referenced_typerefs_mut(&mut self) -> impl Iterator<Item = &mut Typeref> {
+        match self {
+            AnyType::Primary(_) => std::iter::empty(),
+            AnyType::Array(array_type) => std::iter::once(&mut array_type.ty),
+            AnyType::Struct(struct_type) => struct_type.element_types.iter_mut(),
+        }
+    }
+
     /// Build a formatting helper that renders this type using the provided
     /// registry to resolve referenced element types.
     ///
@@ -207,6 +237,63 @@ pub struct TypeRegistry {
     node_id: [u8; 6],
 }
 
+#[cfg(feature = "borsh")]
+impl borsh::BorshSerialize for TypeRegistry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let array_lock = self.array.read();
+
+        // Write number of types
+        let len = array_lock.len() as u64;
+        <u64 as borsh::BorshSerialize>::serialize(&len, writer)?;
+
+        // Write each type
+        for (uuid, ty) in array_lock.iter() {
+            <Uuid as borsh::BorshSerialize>::serialize(uuid, writer)?;
+            <AnyType as borsh::BorshSerialize>::serialize(ty, writer)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl borsh::BorshDeserialize for TypeRegistry {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        // Read number of types
+        let len = <u64 as borsh::BorshDeserialize>::deserialize_reader(reader)? as usize;
+
+        let mut array = BTreeMap::new();
+        let mut inverse_lookup: BTreeMap<u64, SmallVec<Uuid, 1>> = BTreeMap::new();
+
+        for _ in 0..len {
+            let uuid = <Uuid as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+            let ty = <AnyType as borsh::BorshDeserialize>::deserialize_reader(reader)?;
+
+            // Insert into array
+            array.insert(uuid, ty.clone());
+
+            // Insert into inverse lookup
+            let h = {
+                let mut hasher = DefaultHasher::new();
+                ty.hash(&mut hasher);
+                hasher.finish()
+            };
+            if let Some(list) = inverse_lookup.get_mut(&h) {
+                list.push(uuid);
+            } else {
+                inverse_lookup.insert(h, smallvec![uuid]);
+            }
+        }
+
+        Ok(Self {
+            array: RwLock::new(array),
+            inverse_lookup: RwLock::new(inverse_lookup),
+            context: uuid::timestamp::context::Context::new_random(),
+            node_id: [0u8; 6], // NOTE: Node ID is not serialized/deserialized, a later call to init_node_id must be done
+        })
+    }
+}
+
 impl TypeRegistry {
     fn hash_ty(ty: &AnyType) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -231,6 +318,47 @@ impl TypeRegistry {
             context: uuid::timestamp::context::Context::new(0),
             node_id,
         }
+    }
+
+    /// Merge this registry with another, inserting all types from `other`
+    /// into `self`. Returns a mapping from `other`'s `Typeref`s to `self`'s
+    /// `Typeref`s.
+    pub fn merge_with(&self, other: &TypeRegistry) -> BTreeMap<Typeref, Typeref> {
+        let mut mapping = BTreeMap::new();
+
+        let other_array_lock = other.array.read_recursive();
+        let mut list_of_types: Vec<(Uuid, AnyType)> = other_array_lock
+            .iter()
+            .map(|(uuid, ty)| (*uuid, ty.clone()))
+            .collect();
+
+        // When inserting types, we need to ensure all previous types are inserted first
+        // to handle dependencies correctly. To achieve this, we first collect all types,
+        // then insert all we can until none are left to insert.
+        while !list_of_types.is_empty() {
+            list_of_types.retain_mut(|(uuid, any_type)| {
+                let can_insert = any_type.iter_referenced_typerefs().all(|ref_typeref| {
+                    mapping.contains_key(&ref_typeref) || ref_typeref.is_wildcard()
+                });
+
+                // Map old typeref to new typeref
+                for tyref in any_type.iter_referenced_typerefs_mut() {
+                    if let Some(new_typeref) = mapping.get(tyref) {
+                        *tyref = *new_typeref;
+                    }
+                }
+
+                if can_insert {
+                    let self_typeref = self.search_or_insert(any_type.clone());
+                    mapping.insert(Typeref(*uuid), self_typeref);
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+
+        mapping
     }
 
     /// Retrieve a borrowed [`AnyType`] for the given `typeref`. Returns
@@ -385,6 +513,18 @@ impl TypeRegistry {
             registry: self,
             typeref,
         }
+    }
+
+    /// Number of types stored in the registry. Should be used for debugging
+    /// because of concurrency.
+    pub fn len(&self) -> usize {
+        self.array.read().len()
+    }
+
+    /// Check whether the registry is empty. Should be used for debugging
+    /// because of concurrency.
+    pub fn is_empty(&self) -> bool {
+        self.array.read().is_empty()
     }
 }
 

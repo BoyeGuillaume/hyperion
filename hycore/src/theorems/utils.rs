@@ -1,4 +1,4 @@
-//! Lightweight optimization passes shared by specification tooling and provers.
+//! Lightweight optimization passes shared by theorems tooling and provers.
 
 use std::collections::HashMap;
 
@@ -95,7 +95,8 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     let mut usage_graph: DiGraph<InstructionRef, ()> = DiGraph::new();
     const SOURCE_NODE: InstructionRef = InstructionRef {
         block: Label::NIL,
-        index: usize::MAX,
+        index: u32::MAX,
+        reserved: 0, // not used
     };
     let source_node_index = usage_graph.add_node(SOURCE_NODE);
 
@@ -104,7 +105,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     let mut refs_to_node: HashMap<InstructionRef, petgraph::graph::NodeIndex> = HashMap::new();
 
     for (instr, instr_ref) in func.iter() {
-        let node_index = usage_graph.add_node(instr_ref.clone());
+        let node_index = usage_graph.add_node(instr_ref);
         refs_to_node.insert(instr_ref, node_index);
 
         if let Some(dest) = instr.destination() {
@@ -124,10 +125,10 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
     }
     for block in func.body.values() {
         block.terminator.operands().for_each(|operand| {
-            if let Some(name) = operand.try_as_reg_ref() {
-                if let Some(&src_node) = name_to_node.get(&name) {
-                    usage_graph.add_edge(source_node_index, src_node, ());
-                }
+            if let Some(name) = operand.try_as_reg_ref()
+                && let Some(&src_node) = name_to_node.get(name)
+            {
+                usage_graph.add_edge(source_node_index, src_node, ());
             }
         });
     }
@@ -137,7 +138,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
 
         for name in instr.operands().filter_map(|x| x.try_as_reg_ref()) {
             // Can be None if the operand register refers to an argument of the function
-            if let Some(&src) = name_to_node.get(&name) {
+            if let Some(&src) = name_to_node.get(name) {
                 usage_graph.add_edge(dst, src, ());
             }
         }
@@ -157,6 +158,7 @@ pub fn remove_unused_op(func: &mut Function) -> HyResult<()> {
             let instr_ref = InstructionRef {
                 block: *block_label,
                 index: instr_index,
+                reserved: 0, // not used
             };
             instr_index += 1;
             let node_index = refs_to_node[&instr_ref];

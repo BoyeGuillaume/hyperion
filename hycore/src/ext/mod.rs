@@ -41,7 +41,7 @@ inventory::collect!(PluginRegistry);
 
 /// Macro to define and register a Hyperion plugin.
 #[macro_export]
-macro_rules! define_plugin {
+macro_rules! register_plugin {
     (
         $plugin:ty
     ) => {

@@ -16,6 +16,33 @@ pub struct FConst {
     pub value: BigDecimal,
 }
 
+#[cfg(feature = "borsh")]
+impl borsh::BorshSerialize for FConst {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        use crate::consts::int::serialize_bigint_borsh;
+
+        borsh::BorshSerialize::serialize(&self.ty, writer)?;
+        let (bigint, exponent) = self.value.as_bigint_and_scale();
+        serialize_bigint_borsh(&bigint, writer)?;
+        borsh::BorshSerialize::serialize(&exponent, writer)?;
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "borsh")]
+impl borsh::BorshDeserialize for FConst {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        use crate::consts::int::deserialize_bigint_borsh;
+
+        let ty = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        let bigint = deserialize_bigint_borsh(reader)?;
+        let exponent = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        let value = BigDecimal::new(bigint, exponent);
+        Ok(Self { ty, value })
+    }
+}
+
 impl FConst {
     /// Create a new `FConst` from its type and value.
     pub fn new(ty: FType, value: BigDecimal) -> Self {
