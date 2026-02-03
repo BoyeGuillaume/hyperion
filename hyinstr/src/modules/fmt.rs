@@ -142,12 +142,12 @@ impl HyInstr {
                     }
                     HyInstr::MStore(store) => {
                         if store.volatile {
-                            write!(f, "volatile ")?;
+                            write!(f, "volatile")?;
                         }
 
                         write!(
                             f,
-                            "{}, {}",
+                            " {}, {}",
                             store.addr.fmt_with(Some(self.registry), self.module),
                             store.value.fmt_with(Some(self.registry), self.module)
                         )?;
@@ -414,12 +414,7 @@ impl Function {
                     } else {
                         write!(f, ", ")?;
                     }
-                    write!(
-                        f,
-                        "%{}: {}",
-                        param_name,
-                        self.type_registry.fmt(*param_type)
-                    )?;
+                    write!(f, "{}: {}", param_name, self.type_registry.fmt(*param_type))?;
                 }
                 writeln!(f, ") {{")?;
 
