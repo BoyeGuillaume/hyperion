@@ -25,19 +25,23 @@ fn main() {
     match extend_module_from_path(&mut module, &type_registry, path) {
         Ok(_) => {
             println!("Successfully parsed module from {}", args.input);
+            if let Err(e) = module.type_check(&type_registry) {
+                eprintln!("Type checking error: {}", e);
+                return;
+            }
+            println!("Successfully type checked module from {}", args.input);
 
             for (uuid, function) in &module.functions {
-                println!("{}:\n{}\n", uuid, function.fmt(&type_registry, None));
+                println!(
+                    "{}:\n{}\n",
+                    uuid,
+                    function.fmt(&type_registry, Some(&module))
+                );
             }
         }
         Err(error) => match error {
-            hyinstr::utils::Error::ParserErrors { errors, .. } => {
+            hyinstr::utils::Error::ParserError { errors, .. } => {
                 eprintln!("Failed to parse module from {}:", args.input);
-                // if tokens.is_empty() {
-                //     eprintln!("No tokens were produced.");
-                // } else {
-                //     eprintln!("Tokens: {}", tokens.join(" "));
-                // }
 
                 for error in errors {
                     let file = error.file.clone().unwrap_or_else(|| "<??>".to_string());
