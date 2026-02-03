@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap},
+    io,
     path::Path,
     rc::Rc,
     str::FromStr,
@@ -2067,9 +2068,13 @@ pub fn extend_module_from_path(
 ) -> Result<(), Error> {
     // Canonicalize the path
     let canonical_path = std::fs::canonicalize(&path)
-        .map_err(|e| Error::FileNotFound {
-            path: path.as_ref().to_string_lossy().to_string(),
-            cause: e,
+        .map_err(|e| {
+            let display_path = path.as_ref().to_string_lossy().to_string();
+            if e.kind() == io::ErrorKind::NotFound {
+                Error::FileNotFound(display_path)
+            } else {
+                Error::IllegalState(format!("Failed to canonicalize `{}`: {}", display_path, e))
+            }
         })
         .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))?;
     debug!(
@@ -2090,9 +2095,13 @@ pub fn extend_module_from_path(
             current_path.to_string_lossy()
         );
         let source = std::fs::read_to_string(&current_path)
-            .map_err(|e| Error::FileNotFound {
-                path: current_path.to_string_lossy().to_string(),
-                cause: e,
+            .map_err(|e| {
+                let display_path = current_path.to_string_lossy().to_string();
+                if e.kind() == io::ErrorKind::NotFound {
+                    Error::FileNotFound(display_path)
+                } else {
+                    Error::IllegalState(format!("Failed to read `{}`: {}", display_path, e))
+                }
             })
             .inspect_err(|e| error!("An error occurred while reading the source file: {}", e))?;
 
@@ -2114,7 +2123,7 @@ pub fn extend_module_from_path(
                     message: e.reason().to_string(),
                 })
                 .collect();
-            return Err(Error::ParserErrors {
+            return Err(Error::ParserError {
                 errors,
                 tokens: vec![],
             });
@@ -2174,7 +2183,7 @@ pub fn extend_module_from_path(
                     }
                 })
                 .collect();
-            return Err(Error::ParserErrors {
+            return Err(Error::ParserError {
                 errors,
                 tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
             });
@@ -2190,7 +2199,16 @@ pub fn extend_module_from_path(
                     debug!("Add file to import list {}", import_path.to_string_lossy());
 
                     let canonical_import_path = std::fs::canonicalize(&import_path)
-                        .map_err(|e| Error::FileNotFound { path, cause: e })
+                        .map_err(|e| {
+                            if e.kind() == io::ErrorKind::NotFound {
+                                Error::FileNotFound(path.clone())
+                            } else {
+                                Error::IllegalState(format!(
+                                    "Failed to canonicalize import `{}`: {}",
+                                    path, e
+                                ))
+                            }
+                        })
                         .inspect_err(|e| {
                             error!(
                                 "An error occurred while canonicalizing the import path: {}",
@@ -2221,13 +2239,17 @@ pub fn extend_module_from_path(
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
-            return Err(Error::UnresolvedFunction {
-                name: name.clone(),
-                func_type: FunctionPointerType::Internal,
-            });
+            return Err(Error::ValidationFailed(format!(
+                "Unresolved {:?} function `{}`",
+                FunctionPointerType::Internal,
+                name
+            )));
         } else if matching_functions.len() > 1 {
             error!("Multiple functions found with the same name: {}", name);
-            return Err(Error::FunctionAlreadyExists { name: name.clone() });
+            return Err(Error::ValidationFailed(format!(
+                "Function `{}` already exists",
+                name
+            )));
         }
 
         let function = matching_functions[0];
@@ -2242,10 +2264,11 @@ pub fn extend_module_from_path(
             .cloned()
             .collect();
         error!("Unresolved external functions: {:?}", names);
-        return Err(Error::UnresolvedFunction {
-            name: names.join(", "),
-            func_type: FunctionPointerType::External,
-        });
+        return Err(Error::ValidationFailed(format!(
+            "Unresolved {:?} function(s): {}",
+            FunctionPointerType::External,
+            names.join(", ")
+        )));
     }
 
     // Finally update all the links internally
@@ -2318,7 +2341,7 @@ pub fn extend_module_from_string(
                 message: e.reason().to_string(),
             })
             .collect();
-        return Err(Error::ParserErrors {
+        return Err(Error::ParserError {
             errors,
             tokens: vec![],
         });
@@ -2382,7 +2405,7 @@ pub fn extend_module_from_string(
                     }
                 })
                 .collect();
-            return Err(Error::ParserErrors {
+            return Err(Error::ParserError {
                 errors,
                 tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
             });
@@ -2407,7 +2430,7 @@ pub fn extend_module_from_string(
                             path
                         ),
                     }];
-                    return Err(Error::ParserErrors {
+                    return Err(Error::ParserError {
                         errors,
                         tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
                     });
@@ -2430,13 +2453,17 @@ pub fn extend_module_from_string(
             .collect();
         if matching_functions.is_empty() {
             error!("Unresolved internal function: {:?}", name);
-            return Err(Error::UnresolvedFunction {
-                name: name.clone(),
-                func_type: FunctionPointerType::Internal,
-            });
+            return Err(Error::ValidationFailed(format!(
+                "Unresolved {:?} function `{}`",
+                FunctionPointerType::Internal,
+                name
+            )));
         } else if matching_functions.len() > 1 {
             error!("Multiple functions found with the same name: {}", name);
-            return Err(Error::FunctionAlreadyExists { name: name.clone() });
+            return Err(Error::ValidationFailed(format!(
+                "Function `{}` already exists",
+                name
+            )));
         }
 
         let function = matching_functions[0];
@@ -2451,10 +2478,11 @@ pub fn extend_module_from_string(
             .cloned()
             .collect();
         error!("Unresolved external functions: {:?}", names);
-        return Err(Error::UnresolvedFunction {
-            name: names.join(", "),
-            func_type: FunctionPointerType::External,
-        });
+        return Err(Error::ValidationFailed(format!(
+            "Unresolved {:?} function(s): {}",
+            FunctionPointerType::External,
+            names.join(", ")
+        )));
     }
 
     // Update all internal function pointer links and insert functions into the module

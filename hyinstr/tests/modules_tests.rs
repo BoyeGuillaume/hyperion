@@ -15,7 +15,7 @@ use hyinstr::{
         },
         operand::{Label, Name, Operand},
         parser::{extend_module_from_path, extend_module_from_string},
-        symbol::{FunctionPointer, FunctionPointerType},
+        symbol::FunctionPointer,
         terminator::{Branch, HyTerminator, Jump, Ret},
     },
     types::{
@@ -180,7 +180,7 @@ fn function_verify_rejects_duplicate_ssa() {
     );
 
     let err = func.verify().unwrap_err();
-    assert!(matches!(err, Error::DuplicateSSAName { duplicate } if duplicate == Name(1)));
+    assert!(matches!(err, Error::IllegalState(_)));
 }
 
 #[test]
@@ -200,7 +200,7 @@ fn function_verify_requires_entry_block() {
         false,
     );
 
-    assert!(matches!(func.verify(), Err(Error::MissingEntryBlock)));
+    assert!(matches!(func.verify(), Err(Error::IllegalState(_))));
 }
 
 #[test]
@@ -232,10 +232,7 @@ fn function_verify_detects_undefined_operand_and_block() {
     );
 
     let err = func.verify().unwrap_err();
-    assert!(matches!(
-        err,
-        Error::UndefinedSSAName { .. } | Error::UndefinedBasicBlock { .. }
-    ));
+    assert!(matches!(err, Error::ValidationFailed(msg) if msg.contains("undefined basic block")));
 }
 
 #[test]
@@ -269,9 +266,11 @@ fn function_verify_rejects_phi_not_first() {
         false,
     );
 
-    assert!(
-        matches!(func.verify(), Err(Error::PhiNotFirstInstruction { block }) if block == Label::NIL)
-    );
+    let nil_label = format!("{}", Label::NIL);
+    assert!(matches!(
+        func.verify(),
+        Err(Error::ValidationFailed(msg)) if msg.contains("Phi instructions") && msg.contains(&nil_label)
+    ));
 }
 
 #[test]
@@ -302,7 +301,7 @@ fn function_verify_rejects_meta_elements_in_non_meta_function() {
     );
 
     let err = func.verify().unwrap_err();
-    assert!(matches!(err, Error::MetaInstructionNotAllowed { .. }));
+    assert!(matches!(err, Error::OperationNotPermitted(_)));
 }
 
 #[test]
@@ -331,10 +330,7 @@ fn function_verify_checks_wildcard_soundness() {
         false,
     );
 
-    assert!(matches!(
-        func.verify(),
-        Err(Error::UnsoundWildcardTypes { .. })
-    ));
+    assert!(matches!(func.verify(), Err(Error::ValidationFailed(_))));
 }
 
 #[test]
@@ -359,7 +355,7 @@ fn function_verify_enforces_parameter_limit() {
 
     assert!(matches!(
         func.verify(),
-        Err(Error::FunctionTooManyArguments { .. })
+        Err(Error::TooManyObjects { object, .. }) if object == "parameters per function"
     ));
 }
 
@@ -475,7 +471,7 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
     );
     let module = Module::default();
     let err = module.verify_func(&caller).unwrap_err();
-    assert!(matches!(err, Error::UndefinedInternalFunction { .. }));
+    assert!(matches!(err, Error::ValidationFailed(msg) if msg.contains("internal function")));
 
     // Caller referencing missing external function
     let module = Module::default();
@@ -500,7 +496,7 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
         false,
     );
     let err = module.verify_func(&caller).unwrap_err();
-    assert!(matches!(err, Error::UndefinedExternalFunction { .. }));
+    assert!(matches!(err, Error::ValidationFailed(msg) if msg.contains("external function")));
 }
 
 #[test]
@@ -768,9 +764,11 @@ fn parser_reports_unresolved_external_function() {
     "#;
 
     let err = extend_module_from_string(&mut module, &reg, source).unwrap_err();
-    assert!(
-        matches!(err, Error::UnresolvedFunction { func_type, .. } if func_type == FunctionPointerType::External)
-    );
+    assert!(matches!(
+        err,
+        Error::ValidationFailed(msg)
+            if msg.contains("External function") || msg.contains("external function")
+    ));
 }
 
 #[test]

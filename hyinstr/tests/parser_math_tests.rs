@@ -141,7 +141,7 @@ entry:
 
     if let Some(e) = extend_module_from_string(&mut module, &reg, source).err() {
         match e {
-            Error::ParserErrors { errors, tokens } => {
+            Error::ParserError { errors, tokens } => {
                 for err in errors {
                     // Get line before and after the error for context
                     let mut context_start = err.start;

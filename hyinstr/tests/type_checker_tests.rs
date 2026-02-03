@@ -35,7 +35,7 @@ fn expect_type_mismatch(result: Result<(), Error>) {
 fn expect_elem_index_oob(result: Result<(), Error>) {
     let err = result.unwrap_err();
     assert!(
-        matches!(err, Error::ElementIndexOutOfBounds { .. }),
+        matches!(err, Error::IllegalArgument(ref msg) if msg.contains("out of bounds")),
         "expected element index out of bounds, got {err:?}"
     );
 }

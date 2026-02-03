@@ -14,6 +14,7 @@ use crate::{
         aggregate::ArrayType,
         primary::{FType, IType, PrimaryBasicType, PrimaryType, PtrType, VcSize, VcType},
     },
+    utils::Error,
 };
 
 pub fn type_check<'a>(
@@ -32,9 +33,10 @@ pub fn type_check<'a>(
             let dest_type = instruction.destination_type().unwrap();
 
             if name_type_map.insert(dest_name, dest_type).is_some() {
-                return Err(crate::utils::Error::DuplicateSSAName {
-                    duplicate: dest_name,
-                });
+                return Err(Error::IllegalState(format!(
+                    "Multiple operations with shared destination target violate SSA requirements. The name `{}` is defined more than once within the same function.",
+                    dest_name
+                )));
             }
         }
     }
@@ -46,7 +48,10 @@ pub fn type_check<'a>(
                 if let Some(typeref) = name_type_map.get(name) {
                     Ok(*typeref)
                 } else {
-                    Err(crate::utils::Error::UndefinedSSAName { undefined: *name })
+                    Err(crate::utils::Error::ValidationFailed(format!(
+                        "SSA name `{}` is undefined",
+                        name
+                    )))
                 }
             }
             Operand::Imm(any_const) => Ok(any_const.typeref(type_registry)),
@@ -318,12 +323,14 @@ pub fn type_check<'a>(
 
                                 // Finally, check index bounds
                                 if index_value >= struct_type.element_types.len() {
-                                    return Err(crate::utils::Error::ElementIndexOutOfBounds {
-                                        instr: instruction.fmt(type_registry, None).to_string(),
-                                        ty: type_registry.fmt(elem).to_string(),
-                                        index: index_value,
-                                        max: struct_type.element_types.len(),
-                                    });
+                                    let ty_desc = type_registry.fmt(elem).to_string();
+                                    return Err(crate::utils::Error::IllegalArgument(format!(
+                                        "Instruction `{}` indexes element {} out of bounds for `{}` (max {})",
+                                        instruction.fmt(type_registry, None),
+                                        index_value,
+                                        ty_desc,
+                                        struct_type.element_types.len(),
+                                    )));
                                 }
                                 elem = struct_type.element_types[index_value];
                             } else {
@@ -647,12 +654,14 @@ pub fn type_check<'a>(
                             size: VcSize::Fixed(fixed_vc_size),
                         })) => {
                             if index >= *fixed_vc_size as u32 {
-                                return Err(crate::utils::Error::ElementIndexOutOfBounds {
-                                    instr: instruction.fmt(type_registry, None).to_string(),
-                                    ty: type_registry.fmt(expected_typeref).to_string(),
-                                    index: index as usize,
-                                    max: *fixed_vc_size as usize,
-                                });
+                                let ty_desc = type_registry.fmt(expected_typeref).to_string();
+                                return Err(crate::utils::Error::IllegalArgument(format!(
+                                    "Instruction `{}` indexes element {} out of bounds for `{}` (max {})",
+                                    instruction.fmt(type_registry, None),
+                                    index as usize,
+                                    ty_desc,
+                                    *fixed_vc_size as usize,
+                                )));
                             } else {
                                 let entry_typeref = type_registry
                                     .search_or_insert(AnyType::Primary(ty.clone().into()));
@@ -661,24 +670,28 @@ pub fn type_check<'a>(
                         }
                         AnyType::Array(array_type) => {
                             if index >= array_type.num_elements as u32 {
-                                return Err(crate::utils::Error::ElementIndexOutOfBounds {
-                                    instr: instruction.fmt(type_registry, None).to_string(),
-                                    ty: type_registry.fmt(expected_typeref).to_string(),
-                                    index: index as usize,
-                                    max: array_type.num_elements as usize,
-                                });
+                                let ty_desc = type_registry.fmt(expected_typeref).to_string();
+                                return Err(crate::utils::Error::IllegalArgument(format!(
+                                    "Instruction `{}` indexes element {} out of bounds for `{}` (max {})",
+                                    instruction.fmt(type_registry, None),
+                                    index as usize,
+                                    ty_desc,
+                                    array_type.num_elements as usize,
+                                )));
                             } else {
                                 expected_typeref = array_type.ty;
                             }
                         }
                         AnyType::Struct(struct_type) => {
                             if index as usize >= struct_type.element_types.len() {
-                                return Err(crate::utils::Error::ElementIndexOutOfBounds {
-                                    instr: instruction.fmt(type_registry, None).to_string(),
-                                    ty: type_registry.fmt(expected_typeref).to_string(),
-                                    index: index as usize,
-                                    max: struct_type.element_types.len(),
-                                });
+                                let ty_desc = type_registry.fmt(expected_typeref).to_string();
+                                return Err(crate::utils::Error::IllegalArgument(format!(
+                                    "Instruction `{}` indexes element {} out of bounds for `{}` (max {})",
+                                    instruction.fmt(type_registry, None),
+                                    index as usize,
+                                    ty_desc,
+                                    struct_type.element_types.len(),
+                                )));
                             } else {
                                 expected_typeref = struct_type.element_types[index as usize];
                             }
