@@ -302,10 +302,7 @@ fn function_verify_rejects_meta_elements_in_non_meta_function() {
     );
 
     let err = func.verify().unwrap_err();
-    assert!(matches!(
-        err,
-        Error::MetaOperandNotAllowed | Error::MetaInstructionNotAllowed { .. }
-    ));
+    assert!(matches!(err, Error::MetaInstructionNotAllowed { .. }));
 }
 
 #[test]
