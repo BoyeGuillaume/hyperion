@@ -14,7 +14,7 @@
 //! tagged union of all concrete instruction forms.
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
     sync::Arc,
 };
 
@@ -360,6 +360,63 @@ impl BasicBlock {
     }
 }
 
+/// Globals are values with a fixed address in the memory space of a module.
+///
+/// They are *always* considered immutable. They may be internal (defined
+/// within the module) or external (defined outside the module). With visibility
+/// and linkage attributes, globals can be used to model various kinds of
+/// static data.
+#[derive(Debug, Clone, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "borsh",
+    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
+)]
+pub struct Globals {
+    /// The unique identifier (UUID) of the global variable.
+    pub uuid: Uuid,
+    /// The display name of the global variable, if any (debugging purposes).
+    pub name: Option<String>,
+    /// The type of the global variable.
+    pub ty: Typeref,
+    /// Value of the global variable, if any (for internal globals).
+    pub value: Option<AnyConst>,
+    /// The visibility of the global variable.
+    pub visibility: Option<Visibility>,
+    /// The linkage of the global variable.
+    pub linkage: Option<Linkage>,
+}
+
+impl Globals {
+    /// Verify the soundness of the global variable.
+    pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        // Verify that the type of the global variable is valid
+        if let Some(value) = &self.value {
+            let ty = value.typeref(type_registry);
+            if ty != self.ty {
+                return Err(Error::ValidationFailed(format!(
+                    "Global variable `{}` has type {} but value has type {}",
+                    self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                    type_registry.fmt(self.ty),
+                    type_registry.fmt(ty)
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if the global variable is external (i.e., has no defined value).
+    pub fn is_external(&self) -> bool {
+        self.value.is_none()
+    }
+
+    /// Check if the global variable is internal (i.e., has a defined value).
+    pub fn is_internal(&self) -> bool {
+        self.value.is_some()
+    }
+}
+
 /// A function made of basic blocks and parameter metadata.
 ///
 /// A `Function` owns its control‑flow graph (`body`) and carries optional
@@ -484,15 +541,18 @@ impl Function {
         self.generate_wildcard_types(&mut generated);
 
         if generated != self.wildcard_types {
-            return Err(Error::UnsoundWildcardTypes {
-                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                expected: self
-                    .wildcard_types
-                    .iter()
-                    .map(|wt| wt.to_string())
-                    .collect(),
-                found: generated.iter().map(|wt| wt.to_string()).collect(),
-            });
+            let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+            let expected: Vec<_> = self
+                .wildcard_types
+                .iter()
+                .map(|wt| wt.to_string())
+                .collect();
+            let found: Vec<_> = generated.iter().map(|wt| wt.to_string()).collect();
+
+            return Err(Error::ValidationFailed(format!(
+                "Function `{}` declares wildcard set {:?} but actually references {:?}",
+                function_name, expected, found
+            )));
         }
 
         Ok(())
@@ -504,7 +564,10 @@ impl Function {
             for instr in &bb.instructions {
                 if instr.is_phi() {
                     if found_non_phi {
-                        return Err(Error::PhiNotFirstInstruction { block: bb.label });
+                        return Err(Error::ValidationFailed(format!(
+                            "Phi instructions must be clustered at the top of basic block `{}`",
+                            bb.label
+                        )));
                     }
                 } else {
                     found_non_phi = true;
@@ -519,10 +582,11 @@ impl Function {
             // Check terminator does not refer to non-existing basic blocks
             for (target_label, _) in bb.terminator.iter_targets() {
                 if !self.body.contains_key(&target_label) {
-                    return Err(Error::UndefinedBasicBlock {
-                        function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                        label: target_label,
-                    });
+                    let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+                    return Err(Error::ValidationFailed(format!(
+                        "Function `{}` references undefined basic block `{}`",
+                        function_name, target_label
+                    )));
                 }
             }
         }
@@ -533,10 +597,11 @@ impl Function {
         for bb in self.body.values() {
             for instr in &bb.instructions {
                 if instr.is_meta_instruction() {
-                    return Err(Error::MetaInstructionNotAllowed {
-                        function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                        instruction: format!("{:?}", instr),
-                    });
+                    let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+                    return Err(Error::OperationNotPermitted(format!(
+                        "Function `{}` must not contain meta-instruction `{instr:?}`",
+                        function_name
+                    )));
                 }
             }
         }
@@ -545,21 +610,30 @@ impl Function {
 
     fn verify_size_constraints(&self) -> Result<(), Error> {
         if self.body.len() > Self::MAX_BLOCK_PER_FUNC {
-            return Err(Error::FunctionTooManyBlocks {
-                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                count: self.body.len(),
-                max: Self::MAX_BLOCK_PER_FUNC,
+            let count = self.body.len();
+            let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+            return Err(Error::TooManyObjects {
+                object: "basic blocks",
+                limit: Self::MAX_BLOCK_PER_FUNC,
+                details: format!(
+                    "function `{}` declares {} basic blocks",
+                    function_name, count
+                ),
             });
         }
 
         let mut instr_count = 0usize;
         for (label, bb) in &self.body {
             if bb.instructions.len() > Self::MAX_INSTR_PER_BLOCK {
-                return Err(Error::BasicBlockTooLarge {
-                    function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                    block: *label,
-                    count: bb.instructions.len(),
-                    max: Self::MAX_INSTR_PER_BLOCK,
+                let count = bb.instructions.len();
+                let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+                return Err(Error::TooManyObjects {
+                    object: "instructions per block",
+                    limit: Self::MAX_INSTR_PER_BLOCK,
+                    details: format!(
+                        "basic block `{}` of function `{}` contains {} instructions",
+                        label, function_name, count
+                    ),
                 });
             }
 
@@ -567,26 +641,40 @@ impl Function {
         }
 
         if instr_count > Self::MAX_INSTR_PER_FUNC {
-            return Err(Error::FunctionTooManyInstructions {
-                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                count: instr_count,
-                max: Self::MAX_INSTR_PER_FUNC,
+            let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+            return Err(Error::TooManyObjects {
+                object: "instructions per function",
+                limit: Self::MAX_INSTR_PER_FUNC,
+                details: format!(
+                    "function `{}` materializes {} instructions",
+                    function_name, instr_count
+                ),
             });
         }
 
         if self.params.len() > Self::MAX_PARAMS_PER_FUNC {
-            return Err(Error::FunctionTooManyArguments {
-                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                count: self.params.len(),
-                max: Self::MAX_PARAMS_PER_FUNC,
+            let param_count = self.params.len();
+            let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+            return Err(Error::TooManyObjects {
+                object: "parameters per function",
+                limit: Self::MAX_PARAMS_PER_FUNC,
+                details: format!(
+                    "function `{}` declares {} parameters",
+                    function_name, param_count
+                ),
             });
         }
 
         if self.wildcard_types.len() > Self::MAX_WILDCARD_TYPES_PER_FUNC {
-            return Err(Error::FunctionTooManyWildcardTypes {
-                function: self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                count: self.wildcard_types.len(),
-                max: Self::MAX_WILDCARD_TYPES_PER_FUNC,
+            let wildcard_count = self.wildcard_types.len();
+            let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
+            return Err(Error::TooManyObjects {
+                object: "wildcard types per function",
+                limit: Self::MAX_WILDCARD_TYPES_PER_FUNC,
+                details: format!(
+                    "function `{}` references {} wildcard types",
+                    function_name, wildcard_count
+                ),
             });
         }
 
@@ -595,11 +683,15 @@ impl Function {
 
     fn verify_ssa_soundness(&self) -> Result<(), Error> {
         let mut defined_names = BTreeSet::new();
+        let function_name = self.name.clone().unwrap_or_else(|| self.uuid.to_string());
 
         // 1. Construct defined_names
         for (name, _) in self.params.iter() {
             if !defined_names.insert(*name) {
-                return Err(Error::DuplicateSSAName { duplicate: *name });
+                return Err(Error::IllegalState(format!(
+                    "Multiple operations with shared destination target violate SSA requirements. The name `{}` is defined more than once within the same function.",
+                    name
+                )));
             }
         }
 
@@ -608,7 +700,10 @@ impl Function {
                 if let Some(dest) = instr.destination()
                     && !defined_names.insert(dest)
                 {
-                    return Err(Error::DuplicateSSAName { duplicate: dest });
+                    return Err(Error::IllegalState(format!(
+                        "Multiple operations with shared destination target violate SSA requirements. The name `{}` is defined more than once within the same function.",
+                        dest
+                    )));
                 }
             }
         }
@@ -618,14 +713,20 @@ impl Function {
             for instr in &bb.instructions {
                 for name in instr.dependencies() {
                     if !defined_names.contains(&name) {
-                        return Err(Error::UndefinedSSAName { undefined: name });
+                        return Err(Error::ValidationFailed(format!(
+                            "Function `{}` references undefined SSA name `{}`",
+                            function_name, name
+                        )));
                     }
                 }
             }
 
             for name in bb.terminator.dependencies() {
                 if !defined_names.contains(&name) {
-                    return Err(Error::UndefinedSSAName { undefined: name });
+                    return Err(Error::ValidationFailed(format!(
+                        "Function `{}` references undefined SSA name `{}`",
+                        function_name, name
+                    )));
                 }
             }
         }
@@ -719,7 +820,11 @@ impl Function {
 
         // Ensure existence of entry block
         if !self.body.contains_key(&Label::NIL) {
-            return Err(Error::MissingEntryBlock);
+            return Err(Error::IllegalState(format!(
+                "Function `{}` is missing entry block (label: {:?})",
+                self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
+                Label::NIL
+            )));
         }
 
         // TODO: Verify that all SSA names are defined before use (topological order)
@@ -749,36 +854,61 @@ impl Function {
         let mut name_mapping = BTreeMap::new();
         let mut next_name = Name(0);
 
-        // Remap all SSA names in parameters
+        // Remap parameter names first so they become the leading SSA slots.
         for (name, _) in self.params.iter_mut() {
-            let _output = name_mapping.insert(*name, next_name);
-            debug_assert!(_output.is_none());
-            *name = next_name;
-            next_name += 1;
+            *name = Self::assign_or_get_name(&mut name_mapping, &mut next_name, *name);
         }
 
-        // For each instruction destination, allocate a new name if needed
+        // Assign fresh destinations for every instruction.
         for bb in self.body.values_mut() {
             for instr in bb.instructions.iter_mut() {
                 if let Some(dest) = instr.destination() {
-                    let _output = name_mapping.insert(dest, next_name);
-                    debug_assert!(_output.is_none());
-                    instr.set_destination(next_name);
-                    next_name += 1;
+                    let new_name =
+                        Self::assign_or_get_name(&mut name_mapping, &mut next_name, dest);
+                    instr.set_destination(new_name);
                 }
             }
         }
 
-        // Now remap all operands according to the mapping
+        // Finally, rewrite every dependency to point at the remapped names.
         for bb in self.body.values_mut() {
-            for instr in &mut bb.instructions {
-                for op in instr.dependencies_mut() {
-                    *op = name_mapping[op];
+            for instr in bb.instructions.iter_mut() {
+                for dep in instr.dependencies_mut() {
+                    debug_assert!(
+                        name_mapping.contains_key(dep),
+                        "SSA dependency `{:?}` missing from normalization map",
+                        dep
+                    );
+                    if let Some(mapped) = name_mapping.get(dep) {
+                        *dep = *mapped;
+                    }
                 }
             }
 
-            for op in bb.terminator.dependencies_mut() {
-                *op = name_mapping[op];
+            for dep in bb.terminator.dependencies_mut() {
+                debug_assert!(
+                    name_mapping.contains_key(dep),
+                    "SSA dependency `{:?}` missing from normalization map",
+                    dep
+                );
+                if let Some(mapped) = name_mapping.get(dep) {
+                    *dep = *mapped;
+                }
+            }
+        }
+    }
+
+    fn assign_or_get_name(
+        mapping: &mut BTreeMap<Name, Name>,
+        next_name: &mut Name,
+        original: Name,
+    ) -> Name {
+        match mapping.entry(original) {
+            Entry::Occupied(entry) => *entry.get(),
+            Entry::Vacant(vacant) => {
+                let new_name = *next_name;
+                *next_name += 1;
+                *vacant.insert(new_name)
             }
         }
     }
@@ -960,6 +1090,8 @@ pub struct FunctionAnalysis {
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
 pub struct Module {
+    /// List of global variables keyed by their UUID.
+    pub globals: BTreeMap<Uuid, Globals>,
     /// Defined functions keyed by their UUID.
     pub functions: BTreeMap<Uuid, Arc<Function>>,
     /// Declared external functions keyed by their UUID.
@@ -984,24 +1116,26 @@ impl Module {
                                 }
 
                                 if !self.functions.contains_key(uuid) {
-                                    return Err(Error::UndefinedInternalFunction {
-                                        function: function
+                                    return Err(Error::ValidationFailed(format!(
+                                        "Function `{}` references undefined internal function `{}`",
+                                        function
                                             .name
                                             .clone()
                                             .unwrap_or_else(|| function.uuid.to_string()),
-                                        undefined: *uuid,
-                                    });
+                                        uuid
+                                    )));
                                 }
                             }
                             FunctionPointer::External(uuid) => {
                                 if !self.external_functions.contains_key(uuid) {
-                                    return Err(Error::UndefinedExternalFunction {
-                                        function: function
+                                    return Err(Error::ValidationFailed(format!(
+                                        "Function `{}` references undefined external function `{}`",
+                                        function
                                             .name
                                             .clone()
                                             .unwrap_or_else(|| function.uuid.to_string()),
-                                        undefined: *uuid,
-                                    });
+                                        uuid
+                                    )));
                                 }
                             }
                         }
@@ -1076,6 +1210,10 @@ impl Module {
     pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
         for func in self.functions.values() {
             func.type_check(type_registry)?;
+        }
+
+        for global in self.globals.values() {
+            global.type_check(type_registry)?;
         }
 
         Ok(())

@@ -72,7 +72,11 @@ impl FConst {
 
 impl std::fmt::Display for FConst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.ty, self.value)
+        if f.alternate() {
+            write!(f, "{}", self.value)
+        } else {
+            write!(f, "{} {}", self.ty, self.value)
+        }
     }
 }
 

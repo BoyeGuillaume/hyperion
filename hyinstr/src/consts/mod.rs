@@ -6,11 +6,17 @@
 use crate::{
     consts::{fp::FConst, int::IConst},
     modules::{Module, symbol::FunctionPointer},
-    types::{TypeRegistry, Typeref, primary::PtrType},
+    types::{
+        TypeRegistry, Typeref,
+        aggregate::{ArrayType, StructType},
+        primary::PtrType,
+    },
+    utils::Error,
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
+use uuid::Uuid;
 
 pub mod fp;
 pub mod int;
@@ -29,17 +35,78 @@ pub enum AnyConst {
     /// Floating‑point constant
     Float(FConst),
 
+    /// An array of constants (must be uniformed type)
+    Array { elements: Vec<AnyConst> },
+
+    /// A structure of constants (can be heterogeneous type)
+    Struct {
+        elements: Vec<AnyConst>,
+        packed: bool,
+    },
+
     /// Function pointer constant (should be used only for function call instructions)
     FuncPtr(FunctionPointer),
+
+    /// Global pointer constant (should be used only for global load/store instructions)
+    GlobalPtr(Uuid),
 }
 
 impl AnyConst {
+    pub fn verify(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
+        match self {
+            AnyConst::Array { elements } => {
+                if elements.is_empty() {}
+                let first_type = elements[0].typeref(type_registry);
+                for elem in elements.iter().skip(1) {
+                    let ty = elem.typeref(type_registry);
+                    if ty != first_type {
+                        return Err(Error::IllegalState(format!(
+                            "Array constant elements must be of uniform type. Expected type {}, found type {}.",
+                            type_registry.fmt(first_type),
+                            type_registry.fmt(ty)
+                        )));
+                    }
+                }
+                Ok(())
+            }
+            AnyConst::Struct { .. } => Ok(()), // No restriction on struct element types
+            _ => Ok(()),
+        }
+    }
+
     /// Retrieve the type of the constant.
     pub fn typeref(&self, type_registry: &TypeRegistry) -> Typeref {
         match self {
             AnyConst::Int(ic) => type_registry.search_or_insert(ic.ty.into()),
             AnyConst::Float(fc) => type_registry.search_or_insert(fc.ty.into()),
-            AnyConst::FuncPtr(_) => type_registry.search_or_insert(PtrType.into()),
+            AnyConst::FuncPtr(_) | AnyConst::GlobalPtr(_) => {
+                type_registry.search_or_insert(PtrType.into())
+            }
+            AnyConst::Array { elements } => {
+                debug_assert!(self.verify(type_registry).is_ok());
+                let ty = elements.first().unwrap().typeref(type_registry);
+                type_registry.search_or_insert(
+                    ArrayType {
+                        ty: ty,
+                        num_elements: elements.len() as u16,
+                    }
+                    .into(),
+                )
+            }
+            AnyConst::Struct { elements, packed } => {
+                debug_assert!(self.verify(type_registry).is_ok());
+                let element_types: Vec<Typeref> = elements
+                    .iter()
+                    .map(|elem| elem.typeref(type_registry))
+                    .collect();
+                type_registry.search_or_insert(
+                    StructType {
+                        element_types,
+                        packed: *packed,
+                    }
+                    .into(),
+                )
+            }
         }
     }
 
@@ -53,22 +120,50 @@ impl AnyConst {
         impl<'a> std::fmt::Display for Fmt<'a> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self.constant {
-                    AnyConst::Int(ic) => write!(f, "{}", ic),
-                    AnyConst::Float(fc) => write!(f, "{}", fc),
+                    AnyConst::Int(ic) => ic.fmt(f),
+                    AnyConst::Float(fc) => fc.fmt(f),
+                    AnyConst::Array { elements } => {
+                        write!(f, "[")?;
+                        for (i, elem) in elements.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{:#}", elem.fmt(self.module))?;
+                        }
+                        write!(f, "]")
+                    }
+                    AnyConst::Struct { elements, packed } => {
+                        if *packed {
+                            write!(f, "packed ")?;
+                        }
+                        write!(f, "{{")?;
+
+                        for (i, elem) in elements.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{:#}", elem.fmt(self.module))?;
+                        }
+                        write!(f, "}}")
+                    }
                     AnyConst::FuncPtr(fp) => match fp {
                         FunctionPointer::Internal(uuid) => {
+                            if !f.alternate() {
+                                write!(f, "ptr ")?;
+                            }
+
                             if let Some(module) = self.module {
                                 if let Some(func) = module.functions.get(uuid) {
                                     if let Some(name) = &func.name {
-                                        write!(f, "ptr {}", name)
+                                        write!(f, "{}", name)
                                     } else {
-                                        write!(f, "ptr @{:?}", uuid)
+                                        write!(f, "@{:?}", uuid)
                                     }
                                 } else {
-                                    write!(f, "ptr <invalid@{:?}>", uuid)
+                                    write!(f, "<invalid@{:?}>", uuid)
                                 }
                             } else {
-                                write!(f, "ptr <unresolved@{:?}>", uuid)
+                                write!(f, "<unresolved@{:?}>", uuid)
                             }
                         }
                         FunctionPointer::External(name) => {
@@ -83,6 +178,7 @@ impl AnyConst {
                             }
                         }
                     },
+                    AnyConst::GlobalPtr(uuid) => todo!(), // TODO: FIXME
                 }
             }
         }

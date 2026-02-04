@@ -2,7 +2,7 @@
 use crate::{
     analysis::{AnalysisStatistic, TerminationScope},
     modules::{
-        Function, Module,
+        Function, Globals, Module,
         instructions::{
             HyInstr, Instruction,
             int::{IDiv, IRem},
@@ -371,6 +371,56 @@ impl HyTerminator {
     }
 }
 
+impl Globals {
+    /// Build a formatting helper that renders the global constants in textual form.
+    pub fn fmt<'a>(
+        &'a self,
+        type_registry: &'a TypeRegistry,
+        module: Option<&'a Module>,
+    ) -> impl std::fmt::Display + 'a {
+        struct Fmt<'a> {
+            globals: &'a Globals,
+            type_registry: &'a TypeRegistry,
+            module: Option<&'a Module>,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if let Some(value) = &self.globals.value {
+                    write!(
+                        f,
+                        "global {}: {} = {}",
+                        self.globals
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| { format!("@{}", self.globals.uuid) }),
+                        self.type_registry.fmt(self.globals.ty),
+                        value.fmt(self.module)
+                    )?;
+                } else {
+                    write!(
+                        f,
+                        "extern global {}: {}",
+                        self.globals
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| { format!("@{}", self.globals.uuid) }),
+                        self.type_registry.fmt(self.globals.ty),
+                    )?;
+                }
+
+                Ok(())
+            }
+        }
+
+        Fmt {
+            globals: self,
+            type_registry,
+            module,
+        }
+    }
+}
+
 impl Function {
     /// Build a formatting helper that renders the function in textual form.
     pub fn fmt<'a>(
@@ -454,6 +504,12 @@ impl Module {
 
         impl<'a> std::fmt::Display for Fmt<'a> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                writeln!(f, "; Globals")?;
+                for global in self.module.globals.values() {
+                    writeln!(f, "{}", global.fmt(self.type_registry, Some(self.module)))?;
+                }
+
+                writeln!(f, "\n; Functions")?;
                 for function in self.module.functions.values() {
                     writeln!(f, "{}", function.fmt(self.type_registry, Some(self.module)))?;
                 }

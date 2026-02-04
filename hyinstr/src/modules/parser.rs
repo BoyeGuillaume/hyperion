@@ -8,7 +8,10 @@ use std::{
     sync::Arc,
 };
 
-use crate::analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope};
+use crate::{
+    analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope},
+    modules::symbol::ExternalFunction,
+};
 use bigdecimal::BigDecimal;
 use chumsky::{
     container::Seq,
@@ -56,8 +59,6 @@ enum Token<'a> {
     CallingConvention(CallingConvention),
     TerminatorOp(HyTerminatorOp),
     InstrOp(HyInstrOp, Vec<&'a str>),
-    Void,
-    Import,
     Identifier(&'a str, Vec<&'a str>),
     MetaIdentifier(&'a str, Vec<&'a str>), // Prefixed with '!'
 
@@ -112,6 +113,18 @@ enum Token<'a> {
 
     /// Newline '\n'
     Newline,
+
+    /// 'define' keyword
+    Define,
+
+    /// 'import' keyword
+    Import,
+
+    /// 'void' keyword
+    Void,
+
+    /// 'Extern' keyword
+    Extern,
 }
 
 impl std::fmt::Display for Token<'_> {
@@ -130,8 +143,6 @@ impl std::fmt::Display for Token<'_> {
                     write!(f, "{:?}<{:?}>", op, variants)
                 }
             }
-            Token::Void => write!(f, "void"),
-            Token::Import => write!(f, "import"),
             Token::Identifier(s, variants) => {
                 if variants.is_empty() {
                     write!(f, "{}", s)
@@ -163,6 +174,10 @@ impl std::fmt::Display for Token<'_> {
             Token::Colon => write!(f, ":"),
             Token::Equals => write!(f, "="),
             Token::Newline => write!(f, "\\n"),
+            Token::Define => write!(f, "define"),
+            Token::Extern => write!(f, "extern"),
+            Token::Void => write!(f, "void"),
+            Token::Import => write!(f, "import"),
         }
     }
 }
@@ -507,6 +522,8 @@ fn identifier_parser<'src>()
                 match s {
                     "void" => return Token::Void,
                     "import" => return Token::Import,
+                    "define" => return Token::Define,
+                    "extern" => return Token::Extern,
                     _ => {}
                 }
             }
@@ -836,12 +853,12 @@ where
         .labelled("floating-point constant");
 
     let func_ptr = just(Token::Identifier("ptr", vec![]))
-        .ignore_then(just(Token::Identifier("external", vec![])).to(()).or_not())
+        .ignore_then(just(Token::Extern).to(()).or_not())
         .then(
             just_match(TokenDiscriminants::Identifier)
                 .map(|token| token.try_as_identifier().unwrap()),
         )
-        .validate(move |(external, name), extra, emit| {
+        .validate(move |(r#extern, name), extra, emit| {
             let name = {
                 let mut full_name = name.0.to_string();
                 for part in name.1 {
@@ -850,7 +867,7 @@ where
                 }
                 full_name
             };
-            let ftype = if external.is_some() {
+            let ftype = if r#extern.is_some() {
                 FunctionPointerType::External
             } else {
                 FunctionPointerType::Internal
@@ -873,7 +890,7 @@ where
                         extra.span(),
                         format!(
                             "{}function pointer '{}' not found",
-                            if external.is_some() { "external " } else { "" },
+                            if r#extern.is_some() { "external " } else { "" },
                             name
                         ),
                     ));
@@ -1931,7 +1948,7 @@ where
         .collect::<Vec<_>>()
         .delimited_by(just(Token::LParen), just(Token::RParen));
 
-    fast_boxed!(just(Token::Identifier("define", vec![]))
+    fast_boxed!(just(Token::Define)
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
         .then(meta_arguments)
         .then(
@@ -2025,10 +2042,52 @@ where
         .labelled("import statement")
 }
 
+fn external_function_parser<'src, I>() -> impl Parser<'src, I, ExternalFunction, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    just(Token::Define)
+        .ignore_then(just(Token::Extern))
+        .ignore_then(
+            just_match(TokenDiscriminants::CallingConvention)
+                .map(|x| x.try_as_calling_convention().unwrap()),
+        )
+        .then(type_parser().map(Some).or(just(Token::Void).to(None)))
+        .then(just_match(TokenDiscriminants::Identifier).map(|x| {
+            let (identifier, meta) = x.try_as_identifier().unwrap();
+            let mut full_name = identifier.to_string();
+            for part in meta {
+                full_name.push('.');
+                full_name.push_str(part);
+            }
+            full_name
+        }))
+        .then_ignore(just(Token::LParen))
+        .then(
+            type_parser()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .then_ignore(just(Token::RParen))
+        .map_with(|(((cconv, return_type), name), param_types), extra| {
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            let uuid = (state.uuid_generator)();
+
+            ExternalFunction {
+                uuid,
+                name,
+                cconv,
+                param_types,
+                return_type,
+            }
+        })
+}
+
 // Final parser, import + function definitions
 enum Item {
     Import(String),
     Function(Function),
+    ExternalFunction(ExternalFunction),
 }
 
 fn final_parser<'src, I>() -> impl Parser<'src, I, Vec<Item>, Extra<'src>> + Clone
@@ -2041,6 +2100,7 @@ where
             .ignore_then(choice((
                 import_parser().map(Item::Import),
                 parse_function().map(Item::Function),
+                external_function_parser().map(Item::ExternalFunction),
             )))
             .then_ignore(just(Token::Newline).or_not())
             .repeated()
@@ -2087,6 +2147,7 @@ pub fn extend_module_from_path(
     let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let mut list_added_internal_functions = vec![];
+    let mut list_added_external_functions = vec![];
 
     while let Some(current_path) = stack.pop() {
         // Read the source file
@@ -2224,6 +2285,10 @@ pub fn extend_module_from_path(
                     // Add it to the list functions to be added after verification
                     list_added_internal_functions.push(function);
                 }
+                Item::ExternalFunction(function) => {
+                    debug!("Adding external function {:?} to module", function.name);
+                    list_added_external_functions.push(function);
+                }
             }
         }
     }
@@ -2256,19 +2321,34 @@ pub fn extend_module_from_path(
         resolved_internal_functions.insert(*uuid, function.uuid);
     }
 
-    // For no external functions cannot be defined by the module as such all unresolved external is treated as an error;
-    if !unresolved_external_functions.borrow().is_empty() {
-        let names: Vec<String> = unresolved_external_functions
-            .borrow()
-            .keys()
-            .cloned()
+    // Resolve external functions
+    let mut resolved_external_functions: HashMap<Uuid, Uuid> = HashMap::new();
+    for (name, uuid) in unresolved_external_functions.borrow().iter() {
+        // Find the function in the list_added_external_functions
+        let matching_functions: Vec<_> = list_added_external_functions
+            .iter()
+            .filter(|f| f.name == *name)
             .collect();
-        error!("Unresolved external functions: {:?}", names);
-        return Err(Error::ValidationFailed(format!(
-            "Unresolved {:?} function(s): {}",
-            FunctionPointerType::External,
-            names.join(", ")
-        )));
+        if matching_functions.is_empty() {
+            error!("Unresolved external function: {:?}", name);
+            return Err(Error::ValidationFailed(format!(
+                "Unresolved {:?} function `{}`",
+                FunctionPointerType::External,
+                name
+            )));
+        } else if matching_functions.len() > 1 {
+            error!(
+                "Multiple external functions found with the same name: {}",
+                name
+            );
+            return Err(Error::ValidationFailed(format!(
+                "External function `{}` already exists",
+                name
+            )));
+        }
+
+        let function = matching_functions[0];
+        resolved_external_functions.insert(*uuid, function.uuid);
     }
 
     // Finally update all the links internally
@@ -2353,6 +2433,7 @@ pub fn extend_module_from_string(
     let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
     let mut list_added_internal_functions = vec![];
+    let mut list_added_external_functions = vec![];
 
     {
         let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
@@ -2440,6 +2521,10 @@ pub fn extend_module_from_string(
                     function.normalize_ssa();
                     list_added_internal_functions.push(function);
                 }
+                Item::ExternalFunction(function) => {
+                    debug!("Adding external function {:?} to module", function.name);
+                    list_added_external_functions.push(function);
+                }
             }
         }
     } // end of inner scope; drop parser state and func_retriever
@@ -2470,19 +2555,33 @@ pub fn extend_module_from_string(
         resolved_internal_functions.insert(*uuid, function.uuid);
     }
 
-    // External functions cannot be defined in the string source; treat unresolved externals as error
-    if !unresolved_external_functions.borrow().is_empty() {
-        let names: Vec<String> = unresolved_external_functions
-            .borrow()
-            .keys()
-            .cloned()
+    // Add external functions to the module
+    let mut resolved_external_functions: HashMap<Uuid, Uuid> = HashMap::new();
+    for (name, uuid) in unresolved_external_functions.borrow().iter() {
+        let matching_functions: Vec<_> = list_added_external_functions
+            .iter()
+            .filter(|f| f.name == *name)
             .collect();
-        error!("Unresolved external functions: {:?}", names);
-        return Err(Error::ValidationFailed(format!(
-            "Unresolved {:?} function(s): {}",
-            FunctionPointerType::External,
-            names.join(", ")
-        )));
+        if matching_functions.is_empty() {
+            error!("Unresolved external function: {:?}", name);
+            return Err(Error::ValidationFailed(format!(
+                "Unresolved {:?} function `{}`",
+                FunctionPointerType::External,
+                name
+            )));
+        } else if matching_functions.len() > 1 {
+            error!(
+                "Multiple external functions found with the same name: {}",
+                name
+            );
+            return Err(Error::ValidationFailed(format!(
+                "External function `{}` already exists",
+                name
+            )));
+        }
+
+        let function = matching_functions[0];
+        resolved_external_functions.insert(*uuid, function.uuid);
     }
 
     // Update all internal function pointer links and insert functions into the module
@@ -2505,13 +2604,21 @@ pub fn extend_module_from_string(
                                 *uuid = *resolved;
                             }
                         }
-                        FunctionPointer::External(_) => {}
+                        FunctionPointer::External(uuid) => {
+                            if let Some(resolved) = resolved_external_functions.get(uuid) {
+                                *uuid = *resolved;
+                            }
+                        }
                     }
                 }
             }
         }
 
         module.functions.insert(func.uuid, Arc::new(func));
+    }
+
+    for func in list_added_external_functions.into_iter() {
+        module.external_functions.insert(func.uuid, func);
     }
 
     // Verify module integrity

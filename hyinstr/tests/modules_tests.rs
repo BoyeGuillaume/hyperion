@@ -758,7 +758,7 @@ fn parser_reports_unresolved_external_function() {
     let source = r#"
         define void caller() {
         entry:
-            %r: i32 = invoke ptr external printf, i32 0
+            %r: i32 = invoke ptr extern printf, i32 0
             ret void
         }
     "#;
@@ -769,6 +769,47 @@ fn parser_reports_unresolved_external_function() {
         Error::ValidationFailed(msg)
             if msg.contains("External function") || msg.contains("external function")
     ));
+}
+
+#[test]
+fn parser_correctly_resolved_external_functions() {
+    let reg = registry();
+    let mut module = Module::default();
+
+    // Call to an external function without declaring it should fail
+    let source = r#"
+        define extern cc i32 printf(i32)
+
+        define void caller() {
+        entry:
+            %r: i32 = invoke ptr extern printf, i32 0
+            ret void
+        }
+    "#;
+
+    extend_module_from_string(&mut module, &reg, source).unwrap();
+
+    let printf_uuid = module
+        .external_functions
+        .values()
+        .find(|f| &*f.name == "printf")
+        .map(|f| f.uuid)
+        .expect("printf should be declared");
+
+    let caller_uuid = module
+        .find_internal_function_uuid_by_name("caller")
+        .expect("caller should be defined");
+    let caller = module.get_internal_function_by_uuid(caller_uuid).unwrap();
+    let mut seen_call = false;
+    for (instr, _) in caller.iter() {
+        if let HyInstr::Invoke(inv) = instr {
+            if let Operand::Imm(AnyConst::FuncPtr(FunctionPointer::External(uuid))) = inv.function {
+                assert_eq!(uuid, printf_uuid);
+                seen_call = true;
+            }
+        }
+    }
+    assert!(seen_call);
 }
 
 #[test]
