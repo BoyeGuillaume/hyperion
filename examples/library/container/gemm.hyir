@@ -1,0 +1,79 @@
+; General Matrix-Matrix Multiplication (GEMM) implementation
+define void gemm(%a: { ptr, i32, i32 }, %b: { ptr, i32, i32 }, %c: { ptr, i32, i32 }) {
+entry:
+    ; Check dimensions
+    %a_ptr: ptr = extractvalue %a, 0i32
+    %a_rows: i32 = extractvalue %a, 1i32
+    %a_cols: i32 = extractvalue %a, 2i32
+    %b_ptr: ptr = extractvalue %b, 0i32
+    %b_rows: i32 = extractvalue %b, 1i32
+    %b_cols: i32 = extractvalue %b, 2i32
+    %c_ptr: ptr = extractvalue %c, 0i32
+    %c_rows: i32 = extractvalue %c, 1i32
+    %c_cols: i32 = extractvalue %c, 2i32
+
+    ; Constraints: a_cols == b_rows, a_rows == c_rows, b_cols == c_cols
+    %a_cols_eq_b_rows: i1 = icmp.eq %a_cols, %b_rows
+    %a_rows_eq_c_rows: i1 = icmp.eq %a_rows, %c_rows
+    %b_cols_eq_c_cols: i1 = icmp.eq %b_cols, %c_cols
+    %dims_valid: i1 = and %a_cols_eq_b_rows, %a_rows_eq_c_rows
+    %dims_valid_final: i1 = and %dims_valid, %b_cols_eq_c_cols
+    branch %dims_valid_final, compute, fail
+
+compute:
+    ; Perform matrix multiplication
+    %i: i32 = phi [ 0i32, entry ], [ %i_next, outer_loop ]
+    jump outer_loop
+
+outer_loop:
+    %is_i_less_a_rows: i1 = icmp.ult %i, %a_rows
+    branch %is_i_less_a_rows, inner_loop_j, done
+
+inner_loop_j:
+    %j: i32 = phi [ 0i32, outer_loop ], [ %j_next, inner_loop_k ]
+    %is_j_less_b_cols: i1 = icmp.ult %j, %b_cols
+    branch %is_j_less_b_cols, inner_loop_k, outer_loop_next
+
+inner_loop_k:
+    %k: i32 = phi [ 0i32, inner_loop_j ], [ %k_next, compute_element ]
+    %is_k_less_a_cols: i1 = icmp.ult %k, %a_cols
+    branch %is_k_less_a_cols, compute_element, inner_loop_j_next
+
+compute_element:
+    ; Load A[i][k], B[k][j], C[i][j]
+    %i_mul_a_cols: i32 = imul.utrap %i, %a_cols
+    %a_ik_offset: i32 = iadd.utrap %i_mul_a_cols, %k
+    %k_mul_b_cols: i32 = imul.utrap %k, %b_cols
+    %b_kj_offset: i32 = iadd.utrap %k_mul_b_cols, %j
+    %i_mul_c_cols: i32 = imul.utrap %i, %c_cols
+    %c_ij_offset: i32 = iadd.utrap %i_mul_c_cols, %j
+    %a_ik_ptr: ptr = getelementptr i64, %a_ptr, %a_ik_offset
+    %b_kj_ptr: ptr = getelementptr i64, %b_ptr, %b_kj_offset
+    %c_ij_ptr: ptr = getelementptr i64, %c_ptr, %c_ij_offset
+    %a_ik: i64 = load %a_ik_ptr
+    %b_kj: i64 = load %b_kj_ptr
+    %c_ij: i64 = load %c_ij_ptr
+    ; C[i][j] += A[i][k] * B[k][j]
+    %prod: i64 = imul.utrap %a_ik, %b_kj
+    %c_ij_new: i64 = iadd.utrap %c_ij, %prod
+    store %c_ij_ptr, %c_ij_new
+    ; Next k
+    %k_next: i32 = iadd.utrap %k, 1i32
+    jump inner_loop_k
+
+inner_loop_j_next:
+    ; Next j
+    %j_next: i32 = iadd.utrap %j, 1i32
+    jump inner_loop_j
+
+outer_loop_next:
+    ; Next i
+    %i_next: i32 = iadd.utrap %i, 1i32
+    jump outer_loop
+
+fail:
+    trap
+
+done:
+    ret void
+}

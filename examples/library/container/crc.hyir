@@ -1,0 +1,22 @@
+; CRC-8 byte-wise algorithm implementation
+define i32 crc8(%byte_slice: { ptr, i32 }) {
+entry:
+    %ptr: ptr = extractvalue %byte_slice, 0i32
+    %len: i32 = extractvalue %byte_slice, 1i32
+    jump loop_check
+
+loop_check:
+    %crc: i32 = phi [ 0x0i32, entry ], [ %crc_next, loop_body ]
+    %i: i32 = phi [ 0i32, entry ], [ %i_next, loop_body ]
+    %is_i_less_len: i1 = icmp.ult %i, %len
+    branch %is_i_less_len, loop_body, loop_done
+
+loop_body:
+    %byte_ptr: ptr = getelementptr i8, %ptr, %i
+    %byte: i8 = load %byte_ptr, align 1
+    ; XOR the byte with the running CRC value
+    %crc_1: i32 = xor %crc, %byte
+    
+
+
+}

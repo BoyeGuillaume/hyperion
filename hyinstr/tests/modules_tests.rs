@@ -568,7 +568,7 @@ fn parser_simple_round_trip_from_string() {
     let source = r#"
         define i32 add_one(%x: i32) {
         entry:
-            %y: i32 = iadd.wrap %x, i32 1
+            %y: i32 = iadd.wrap %x, 1i32
             ret %y
         }
     "#;
@@ -594,7 +594,7 @@ fn parser_handles_imports_with_extend_module_from_path() {
     let dep_content = r#"
         define i32 inc(%x: i32) {
         entry:
-            %y: i32 = iadd.wrap %x, i32 1
+            %y: i32 = iadd.wrap %x, 1i32
             ret %y
         }
     "#;
@@ -627,26 +627,26 @@ fn parser_extended_factorial_example_resolves_calls() {
     let ir = r#"
 define i32 factorial ( %n: i32 ) {
 entry:
-   %cmp1: i1 = icmp.eq %n, i32 0
+   %cmp1: i1 = icmp.eq %n, 0i32
    branch %cmp1, return_result, recurse
 
 recurse:
-   %n_minus_1: i32 = isub.wrap %n, i32 1
+   %n_minus_1: i32 = isub.wrap %n, 1i32
    %recursive_result: i32 = invoke ptr factorial, %n_minus_1
    %result2: i32 = imul.usat  %n, %recursive_result
    %result: i32 = imul.wrap %n, %recursive_result
    jump return_result
 
 return_result:
-   %final_result: i32 = phi [ %result2, recurse ], [ i32 1, entry ]
+   %final_result: i32 = phi [ %result2, recurse ], [ 1i32, entry ]
    ret %final_result
 }
 
 ; Free variable n <=> forall n
 define void !factorial_test_a (%n: i32) {
 entry:
-    %n_less_1: i32 = isub.wrap %n, i32 1
-    %n_greater_0: i1 = icmp.ugt %n, i32 0
+    %n_less_1: i32 = isub.wrap %n, 1i32
+    %n_greater_0: i1 = icmp.ugt %n, 0i32
     !assume %n_greater_0
     %fact_n: i32 = invoke ptr factorial, %n
     %fact_n_minus_0: i32 = invoke ptr factorial, %n_less_1
@@ -661,10 +661,10 @@ entry:
 
 define void !factorial_test_b () {
 entry:
-    %fact_0: i32 = invoke ptr factorial, i32 0
-    %fact_1: i32 = invoke ptr factorial, i32 1
-    %eq0: i1 = icmp.eq %fact_0, i32 1
-    %eq1: i1 = icmp.eq %fact_1, i32 1
+    %fact_0: i32 = invoke ptr factorial, 0i32
+    %fact_1: i32 = invoke ptr factorial, 1i32
+    %eq0: i1 = icmp.eq %fact_0, 1i32
+    %eq1: i1 = icmp.eq %fact_1, 1i32
     %eq_final: i1 = and %eq0, %eq1
     !assert %eq_final
     ret void
@@ -758,7 +758,7 @@ fn parser_reports_unresolved_external_function() {
     let source = r#"
         define void caller() {
         entry:
-            %r: i32 = invoke ptr extern printf, i32 0
+            %r: i32 = invoke ptr extern printf, 0i32
             ret void
         }
     "#;
@@ -782,7 +782,7 @@ fn parser_correctly_resolved_external_functions() {
 
         define void caller() {
         entry:
-            %r: i32 = invoke ptr extern printf, i32 0
+            %r: i32 = invoke ptr extern printf, 0i32
             ret void
         }
     "#;
@@ -856,7 +856,7 @@ fn parser_parses_meta_analysis_stat_instruction_count_operand() {
     let src = r#"
         define void !ana2() {
         entry:
-            %x: i32 = !analysis.icnt i32 0x400
+            %x: i32 = !analysis.icnt 0x400i32
             ret void
         }
     "#;

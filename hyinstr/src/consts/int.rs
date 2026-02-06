@@ -55,7 +55,7 @@ impl std::fmt::Display for IConst {
         if f.alternate() {
             write!(f, "{}", self.value)
         } else {
-            write!(f, "{} {}", self.ty, self.value)
+            write!(f, "{}{}", self.value, self.ty)
         }
     }
 }

@@ -1,0 +1,13 @@
+; A simple recursive factorial function
+define i32 factorial(%n: i32) {
+entry:
+    %is_null: i1 = icmp.eq %n, 0i32
+    branch %is_null, output, recurse
+output:
+    ret 1i32
+recurse:
+    %dec: i32 = isub.wrap %n, 1i32
+    %rec_result: i32 = invoke ptr factorial, %dec
+    %result: i32 = imul.utrap %n, %rec_result
+    ret %result
+}

@@ -1,0 +1,23 @@
+; Function that checks if a number is prime
+define i1 is_prime(%n: i64) {
+entry:
+    %is_less_than_2: i1 = icmp.ult %n, 2i64
+    branch %is_less_than_2, not_prime, check_loop
+check_loop:
+    %i: i64 = phi [ 2i64, entry ], [ %i_next, check_continue ]
+    %n_mod_i: i64 = irem.unsigned %n, %i
+    %is_divisible: i1 = icmp.eq %n_mod_i, 0i64
+    branch %is_divisible, not_prime, check_continue
+
+check_continue:
+    %i_next: i64 = iadd.utrap %i, 1i64
+    %i_squared: i64 = imul.utrap %i_next, %i_next
+    %is_i_squared_le_n: i1 = icmp.ule %i_squared, %n
+    branch %is_i_squared_le_n, check_loop, is_prime_done
+
+is_prime_done:
+    ret 1i1
+
+not_prime:
+    ret 0i1
+}

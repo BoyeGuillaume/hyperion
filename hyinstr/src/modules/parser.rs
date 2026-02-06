@@ -69,11 +69,14 @@ enum Token<'a> {
     /// Register identifier (prefixed with '%')
     Register(&'a str),
 
+    /// Raw number token (numbering without type)
+    RawNumber(BigInt),
+
     /// Numeric literal (can be decimal, octal, hexadecimal or binary, prefixed accordingly)
-    Number(BigInt),
+    Number(BigInt, IType),
 
     /// Decimal floating-point literal
-    Decimal(BigDecimal),
+    Decimal(BigDecimal, FType),
 
     /// String literal (enclosed in double quotes)
     StringLiteral(String),
@@ -159,8 +162,9 @@ impl std::fmt::Display for Token<'_> {
             }
             Token::Uuid(uuid) => write!(f, "{}", uuid),
             Token::Register(name) => write!(f, "%{}", name),
-            Token::Number(num) => write!(f, "{}", num),
-            Token::Decimal(dec) => write!(f, "{}", dec),
+            Token::RawNumber(num) => write!(f, "{}", num),
+            Token::Number(num, itype) => write!(f, "{}{}", num, itype),
+            Token::Decimal(dec, ftype) => write!(f, "{}{}", dec, ftype),
             Token::StringLiteral(s) => write!(f, "{:?}", s),
             Token::LParen => write!(f, "("),
             Token::RParen => write!(f, ")"),
@@ -336,13 +340,13 @@ fn numeral_parser<'src>()
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
-                Ok(value) => Token::Decimal(value),
+                Ok(value) => value,
                 Err(e) => {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!("invalid decimal literal '{}': {}", literal, e),
                     ));
-                    Token::Decimal(BigDecimal::from(0))
+                    BigDecimal::from(0)
                 }
             },
         );
@@ -353,16 +357,38 @@ fn numeral_parser<'src>()
         .to_slice()
         .validate(
             |literal: &str, extra, emit| match literal.parse::<BigDecimal>() {
-                Ok(value) => Token::Decimal(value),
+                Ok(value) => value,
                 Err(e) => {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!("invalid decimal literal '{}': {}", literal, e),
                     ));
-                    Token::Decimal(BigDecimal::from(0))
+                    BigDecimal::from(0)
                 }
             },
         );
+
+    let fp_parser = choice((float_with_fraction, float_with_exponent))
+        .then(chumsky::text::ascii::ident())
+        .validate(|(value, ftype_str): (BigDecimal, &str), extra, emit| {
+            match FType::from_str(ftype_str) {
+                Ok(ftype) => Token::Decimal(value, ftype),
+                Err(()) => {
+                    emit.emit(Rich::custom(
+                        extra.span(),
+                        format!(
+                            "invalid floating-point type '{}', expected one of {}",
+                            ftype_str,
+                            FType::iter()
+                                .map(|x| x.to_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    ));
+                    Token::Decimal(value, FType::Fp32)
+                }
+            }
+        });
 
     let hex_int = sign
         .ignore_then(just("0x").or(just("0X")))
@@ -384,13 +410,19 @@ fn numeral_parser<'src>()
 
             let number_body = &rest[2..];
             match BigInt::parse_bytes(number_body.as_bytes(), 16) {
-                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                Some(value) => {
+                    if signum == -1 {
+                        -value
+                    } else {
+                        value
+                    }
+                }
                 None => {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!("invalid base 16 integer '{}'", s),
                     ));
-                    Token::Number(BigInt::from(0))
+                    BigInt::from(0)
                 }
             }
         });
@@ -415,13 +447,19 @@ fn numeral_parser<'src>()
 
             let number_body = &rest[2..];
             match BigInt::parse_bytes(number_body.as_bytes(), 8) {
-                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                Some(value) => {
+                    if signum == -1 {
+                        -value
+                    } else {
+                        value
+                    }
+                }
                 None => {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!("invalid base 8 integer '{}'", s),
                     ));
-                    Token::Number(BigInt::from(0))
+                    BigInt::from(0)
                 }
             }
         });
@@ -446,13 +484,19 @@ fn numeral_parser<'src>()
 
             let number_body = &rest[2..];
             match BigInt::parse_bytes(number_body.as_bytes(), 2) {
-                Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                Some(value) => {
+                    if signum == -1 {
+                        -value
+                    } else {
+                        value
+                    }
+                }
                 None => {
                     emit.emit(Rich::custom(
                         extra.span(),
                         format!("invalid base 2 integer '{}'", s),
                     ));
-                    Token::Number(BigInt::from(0))
+                    BigInt::from(0)
                 }
             }
         });
@@ -471,26 +515,43 @@ fn numeral_parser<'src>()
 
                 let number_body = rest;
                 match BigInt::parse_bytes(number_body.as_bytes(), 10) {
-                    Some(value) => Token::Number(if signum == -1 { -value } else { value }),
+                    Some(value) => {
+                        if signum == -1 {
+                            -value
+                        } else {
+                            value
+                        }
+                    }
                     None => {
                         emit.emit(Rich::custom(
                             extra.span(),
                             format!("invalid base 10 integer '{}'", s),
                         ));
-                        Token::Number(BigInt::from(0))
+                        BigInt::from(0)
                     }
                 }
             });
 
-    choice((
-        float_with_fraction,
-        float_with_exponent,
-        hex_int,
-        octal_int,
-        binary_int,
-        decimal_int,
-    ))
-    .labelled("numeral")
+    let int_parser = choice((hex_int, octal_int, binary_int, decimal_int))
+        .then(chumsky::text::ascii::ident().or_not())
+        .validate(|(value, itype_str), extra, emit| {
+            if let Some(itype_str) = itype_str {
+                match IType::from_str(itype_str) {
+                    Ok(itype) => Token::Number(value, itype),
+                    Err(e) => {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            format!("invalid integer type {}", e),
+                        ));
+                        Token::Number(value, IType::I32)
+                    }
+                }
+            } else {
+                Token::RawNumber(value)
+            }
+        });
+
+    choice((fp_parser, int_parser)).labelled("numeral")
 }
 
 fn identifier_parser<'src>()
@@ -714,8 +775,8 @@ where
     let vector_type = just(Token::Identifier("vscale", vec![]))
         .or_not()
         .then(
-            just_match(TokenDiscriminants::Number).validate(|num_span, extra, emit| {
-                let num = num_span.try_as_number().unwrap();
+            just_match(TokenDiscriminants::RawNumber).validate(|num_span, extra, emit| {
+                let num = num_span.try_as_raw_number().unwrap();
 
                 if num <= BigInt::ZERO {
                     emit.emit(Rich::custom(
@@ -772,12 +833,12 @@ where
 
             // Array types (e.g., [10 x i32])
             let array_type = just(Token::LBracket)
-                .ignore_then(just_match(TokenDiscriminants::Number))
+                .ignore_then(just_match(TokenDiscriminants::RawNumber))
                 .then_ignore(just(Token::Identifier("x", vec![])))
                 .then(tree.clone())
                 .then_ignore(just(Token::RBracket))
                 .validate(|(size_token, ty), extra, emit| {
-                    let size_token = size_token.try_as_number().unwrap();
+                    let size_token = size_token.try_as_raw_number().unwrap();
                     let num_elements = if size_token <= BigInt::ZERO {
                         emit.emit(Rich::custom(
                             extra.span(),
@@ -832,23 +893,17 @@ fn constant_parser<'src, I>() -> impl Parser<'src, I, AnyConst, Extra<'src>> + C
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let itype_const = just_match(TokenDiscriminants::IType)
-        .then(just_match(TokenDiscriminants::Number))
-        .map(|(a, b)| {
-            AnyConst::Int(IConst {
-                ty: a.try_as_i_type().unwrap(),
-                value: b.try_as_number().unwrap(),
-            })
+    let itype_const = just_match(TokenDiscriminants::Number)
+        .map(|number| {
+            let (value, ty) = number.try_as_number().unwrap();
+            AnyConst::Int(IConst { ty, value })
         })
         .labelled("integer constant");
 
-    let ftype_const = just_match(TokenDiscriminants::FType)
-        .then(just_match(TokenDiscriminants::Decimal))
-        .map(|(a, b)| {
-            AnyConst::Float(FConst {
-                ty: a.try_as_f_type().unwrap(),
-                value: b.try_as_decimal().unwrap(),
-            })
+    let ftype_const = just_match(TokenDiscriminants::Decimal)
+        .map(|decimal| {
+            let (value, ty) = decimal.try_as_decimal().unwrap();
+            AnyConst::Float(FConst { ty, value })
         })
         .labelled("floating-point constant");
 
@@ -999,9 +1054,9 @@ where
             .ignore_then(
                 just(Token::Identifier("align", vec![])),
             )
-            .ignore_then(just_match(TokenDiscriminants::Number))
+            .ignore_then(just_match(TokenDiscriminants::RawNumber))
             .validate(|num_token, extra, emit| {
-                let align = num_token.try_as_number().unwrap();
+                let align = num_token.try_as_raw_number().unwrap();
                 if align <= BigInt::from(0) || align > BigInt::from(u32::MAX) {
                     emit.emit(Rich::custom(
                        extra.span(),

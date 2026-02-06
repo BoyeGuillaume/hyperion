@@ -1,0 +1,63 @@
+; Basic function that swap two entries of a list i64
+define void swap_i64(%list: { ptr, i32 }, %i: i32, %j: i32) {
+entry:
+    %ptr: ptr = extractvalue %list, 0i32
+    %len: i32 = extractvalue %list, 1i32
+
+    %is_i_valid: i1 = icmp.ult %i, %len
+    %is_j_valid: i1 = icmp.ult %j, %len
+    %are_valid: i1 = and %is_i_valid, %is_j_valid
+    branch %are_valid, swap, fail
+swap:
+    %elem_i_ptr: ptr = getelementptr i64, %ptr, %i
+    %elem_j_ptr: ptr = getelementptr i64, %ptr, %j
+    %elem_i: i64 = load %elem_i_ptr
+    %elem_j: i64 = load %elem_j_ptr
+    store %elem_j_ptr, %elem_i
+    store %elem_i_ptr, %elem_j
+    ret void
+
+fail:
+    trap
+}
+
+; Function that sort a list of i64 using bubble sort
+; This algorithm works by repeatedly stepping through the list,
+; comparing adjacent elements and swapping them if they are in the wrong order.
+; If two elements were swapped, the process go back to the beginning of the list
+define void bubble_sort_i64(%list: { ptr, i32 }) {
+entry:
+    %ptr: ptr = extractvalue %list, 0i32
+    %len: i32 = extractvalue %list, 1i32
+    jump loop_check
+
+loop_check:
+    %i: i32 = phi [ 1i32, entry ], [ 1i32, do_swap ], [ %i_next, loop_end ]
+    %is_i_less_len: i1 = icmp.ult %i, %len
+    %j: i32 = isub.utrap %i, 1i32
+    branch %is_i_less_len, loop_body, loop_done
+
+loop_body:
+    ; Load elements at positions i and i-1 (j)
+    %i_ptr: ptr = getelementptr i64, %ptr, %i
+    %j_ptr: ptr = getelementptr i64, %ptr, %j
+    %elem_i: i64 = load %i_ptr
+    %elem_j: i64 = load %j_ptr
+
+    ; Compare elements
+    %cmp: i1 = icmp.ult %elem_i, %elem_j
+    branch %cmp, do_swap, loop_end
+do_swap:
+    ; Swap elements if they are in the wrong order
+    invoke ptr swap_i64, %list, %j, %i
+    ; After swap, restart from the beginning, set i to 1
+    jump loop_check
+
+loop_end:
+    ; Move to the next pair
+    %i_next: i32 = iadd.utrap %i, 1i32
+    jump loop_check
+
+loop_done:
+    ret void
+}

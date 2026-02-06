@@ -1,0 +1,20 @@
+; A simple pow function using a loop and phi nodes
+define i32 pow(%a: i32, %n: i32) {
+entry:
+    %is_null: i1 = icmp.eq %n, 0i32
+    branch %is_null, output, loop
+
+loop:
+    %c_a: i32 = phi [1i32, entry], [%mul, loop]
+    %c_n: i32 = phi [%n, entry], [%dec, loop]
+    %mul: i32 = imul.utrap %c_a, %a
+    %dec: i32 = isub.wrap %c_n, 1i32
+
+    %is_zero: i1 = icmp.eq %dec, 0i32
+    branch %is_zero, output, loop
+
+
+output:
+    %result: i32 = phi [1i32, entry], [%mul, loop]
+    ret %result
+}

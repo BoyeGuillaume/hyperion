@@ -16,12 +16,12 @@ fn parser_handles_richer_math_examples() {
     let source = r#"
 define fp32 dot3(%a: <3 x fp32>, %b: <3 x fp32>) {
 entry:
-    %ax: fp32 = extractvalue %a, i32 0
-    %ay: fp32 = extractvalue %a, i32 1
-    %az: fp32 = extractvalue %a, i32 2
-    %bx: fp32 = extractvalue %b, i32 0
-    %by: fp32 = extractvalue %b, i32 1
-    %bz: fp32 = extractvalue %b, i32 2
+    %ax: fp32 = extractvalue %a, 0i32
+    %ay: fp32 = extractvalue %a, 1i32
+    %az: fp32 = extractvalue %a, 2i32
+    %bx: fp32 = extractvalue %b, 0i32
+    %by: fp32 = extractvalue %b, 1i32
+    %bz: fp32 = extractvalue %b, 2i32
     %m0: fp32 = fmul %ax, %bx
     %m1: fp32 = fmul %ay, %by
     %m2: fp32 = fmul %az, %bz
@@ -32,21 +32,21 @@ entry:
 
 define fp32 pow_fp32(%x: fp32, %exp: i32) {
 entry:
-    %exp_is_zero: i1 = icmp.eq %exp, i32 0
+    %exp_is_zero: i1 = icmp.eq %exp, 0i32
     branch %exp_is_zero, pow_zero, pow_loop
 
 pow_zero:
-    ret fp32 1.0
+    ret 1.0fp32
 
 pow_loop:
-    %acc: fp32 = phi [ fp32 1.0, entry ], [ %acc_next, pow_iter ]
+    %acc: fp32 = phi [ 1.0fp32, entry ], [ %acc_next, pow_iter ]
     %e: i32 = phi [ %exp, entry ], [ %e_next, pow_iter ]
-    %done: i1 = icmp.eq %e, i32 0
+    %done: i1 = icmp.eq %e, 0i32
     branch %done, pow_exit, pow_iter
 
 pow_iter:
     %acc_next: fp32 = fmul %acc, %x
-    %e_next: i32 = isub.wrap %e, i32 1
+    %e_next: i32 = isub.wrap %e, 1i32
     jump pow_loop
 
 pow_exit:
@@ -55,32 +55,32 @@ pow_exit:
 
 define fp32 sqrt_newton(%x: fp32) {
 entry:
-    %half_x: fp32 = fmul %x, fp32 0.5
-    %guess0: fp32 = fadd %half_x, fp32 1.0
+    %half_x: fp32 = fmul %x, 0.5fp32
+    %guess0: fp32 = fadd %half_x, 1.0fp32
     %reciprocal: fp32 = fdiv %x, %guess0
     %avg: fp32 = fadd %guess0, %reciprocal
-    %guess1: fp32 = fmul %avg, fp32 0.5
+    %guess1: fp32 = fmul %avg, 0.5fp32
     %reciprocal2: fp32 = fdiv %x, %guess1
     %avg2: fp32 = fadd %guess1, %reciprocal2
-    %guess2: fp32 = fmul %avg2, fp32 0.5
+    %guess2: fp32 = fmul %avg2, 0.5fp32
     ret %guess2
 }
 
 define fp32 dot_dynamic(%a: { ptr, i32 }, %b: { ptr, i32 }) {
 entry:
-    %a_data: ptr = extractvalue %a, i32 0
-    %a_len: i32 = extractvalue %a, i32 1
-    %b_data: ptr = extractvalue %b, i32 0
-    %b_len: i32 = extractvalue %b, i32 1
+    %a_data: ptr = extractvalue %a, 0i32
+    %a_len: i32 = extractvalue %a, 1i32
+    %b_data: ptr = extractvalue %b, 0i32
+    %b_len: i32 = extractvalue %b, 1i32
     %same_len: i1 = icmp.eq %a_len, %b_len
     branch %same_len, dot_loop, dot_empty
 
 dot_empty:
-    ret fp32 0.0
+    ret 0.0fp32
 
 dot_loop:
-    %acc: fp32 = phi [ fp32 0.0, entry ], [ %acc_next, dot_iter ]
-    %idx: i32 = phi [ i32 0, entry ], [ %idx_next, dot_iter ]
+    %acc: fp32 = phi [ 0.0fp32, entry ], [ %acc_next, dot_iter ]
+    %idx: i32 = phi [ 0i32, entry ], [ %idx_next, dot_iter ]
     %done: i1 = icmp.eq %idx, %a_len
     branch %done, dot_exit, dot_iter
 
@@ -91,7 +91,7 @@ dot_iter:
     %bval: fp32 = load %offset_b, align 4
     %prod: fp32 = fmul %aval, %bval
     %acc_next: fp32 = fadd %acc, %prod
-    %idx_next: i32 = iadd.wrap %idx, i32 1
+    %idx_next: i32 = iadd.wrap %idx, 1i32
     jump dot_loop
 
 dot_exit:
@@ -100,20 +100,20 @@ dot_exit:
 
 define i32 max_u32(%data: ptr, %len: i32) {
 entry:
-    %empty: i1 = icmp.eq %len, i32 0
+    %empty: i1 = icmp.eq %len, 0i32
     branch %empty, max_zero, max_init
 
 max_zero:
-    ret i32 0
+    ret 0i32
 
 max_init:
-    %first_ptr: ptr = getelementptr i32, %data, i32 0
+    %first_ptr: ptr = getelementptr i32, %data, 0i32
     %current: i32 = load %first_ptr
     jump max_loop
 
 max_loop:
     %max: i32 = phi [ %current, max_init ], [ %max_next, max_iter ]
-    %idx: i32 = phi [ i32 1, max_init ], [ %idx_next, max_iter ]
+    %idx: i32 = phi [ 1i32, max_init ], [ %idx_next, max_iter ]
     %done: i1 = icmp.eq %idx, %len
     branch %done, max_exit, max_iter
 
@@ -122,7 +122,7 @@ max_iter:
     %value: i32 = load %ptr_i
     %cmp: i1 = icmp.ugt %value, %max
     %max_next: i32 = select %cmp, %value, %max
-    %idx_next: i32 = iadd.wrap %idx, i32 1
+    %idx_next: i32 = iadd.wrap %idx, 1i32
     jump max_loop
 
 max_exit:

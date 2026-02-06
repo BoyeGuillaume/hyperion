@@ -443,8 +443,10 @@ impl TypeRegistry {
         let h = Self::hash_ty(&ty);
 
         // Lock, notice that the order is critical, always lock first database first
-        let mut array_lock = self.array.upgradable_read();
-        let mut inverse_lookup_lock = self.inverse_lookup.upgradable_read();
+        // We don't use read_upgradable because we consider the event: "type not found"
+        // as rare and read_upgradable exclude read_upgradable.
+        let array_lock = self.array.read();
+        let inverse_lookup_lock = self.inverse_lookup.read();
 
         // Check if it exists in the inverse_lookup
         let typerefs = inverse_lookup_lock.get(&h);
@@ -460,37 +462,53 @@ impl TypeRegistry {
 
         // Otherwise if no matches, we inverse the next type
         // NOTE: Ordering of upgrade is paramount to avoid deadlock
-        array_lock.with_upgraded(|array_lock| {
-            inverse_lookup_lock.with_upgraded(|inverse_lookup_lock| {
-                // Reserve a new typeref
-                let new_typeref = self.next_uuid();
+        drop(array_lock);
+        drop(inverse_lookup_lock);
+        let mut array_lock = self.array.write();
+        let mut inverse_lookup_lock = self.inverse_lookup.write();
 
-                // Insert in the inverse_lookup_lock
-                if let Some(list) = inverse_lookup_lock.get_mut(&h) {
-                    // Important: log collisions at info level with full context.
-                    info!("Detected an hash collision on hash 0x{:016x}. The following types collided:\n{}",
-                        h,
-                        list.iter().map(|uuid| {
-                            format!(" - {} -> {}", uuid, array_lock.get(uuid).unwrap().internal_fmt(&*array_lock))
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n"),
-                    );
+        // Reserve a new typeref
+        let new_typeref = self.next_uuid();
 
-                    // Extra debug detail for the inverse lookup structure.
-                    debug!("Inverse lookup updated for hash 0x{:016x}: {:?} (type {})", h, list, ty.internal_fmt(&*array_lock));
-                    list.push(new_typeref);
-                } else {
-                    // Normal insertion is a debug-level event.
-                    debug!("New type encountered {}. Registered with UUID {}.", ty.internal_fmt(&*array_lock), new_typeref);
-                    inverse_lookup_lock.insert(h, smallvec![new_typeref]);
-                }
+        // Insert in the inverse_lookup_lock
+        if let Some(list) = inverse_lookup_lock.get_mut(&h) {
+            // Important: log collisions at info level with full context.
+            info!(
+                "Detected an hash collision on hash 0x{:016x}. The following types collided:\n{}",
+                h,
+                list.iter()
+                    .map(|uuid| {
+                        format!(
+                            " - {} -> {}",
+                            uuid,
+                            array_lock.get(uuid).unwrap().internal_fmt(&*array_lock)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
 
-                // Insert in array
-                array_lock.insert(new_typeref, ty);
-                Typeref(new_typeref)
-            })
-        })
+            // Extra debug detail for the inverse lookup structure.
+            debug!(
+                "Inverse lookup updated for hash 0x{:016x}: {:?} (type {})",
+                h,
+                list,
+                ty.internal_fmt(&*array_lock)
+            );
+            list.push(new_typeref);
+        } else {
+            // Normal insertion is a debug-level event.
+            debug!(
+                "New type encountered {}. Registered with UUID {}.",
+                ty.internal_fmt(&*array_lock),
+                new_typeref
+            );
+            inverse_lookup_lock.insert(h, smallvec![new_typeref]);
+        }
+
+        // Insert in array
+        array_lock.insert(new_typeref, ty);
+        Typeref(new_typeref)
     }
 
     /// Format a given `Typeref` using this registry.

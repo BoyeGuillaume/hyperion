@@ -20,7 +20,7 @@ const CHAIN_SOURCE: &str = r#"
 define i32 overlay_inputs(%x: i32) {
 entry:
     %twice: i32 = iadd.wrap %x, %x
-    %plus_one: i32 = iadd.wrap %twice, i32 1
+    %plus_one: i32 = iadd.wrap %twice, 1i32
     ret %plus_one
 }
 "#;

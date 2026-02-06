@@ -55,16 +55,17 @@ impl AnyConst {
     pub fn verify(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
         match self {
             AnyConst::Array { elements } => {
-                if elements.is_empty() {}
-                let first_type = elements[0].typeref(type_registry);
-                for elem in elements.iter().skip(1) {
-                    let ty = elem.typeref(type_registry);
-                    if ty != first_type {
-                        return Err(Error::IllegalState(format!(
-                            "Array constant elements must be of uniform type. Expected type {}, found type {}.",
-                            type_registry.fmt(first_type),
-                            type_registry.fmt(ty)
-                        )));
+                if !elements.is_empty() {
+                    let first_type = elements[0].typeref(type_registry);
+                    for elem in elements.iter().skip(1) {
+                        let ty = elem.typeref(type_registry);
+                        if ty != first_type {
+                            return Err(Error::IllegalState(format!(
+                                "Array constant elements must be of uniform type. Expected type {}, found type {}.",
+                                type_registry.fmt(first_type),
+                                type_registry.fmt(ty)
+                            )));
+                        }
                     }
                 }
                 Ok(())
@@ -87,7 +88,7 @@ impl AnyConst {
                 let ty = elements.first().unwrap().typeref(type_registry);
                 type_registry.search_or_insert(
                     ArrayType {
-                        ty: ty,
+                        ty,
                         num_elements: elements.len() as u16,
                     }
                     .into(),
@@ -178,7 +179,21 @@ impl AnyConst {
                             }
                         }
                     },
-                    AnyConst::GlobalPtr(uuid) => todo!(), // TODO: FIXME
+                    AnyConst::GlobalPtr(uuid) => {
+                        if let Some(module) = self.module {
+                            if let Some(global) = module.globals.get(uuid) {
+                                if let Some(name) = &global.name {
+                                    write!(f, "{}", name)
+                                } else {
+                                    write!(f, "@{:?}", uuid)
+                                }
+                            } else {
+                                write!(f, "ptr <invalid@{}>", uuid)
+                            }
+                        } else {
+                            write!(f, "ptr <unresolved@{}>", uuid)
+                        }
+                    }
                 }
             }
         }

@@ -75,7 +75,7 @@ impl std::fmt::Display for FConst {
         if f.alternate() {
             write!(f, "{}", self.value)
         } else {
-            write!(f, "{} {}", self.ty, self.value)
+            write!(f, "{}{}", self.value, self.ty)
         }
     }
 }

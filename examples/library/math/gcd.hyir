@@ -1,0 +1,15 @@
+; Compute the GCD of two integers using the Euclidean algorithm
+define i32 gcd(%a: i32, %b: i32) {
+entry:
+    %b_is_zero: i1 = icmp.eq %b, 0i32
+    branch %b_is_zero, end, gcd_loop
+gcd_loop:
+    %ca: i32 = phi [ %a, entry ], [ %b, gcd_loop ]
+    %cb: i32 = phi [ %b, entry ], [ %a_mod_b, gcd_loop ]
+    %a_mod_b: i32 = irem.unsigned %ca, %cb
+    %b_is_zero_loop: i1 = icmp.eq %a_mod_b, 0i32
+    branch %b_is_zero_loop, end, gcd_loop
+end:
+    %out: i32 = phi [ %a, entry ], [ %ca, gcd_loop ]
+    ret %out
+}

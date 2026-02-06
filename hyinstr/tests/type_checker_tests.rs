@@ -61,7 +61,7 @@ entry:
     let bad_ir = r#"
 define i32 add_bad(%x: fp32) {
 entry:
-    %sum: i33 = iadd.wrap %x, fp32 1.0
+    %sum: i33 = iadd.wrap %x, 1.0fp32
     ret %sum
 }
 "#;
@@ -255,7 +255,7 @@ entry:
     let bad_ir = r#"
 define i32 shl_bad(%value: i32) {
 entry:
-    %out: i32 = isht.lsl %value, fp32 1.0
+    %out: i32 = isht.lsl %value, 1.0fp32
     ret %out
 }
 "#;
@@ -315,7 +315,7 @@ entry:
     let bad_ir = r#"
 define i32 bit_and_bad(%lhs: i32) {
 entry:
-    %out: i32 = and %lhs, fp32 0.0
+    %out: i32 = and %lhs, 0.0fp32
     ret %out
 }
 "#;
@@ -345,7 +345,7 @@ entry:
     let bad_ir = r#"
 define i32 bit_or_bad(%lhs: i32) {
 entry:
-    %out: i32 = or %lhs, fp32 0.0
+    %out: i32 = or %lhs, 0.0fp32
     ret %out
 }
 "#;
@@ -375,7 +375,7 @@ entry:
     let bad_ir = r#"
 define i32 bit_xor_bad(%lhs: i32) {
 entry:
-    %out: i32 = xor %lhs, fp32 0.0
+    %out: i32 = xor %lhs, 0.0fp32
     ret %out
 }
 "#;
@@ -435,7 +435,7 @@ entry:
     let bad_ir = r#"
 define i1 implies_bad(%cond: i1) {
 entry:
-    %out: i1 = implies %cond, i32 1
+    %out: i1 = implies %cond, 1i32
     ret %out
 }
 "#;
@@ -465,7 +465,7 @@ entry:
     let bad_ir = r#"
 define i1 equiv_bad(%lhs: i1) {
 entry:
-    %out: i1 = equiv %lhs, fp32 0.0
+    %out: i1 = equiv %lhs, 0.0fp32
     ret %out
 }
 "#;
@@ -766,7 +766,7 @@ entry:
     let bad_ir = r#"
 define ptr alloca_bad() {
 entry:
-    %buf: ptr = alloca fp32 1.0
+    %buf: ptr = alloca 1.0fp32
     ret %buf
 }
 "#;
@@ -796,7 +796,7 @@ entry:
     let ok_ir2 = r#"
 define fp32 gep_ok2(%base: ptr, %idx: i32) {
 entry:
-    %offset: ptr = getelementptr { ptr, fp32 }, %base, %idx, i32 1
+    %offset: ptr = getelementptr { ptr, fp32 }, %base, %idx, 1i32
     %value: fp32 = load %offset
     ret %value
 }"#;
@@ -903,7 +903,7 @@ right:
     jump join
 
 join:
-    %value: i32 = phi [ %x, left ], [ fp32 1.0, right ]
+    %value: i32 = phi [ %x, left ], [ 1.0fp32, right ]
     ret %value
 }
 "#;
@@ -1007,8 +1007,8 @@ fn insertvalue_test_type_checks() {
     let ok_ir = r#"
 define { ptr, i32 } insert_ok(%i_ptr: ptr, %i_len: i32) {
 entry:
-    %updated: { ptr, i32 } = insertvalue { ptr, i32 } undef, %i_ptr, i32 0
-    %updated2: { ptr, i32 } = insertvalue %updated, %i_len, i32 1
+    %updated: { ptr, i32 } = insertvalue { ptr, i32 } undef, %i_ptr, 0i32
+    %updated2: { ptr, i32 } = insertvalue %updated, %i_len, 1i32
     ret %updated2
 }
 "#;
@@ -1022,7 +1022,7 @@ entry:
     let bad_ir = r#"
 define { ptr, i32 } insert_bad(%pair: { ptr, i32 }) {
 entry:
-    %updated: { ptr, i32 } = insertvalue %pair, i32 1, i32 0
+    %updated: { ptr, i32 } = insertvalue %pair, 1i32, 0i32
     ret %updated
 }
 "#;
@@ -1038,8 +1038,8 @@ fn extractvalue_test_type_checks() {
     let ok_ir = r#"
 define ptr extract_ok(%pair: { ptr, i32 }) {
 entry:
-    %ptr: ptr = extractvalue %pair, i32 0
-    %i: i32 = extractvalue %pair, i32 1
+    %ptr: ptr = extractvalue %pair, 0i32
+    %i: i32 = extractvalue %pair, 1i32
     ret %ptr
 }
 "#;
@@ -1053,7 +1053,7 @@ entry:
     let bad_ir = r#"
 define i32 extract_bad(%pair: { ptr, i32 }) {
 entry:
-    %ptr: i32 = extractvalue %pair, i32 0
+    %ptr: i32 = extractvalue %pair, 0i32
     ret %ptr
 }
 "#;
@@ -1064,7 +1064,7 @@ entry:
     let bad_ir2 = r#"
 define i32 extract_bad2(%pair: { ptr, i32 }) {
 entry:
-    %i: i32 = extractvalue %pair, i32 2
+    %i: i32 = extractvalue %pair, 2i32
     ret %i
 }
 "#;
@@ -1200,7 +1200,7 @@ fn meta_analysis_test_type_checks() {
     let ok_ir = r#"
 define i32 !analysis_ok() {
 entry:
-    %count: i32 = !analysis.icnt i32 0x1
+    %count: i32 = !analysis.icnt 0x1i32
     ret %count
 }
 "#;
@@ -1214,7 +1214,7 @@ entry:
     let bad_ir = r#"
 define i1 !analysis_bad() {
 entry:
-    %count: i1 = !analysis.icnt i32 0x1
+    %count: i1 = !analysis.icnt 0x1i32
     ret %count
 }
 "#;
@@ -1262,25 +1262,25 @@ fn factorial_module_type_checks() {
     let factorial_ir = r#"
 define i32 factorial ( %n: i32 ) {
 entry:
-   %cmp1: i1 = icmp.eq %n, i32 0
+   %cmp1: i1 = icmp.eq %n, 0i32
    branch %cmp1, return_result, recurse
 
 recurse:
-   %n_minus_1: i32 = isub.wrap %n, i32 1
+   %n_minus_1: i32 = isub.wrap %n, 1i32
    %recursive_result: i32 = invoke ptr factorial, %n_minus_1
    %result2: i32 = imul.usat  %n, %recursive_result
    %result: i32 = imul.wrap %n, %recursive_result
    jump return_result
 
 return_result:
-   %final_result: i32 = phi [ %result2, recurse ], [ i32 1, entry ]
+   %final_result: i32 = phi [ %result2, recurse ], [ 1i32, entry ]
    ret %final_result
 }
 
 define void !factorial_test_a (%n: i32) {
 entry:
-    %n_less_1: i32 = isub.wrap %n, i32 1
-    %n_greater_0: i1 = icmp.ugt %n, i32 0
+    %n_less_1: i32 = isub.wrap %n, 1i32
+    %n_greater_0: i1 = icmp.ugt %n, 0i32
     !assume %n_greater_0
     %fact_n: i32 = invoke ptr factorial, %n
     %fact_n_minus_0: i32 = invoke ptr factorial, %n_less_1
@@ -1294,10 +1294,10 @@ entry:
 
 define void !factorial_test_b () {
 entry:
-    %fact_0: i32 = invoke ptr factorial, i32 0
-    %fact_1: i32 = invoke ptr factorial, i32 1
-    %eq0: i1 = icmp.eq %fact_0, i32 1
-    %eq1: i1 = icmp.eq %fact_1, i32 1
+    %fact_0: i32 = invoke ptr factorial, 0i32
+    %fact_1: i32 = invoke ptr factorial, 1i32
+    %eq0: i1 = icmp.eq %fact_0, 1i32
+    %eq1: i1 = icmp.eq %fact_1, 1i32
     %eq_final: i1 = and %eq0, %eq1
     !assert %eq_final
     ret void

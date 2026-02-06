@@ -42,6 +42,8 @@ pub fn type_check<'a>(
     }
 
     // Define utility function to get the type of an operand
+    // Because of the call to search_or_insert in typeref, we need to ensure that
+    // no read-guard is present when this function get called.
     let get_operand_type = |operand: &Operand| -> Result<Typeref, crate::utils::Error> {
         match operand {
             Operand::Reg(name) => {
@@ -85,6 +87,7 @@ pub fn type_check<'a>(
                 }
 
                 // Check operand types
+                drop(ty);
                 for operand in instruction.operands() {
                     let operand_type = get_operand_type(operand)?;
                     if operand_type != dest_type {
@@ -116,6 +119,7 @@ pub fn type_check<'a>(
                 }
 
                 // Check operand types
+                drop(ty);
                 for operand in instruction.operands() {
                     let operand_type = get_operand_type(operand)?;
                     if operand_type != dest_type {
@@ -148,6 +152,7 @@ pub fn type_check<'a>(
                         });
                     }
                 }
+                drop(ty);
 
                 // Both operands must be of the same integer/vectorized integer type
                 let mut operands_iterator = instruction.operands();
@@ -296,16 +301,19 @@ pub fn type_check<'a>(
                 // We skip the first index as it is for the base pointer indexing (when pointing to an array)
                 let mut elem = element_ptr.in_ty;
                 for index in element_ptr.indices.iter().skip(1) {
-                    let ty = type_registry.get(elem).unwrap();
-                    match &*ty {
+                    // Clone is suboptimal here but we must ensure that the ReadLock is released
+                    // before the call to search_or_insert to avoid deadlock. Also Clone is
+                    // statistically cheap because it only perform heap allocation in case of Struct { .. }
+                    // or ExtType.
+                    let ty = type_registry.get(elem).unwrap().clone();
+                    match ty {
                         AnyType::Primary(PrimaryType::Vc(VcType { ty, .. })) => {
                             // Cannot check index bounds, just update elem
-                            elem =
-                                type_registry.search_or_insert(AnyType::Primary(ty.clone().into()));
+                            elem = type_registry.search_or_insert(AnyType::Primary(ty.into()));
                         }
                         AnyType::Array(ArrayType { ty, .. }) => {
                             // Cannot check index bounds, just update elem
-                            elem = *ty;
+                            elem = ty;
                         }
                         AnyType::Struct(struct_type) => {
                             // Operand must be integer constant
@@ -397,6 +405,7 @@ pub fn type_check<'a>(
                         found: type_registry.fmt(condition_type).to_string(),
                     });
                 }
+                drop(ty); // Before get_operand_type because of deadlock
 
                 let true_operand = operands_iterator.next().unwrap();
                 let false_operand = operands_iterator.next().unwrap();
@@ -423,9 +432,11 @@ pub fn type_check<'a>(
                 let cast = instruction.try_as_cast_ref().unwrap();
 
                 // Check the output type and input type
+                // get_operand_type before get because of deadlock
                 let input_typeref = get_operand_type(&cast.value)?;
+                let cast_typeref = get_operand_type(&cast.value)?;
                 let output_type = type_registry.get(cast.ty).unwrap();
-                let input_type = type_registry.get(get_operand_type(&cast.value)?).unwrap();
+                let input_type = type_registry.get(cast_typeref).unwrap();
 
                 // Check vectorization consistency
                 let input_vc_size = input_type
@@ -761,6 +772,7 @@ pub fn type_check<'a>(
                     }
                 }
 
+                // get_operand_type before get due to deadlock
                 let operand = instruction.operands().next().unwrap();
                 let operand_type = get_operand_type(operand)?;
                 let ty = type_registry.get(operand_type).unwrap();

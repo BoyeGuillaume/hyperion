@@ -37,6 +37,31 @@ pub struct IType {
     num_bits: u32,
 }
 
+impl std::str::FromStr for IType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.strip_prefix('i') {
+            Some(bits_str) => match bits_str.parse::<u32>() {
+                Ok(num_bits) => match IType::try_new(num_bits) {
+                    Some(itype) => Ok(itype),
+                    None => Err(format!(
+                        "invalid integer type width: {} (expected {}..={})",
+                        num_bits,
+                        Self::MIN_BITS,
+                        Self::MAX_BITS
+                    )),
+                },
+                Err(_) => Err(format!(
+                    "invalid integer type width: {} (syntax is i<number>)",
+                    bits_str
+                )),
+            },
+            None => Err(format!("invalid integer type: {} (syntax is i<number>)", s)),
+        }
+    }
+}
+
 impl IType {
     /// Common integer types used in Hy.
     pub const I1: Self = Self { num_bits: 1 };

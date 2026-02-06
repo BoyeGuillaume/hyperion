@@ -1,0 +1,20 @@
+; A function that compute the n-th Fibonacci number iteratively.
+define i64 fibonacci(%n: i32) {
+entry:
+    jump fib_loop
+
+fib_loop:
+    %a: i64 = phi [ 0i64, entry ], [ %a_next, fib_continue ]
+    %b: i64 = phi [ 1i64, entry ], [ %a, fib_continue ]
+    %i: i32 = phi [ %n, entry ], [ %i_next, fib_continue ]
+    %is_i_zero: i1 = icmp.eq %i, 0i32
+    branch %is_i_zero, fib_done, fib_continue
+
+fib_continue:
+    %a_next: i64 = iadd.utrap %a, %b
+    %i_next: i32 = isub.utrap %i, 1i32
+    jump fib_loop
+
+fib_done:
+    ret %a
+}

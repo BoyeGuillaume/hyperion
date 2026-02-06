@@ -1,0 +1,49 @@
+; An algorithm that find the length of a C-style string
+define i32 cstr_len(%s: ptr) {
+entry:
+    %len: i32 = phi [ 0i32, entry ], [ %len_next, loop_continue ]
+    %char_ptr: ptr = getelementptr i8, %s, %len
+    %char: i8 = load %char_ptr
+    %is_null: i1 = icmp.eq %char, 0i8
+    branch %is_null, len_done, loop_continue
+loop_continue:
+    %len_next: i32 = iadd.utrap %len, 1i32
+    jump entry
+len_done:
+    ret %len
+}
+
+; A string that reverse a C-style string in place.
+define void cstr_reverse(%s: ptr) {
+entry:
+    ; Find the length of the string
+    %len: i32 = invoke ptr cstr_len, %s
+    %len_is_null: i1 = icmp.eq %len, 0i32
+    branch %len_is_null, stop, entry1
+
+entry1:
+    %len_minus_1: i32 = isub.utrap %len, 1i32
+    jump reverse_loop
+
+reverse_loop:
+    %i: i32 = phi [ 0i32, entry1 ], [ %i_next, reverse_continue ]
+    %j: i32 = phi [ %len_minus_1, entry1 ], [ %j_next, reverse_continue ]
+    %is_i_ge_j: i1 = icmp.uge %i, %j
+    branch %is_i_ge_j, stop, reverse_continue
+
+reverse_continue:
+    ; Swap characters at positions i and j
+    %i_ptr: ptr = getelementptr i8, %s, %i
+    %j_ptr: ptr = getelementptr i8, %s, %j
+    %char_i: i8 = load %i_ptr
+    %char_j: i8 = load %j_ptr
+    store %i_ptr, %char_j
+    store %j_ptr, %char_i
+    ; Move towards the center
+    %i_next: i32 = iadd.utrap %i, 1i32
+    %j_next: i32 = isub.utrap %j, 1i32
+    jump reverse_loop
+
+stop:
+    ret void
+}
