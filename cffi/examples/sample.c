@@ -2,13 +2,6 @@
 #include <stdio.h>
 #include <math.h>
 
-static const char *hycore_c_str =
-    "define i32 square(%a: i32) {\n"
-    "entry:\n"
-    "  %result: i32 = imul.wrap %a, %a\n"
-    "  ret %result\n"
-    "}\n";
-
 #if defined(_MSC_VER)
 #define COLOR_RESET ""
 #define COLOR_RED ""
@@ -68,41 +61,39 @@ void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats);
 
 int main(int argc, char **argv)
 {
-    if (argc < 1 || argc >= 3)
+    if (argc < 1) return 1;
+    if (argc != 2)
     {
         printf("Usage: %s <optional_assembly_file>\n", argv[0]);
         return -1;
     }
 
     /* Read the assembly file if provided, overwise default to hycore_c_str */
-    const char *assembly_data = hycore_c_str;
-    bool assembly_data_allocated = false;
-
-    if (argc == 2)
+    FILE *file = fopen(argv[1], "rb");
+    if (!file)
     {
-        const char *filename = argv[1];
-        FILE *file = fopen(filename, "rb");
-        if (!file)
-        {
-            printf("Failed to open file: %s\n", filename);
-            return -1;
-        }
-        fseek(file, 0, SEEK_END);
-        long fileSize = ftell(file);
-        fseek(file, 0, SEEK_SET);
-        char *fileData = (char *)malloc(fileSize + 1);
-        if (!fileData)
-        {
-            printf("Memory allocation failed for file data.\n");
-            fclose(file);
-            return -1;
-        }
-        fread(fileData, 1, fileSize, file);
-        fileData[fileSize] = '\0';
-        fclose(file);
-        assembly_data = fileData;
-        assembly_data_allocated = true;
+        printf("Failed to open file: %s\n", argv[1]);
+        return -1;
     }
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (file_size >= 0xffff) { /* Protect against overflow */
+        printf("Maximum file size reached, cannot exceed 65534");
+        return 1;
+    }
+
+    char *file_data = (char *)malloc(file_size + 1);
+    if (!file_data)
+    {
+        printf("Memory allocation failed for file data.\n");
+        fclose(file);
+        return -1;
+    }
+
+    fread(file_data, 1, file_size, file);
+    file_data[file_size] = '\0';
+    fclose(file);
 
     /* Retrieve and print Hycore version information */
     HyVersionInfo version;
@@ -137,8 +128,7 @@ int main(int argc, char **argv)
     if (result != HY_RESULT_SUCCESS)
     {
         printf("Failed to create Hycore instance. Error code: %d\n", result);
-        if (assembly_data_allocated)
-            free((void *)assembly_data);
+        free((void *) file_data);
         return -1;
     }
 
@@ -146,8 +136,8 @@ int main(int argc, char **argv)
     HyModuleSourceInfo sourceInfo;
     sourceInfo.sType = HY_STRUCTURE_TYPE_MODULE_SOURCE_INFO;
     sourceInfo.sourceType = HY_MODULE_SOURCE_TYPE_ASSEMBLY;
-    sourceInfo.filename = "sample.c";
-    sourceInfo.data = (const uint8_t *)assembly_data;
+    sourceInfo.filename = argv[1]; // The actual filename
+    sourceInfo.data = (const uint8_t *) file_data;
 
     const HyModuleSourceInfo *sources[] = {&sourceInfo};
     HyModuleCompileInfo compileInfo;
@@ -158,8 +148,8 @@ int main(int argc, char **argv)
     uint8_t *compiledData = NULL;
     uint32_t compiledDataLen = 0;
     result = hyCompileModule(instance, &compileInfo, &compiledData, &compiledDataLen);
-    if (assembly_data_allocated)
-        free((void *)assembly_data);
+    free((void *)file_data); /* free the file content */
+
     if (result != HY_RESULT_SUCCESS)
     {
         printf("Module compilation failed. Error code: %d\n", result);
