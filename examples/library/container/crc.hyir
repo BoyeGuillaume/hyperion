@@ -1,22 +1,42 @@
-; CRC-8 byte-wise algorithm implementation
-define i32 crc8(%byte_slice: { ptr, i32 }) {
+const A: [1 x i32] = [0i32]
+
+; Most common variant of CRC-32
+define i32 crc32(%byte_slice: { ptr, i32 }) {
 entry:
     %ptr: ptr = extractvalue %byte_slice, 0i32
     %len: i32 = extractvalue %byte_slice, 1i32
-    jump loop_check
+    jump loop_start
 
-loop_check:
-    %crc: i32 = phi [ 0x0i32, entry ], [ %crc_next, loop_body ]
-    %i: i32 = phi [ 0i32, entry ], [ %i_next, loop_body ]
-    %is_i_less_len: i1 = icmp.ult %i, %len
-    branch %is_i_less_len, loop_body, loop_done
+loop_start:
+    %i: i32 = phi [0i32, entry]
+    %crc: i32 = phi [0xFFFFFFFFi32, entry]
+    %is_done: i1 = icmp.eq %i, %len
+    branch %is_done, loop_end, loop_body
 
 loop_body:
+    %next_i: i32 = iadd.utrap %i, 1i32
     %byte_ptr: ptr = getelementptr i8, %ptr, %i
     %byte: i8 = load %byte_ptr, align 1
-    ; XOR the byte with the running CRC value
-    %crc_1: i32 = xor %crc, %byte
-    
+    jump internal_loop
 
+internal_loop:
+    %j: i32 = phi [0i32, loop_body], [%next_j, internal_loop]
+    %l_crc: i32 = phi [%crc, loop_body], [%crc_next, internal_loop]
+    %l_byte: i8 = phi [%byte, loop_body], [%byte_next, internal_loop]
+    %next_j: i32 = iadd.wrap %j, 1i32
+    %is_j_done: i1 = icmp.eq %next_j, 8i32
+    %byte_next: i8 = isht.lsr %l_byte, 1i8
+    %byte_i32: i32 = cast.zext %l_byte
+    %l_xor: i32 = xor %l_crc, %byte_i32
+    %l_and: i32 = and %l_xor, 1i32
+    %l_and_is_one: i1 = icmp.eq %l_and, 1i32
+    %l_crc_a: i32 = isht.lsr %l_crc, 1i32
+    %l_crc_b: i32 = and %l_and, 0xEDB88320i32
+    %l_crc_c: i32 = select %l_and_is_one, %l_crc_b, %l_crc_a
+    %crc_next: i32 = isht.lsr %l_crc_c, 1i32
+    branch %is_j_done, loop_start, internal_loop
 
+loop_end:
+    %final_crc: i32 = not %crc
+    ret %final_crc
 }

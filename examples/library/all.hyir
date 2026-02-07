@@ -1,6 +1,7 @@
 import "container/sort.hyir"
 import "container/reverse.hyir"
 import "container/gemm.hyir"
+import "container/crc.hyir"
 
 import "math/factorial.hyir"
 import "math/fibonacci.hyir"
