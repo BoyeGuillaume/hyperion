@@ -928,13 +928,17 @@ where
             .labelled("function pointer");
 
         let array = tree
+            .padded_by(just(Token::Newline).or_not())
             .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
+            .padded_by(just(Token::Newline).or_not())
+            .then_ignore(just(Token::Comma).or_not())
+            .padded_by(just(Token::Newline).or_not())
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(|elements| AnyConst::Array { elements })
             .labelled("array constant");
 
-        choice((itype_const, ftype_const, func_ptr, array))
+        choice((itype_const, ftype_const, func_ptr, fast_boxed!(array)))
     }))
 }
 
@@ -2014,8 +2018,8 @@ where
         .delimited_by(just(Token::LParen), just(Token::RParen));
 
     fast_boxed!(just(Token::Define)
-        .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
-        .then(meta_args_parser())
+        .ignore_then(meta_args_parser())
+        .then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
         .then(
             any()
                 .filter(|x: &Token| x.is_identifier() || x.is_meta_identifier())
@@ -2045,7 +2049,7 @@ where
                 just(Token::RBrace),
             )
         )
-        .map_with(move |((((ty, meta), (func_name, is_meta_func)), params), blocks), extra| {
+        .map_with(move |((((meta, ty), (func_name, is_meta_func)), params), blocks), extra| {
             let state: &mut SimpleState<State<'src>> = extra.state();
             let uuid = (state.uuid_generator)();
 

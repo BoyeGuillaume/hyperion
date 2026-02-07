@@ -50,11 +50,23 @@ pub enum AnyConst {
 impl AnyConst {
     pub fn verify(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
         match self {
+            AnyConst::Int(val) => {
+                if val.value.bits() > val.ty.num_bits() as u64 {
+                    return Err(Error::IllegalState(format!(
+                        "Integer constant value {} exceeds the bit-width of its type {}.",
+                        val.value,
+                        type_registry.fmt(type_registry.search_or_insert(val.ty.into()))
+                    )));
+                }
+
+                Ok(())
+            }
             AnyConst::Array { elements } => {
                 if !elements.is_empty() {
                     let first_type = elements[0].typeref(type_registry);
                     for elem in elements.iter().skip(1) {
                         let ty = elem.typeref(type_registry);
+
                         if ty != first_type {
                             return Err(Error::IllegalState(format!(
                                 "Array constant elements must be of uniform type. Expected type {}, found type {}.",
@@ -62,6 +74,8 @@ impl AnyConst {
                                 type_registry.fmt(ty)
                             )));
                         }
+
+                        elem.verify(type_registry)?;
                     }
                 }
                 Ok(())
@@ -79,35 +93,43 @@ impl AnyConst {
 
     /// Retrieve the type of the constant.
     pub fn typeref(&self, type_registry: &TypeRegistry) -> Typeref {
-        match self {
-            AnyConst::Int(ic) => type_registry.search_or_insert(ic.ty.into()),
-            AnyConst::Float(fc) => type_registry.search_or_insert(fc.ty.into()),
-            AnyConst::Ptr(_) => type_registry.search_or_insert(PtrType.into()),
-            AnyConst::Array { elements } => {
-                debug_assert!(self.verify(type_registry).is_ok());
-                let ty = elements.first().unwrap().typeref(type_registry);
-                type_registry.search_or_insert(
-                    ArrayType {
-                        ty,
-                        num_elements: elements.len() as u16,
-                    }
-                    .into(),
-                )
-            }
-            AnyConst::Struct { elements, packed } => {
-                let element_types: Vec<Typeref> = elements
-                    .iter()
-                    .map(|elem| elem.typeref(type_registry))
-                    .collect();
-                type_registry.search_or_insert(
-                    StructType {
-                        element_types,
-                        packed: *packed,
-                    }
-                    .into(),
-                )
+        fn do_typeref(constant: &AnyConst, type_registry: &TypeRegistry) -> Typeref {
+            match constant {
+                AnyConst::Int(ic) => type_registry.search_or_insert(ic.ty.into()),
+                AnyConst::Float(fc) => type_registry.search_or_insert(fc.ty.into()),
+                AnyConst::Ptr(_) => type_registry.search_or_insert(PtrType.into()),
+                AnyConst::Array { elements } => {
+                    let ty = do_typeref(elements.first().unwrap(), type_registry);
+                    type_registry.search_or_insert(
+                        ArrayType {
+                            ty,
+                            num_elements: elements.len() as u16,
+                        }
+                        .into(),
+                    )
+                }
+                AnyConst::Struct { elements, packed } => {
+                    let element_types: Vec<Typeref> = elements
+                        .iter()
+                        .map(|elem| do_typeref(elem, type_registry))
+                        .collect();
+                    type_registry.search_or_insert(
+                        StructType {
+                            element_types,
+                            packed: *packed,
+                        }
+                        .into(),
+                    )
+                }
             }
         }
+
+        debug_assert!(
+            self.verify(type_registry).is_ok(),
+            "Constant verification failed: {:?}",
+            self
+        );
+        do_typeref(self, type_registry)
     }
 
     /// Format the constant as a string.
@@ -154,23 +176,23 @@ impl AnyConst {
                         if let Some(module) = self.module {
                             match module.find_symbol_by_ptr(pointer) {
                                 Ok(Symbol::ExternalFunction(external_func)) => {
-                                    write!(f, "ptr external {}", external_func.name)
+                                    write!(f, "{}", external_func.name)
                                 }
                                 Ok(Symbol::Function(func)) if func.name.is_some() => {
-                                    write!(f, "ptr function {}", func.name.as_ref().unwrap())
+                                    write!(f, "{}", func.name.as_ref().unwrap())
                                 }
                                 Ok(Symbol::Global(global)) if global.name.is_some() => {
-                                    write!(f, "ptr global {}", global.name.as_ref().unwrap())
+                                    write!(f, "{}", global.name.as_ref().unwrap())
                                 }
                                 Ok(_) => {
                                     write!(f, "@{:?}", pointer.0)
                                 }
                                 Err(_) => {
-                                    write!(f, "ptr <unresolved@{:?}>", pointer)
+                                    write!(f, "<unresolved@{:?}>", pointer)
                                 }
                             }
                         } else {
-                            write!(f, "ptr <unresolved@{:?}>", pointer)
+                            write!(f, "<unresolved@{:?}>", pointer)
                         }
                     }
                 }

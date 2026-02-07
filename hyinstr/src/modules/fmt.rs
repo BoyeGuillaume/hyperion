@@ -446,11 +446,16 @@ impl Function {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(
                     f,
-                    "define{} {} {}{}",
+                    "define{}{} {} {}{}",
                     self.function
                         .cconv
                         .as_ref()
                         .map(|cc| format!(" {}", cc.to_string()))
+                        .unwrap_or_default(),
+                    self.function
+                        .visibility
+                        .as_ref()
+                        .map(|vis| format!(" {}", vis.to_str()))
                         .unwrap_or_default(),
                     self.function
                         .return_type
