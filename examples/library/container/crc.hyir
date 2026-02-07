@@ -1,5 +1,3 @@
-const A: [1 x i32] = [0i32]
-
 ; Most common variant of CRC-32
 define i32 crc32(%byte_slice: { ptr, i32 }) {
 entry:
