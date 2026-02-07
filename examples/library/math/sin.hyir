@@ -1,0 +1,59 @@
+; Global LUTs
+const ISIN_TABLE_A: [91 x i16] = [
+    0i16, 1144i16, 2287i16, 3430i16, 4571i16, 5712i16, 6850i16, 7987i16, 9121i16, 10252i16, 11380i16,
+    12505i16, 13625i16, 14742i16, 15854i16, 16962i16, 18064i16, 19161i16, 20251i16, 21336i16, 22414i16,
+    23486i16, 24550i16, 25607i16, 26655i16, 27696i16, 28729i16, 29752i16, 30767i16, 31772i16, 32768i16,
+    33753i16, 34728i16, 35693i16, 36647i16, 37589i16, 38521i16, 39440i16, 40347i16, 41243i16, 42125i16,
+    42995i16, 43851i16, 44695i16, 45524i16, 46340i16, 47142i16, 47929i16, 48702i16, 49460i16, 50203i16,
+    50930i16, 51642i16, 52339i16, 53019i16, 53683i16, 54331i16, 54962i16, 55577i16, 56174i16, 56755i16,
+    57318i16, 57864i16, 58392i16, 58902i16, 59395i16, 59869i16, 60325i16, 60763i16, 61182i16, 61583i16,
+    61965i16, 62327i16, 62671i16, 62996i16, 63302i16, 63588i16, 63855i16, 64103i16, 64331i16, 64539i16,
+    64728i16, 64897i16, 65047i16, 65176i16, 65286i16, 65375i16, 65445i16, 65495i16, 65525i16, 65535i16,
+]
+
+; Sine function using a lookup table and linear interpolation
+define hidden fp32 i_sin(%angle: i64) {
+entry:
+    ; Normalize angle to [0, 360)
+    %neg_x: i1 = icmp.slt %angle, 0i64
+    %x_neg: i64 = ineg %angle
+    %xx: i64 = select %neg_x, %x_neg, %angle
+
+    ; If xx >= 360, wrap it around
+    %xx_mod: i64 = irem.signed %xx, 360i64
+
+    ; If xx_mod >= 180, use symmetry to reduce to [0, 180)
+    %xx_gt_180: i1 = icmp.sgt %xx_mod, 180i64
+    %xxx_minus: i64 = isub.wrap %xx_mod, 180i64
+    %xxx: i64 = select %xx_gt_180, %xxx_minus, %xx_mod
+
+    ; If xxx >= 90, use symmetry to reduce to [0, 90)
+    %xxx_gt_90: i1 = icmp.sgt %xxx, 90i64
+    %xxxx_minus: i64 = isub.wrap 180i64, %xxx
+    %xxxx: i64 = select %xxx_gt_90, %xxxx_minus, %xxx
+
+    ; pos = 
+    ;  x_neg, xx_gt_180 (if 1 1 => 1, 0 0 => 1, 1 0 => 0, 0 1 => 0 => pos = NOT (x_neg XOR xx_gt_180))
+    %pos: i1 = xor %neg_x, %xx_gt_180
+    %table_index: ptr = getelementptr i16, ptr ISIN_TABLE_A, %xxxx
+    %table_value_a: i16 = load %table_index
+    %table_value_a_fp32: fp32 = cast.uitofp %table_value_a
+    %f1: fp32 = fmul %table_value_a_fp32, 0.0000152590219fp32 ; 1/65536
+    %f2: fp32 = fneg %f1
+    %f3: fp32 = select %pos, %f2, %f1
+    ret %f3
+}
+
+define fp32 sin(%angle: fp32) {
+entry:
+    %d_uint: i32 = cast.fptoui %angle
+    %d_fp32: fp32 = cast.uitofp %d_uint
+    %d_plus_1: i32 = iadd.strap %d_uint, 1i32
+    %a: fp32 = invoke ptr i_sin, %d_uint
+    %b: fp32 = invoke ptr i_sin, %d_plus_1
+    %frac: fp32 = fsub %angle, %d_fp32
+    %delta: fp32 = fsub %b, %a
+    %interpolated: fp32 = fmul %delta, %frac
+    %result: fp32 = fadd %a, %interpolated
+    ret %result
+}
