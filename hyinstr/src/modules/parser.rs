@@ -928,7 +928,7 @@ where
             .labelled("function pointer");
 
         let array = tree
-            .separated_by(just(Token::Colon))
+            .separated_by(just(Token::Comma))
             .collect::<Vec<_>>()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .map(|elements| AnyConst::Array { elements })
@@ -2311,6 +2311,7 @@ fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
                 }
                 Item::Function(mut function) => {
                     debug!("Adding function {:?} to module", function.name);
+                    function.verify_ssa_soundness()?;
                     function.normalize_ssa();
 
                     // Add it to the list functions to be added after verification

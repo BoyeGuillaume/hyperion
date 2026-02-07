@@ -128,7 +128,7 @@ impl AnyConst {
                             if i > 0 {
                                 write!(f, ", ")?;
                             }
-                            write!(f, "{:#}", elem.fmt(self.module))?;
+                            write!(f, "{}", elem.fmt(self.module))?;
                         }
                         write!(f, "]")
                     }
@@ -142,7 +142,7 @@ impl AnyConst {
                             if i > 0 {
                                 write!(f, ", ")?;
                             }
-                            write!(f, "{:#}", elem.fmt(self.module))?;
+                            write!(f, "{}", elem.fmt(self.module))?;
                         }
                         write!(f, "}}")
                     }

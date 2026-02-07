@@ -56,7 +56,10 @@ pub fn type_check<'a>(
                     )))
                 }
             }
-            Operand::Imm(any_const) => Ok(any_const.typeref(type_registry)),
+            Operand::Imm(any_const) => {
+                any_const.verify(type_registry)?;
+                Ok(any_const.typeref(type_registry))
+            }
             Operand::Undef(typeref) => Ok(*typeref),
         }
     };

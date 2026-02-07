@@ -363,6 +363,8 @@ impl Global {
     pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
         // Verify that the type of the global variable is valid
         if let Some(value) = &self.value {
+            value.verify(type_registry)?;
+
             let ty = value.typeref(type_registry);
             if ty != self.ty {
                 return Err(Error::ValidationFailed(format!(
