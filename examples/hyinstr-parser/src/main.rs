@@ -31,13 +31,7 @@ fn main() {
             }
             println!("Successfully type checked module from {}", args.input);
 
-            for (uuid, function) in &module.functions {
-                println!(
-                    "{}:\n{}\n",
-                    uuid,
-                    function.fmt(&type_registry, Some(&module))
-                );
-            }
+            println!("Module contents:\n{}", module.fmt(&type_registry));
         }
         Err(error) => match error {
             hyinstr::utils::Error::ParserError { errors, .. } => {
