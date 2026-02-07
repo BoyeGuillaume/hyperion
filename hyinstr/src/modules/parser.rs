@@ -1,8 +1,9 @@
 use std::{
+    borrow::Cow,
     cell::RefCell,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     io,
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
     sync::Arc,
@@ -10,7 +11,7 @@ use std::{
 
 use crate::{
     analysis::{AnalysisStatistic, AnalysisStatisticOp, TerminationScope},
-    modules::symbol::ExternalFunction,
+    modules::{Global, symbol::ExternalFunction},
 };
 use bigdecimal::BigDecimal;
 use chumsky::{
@@ -24,6 +25,7 @@ use chumsky::{
 use either::Either;
 use log::{debug, error, warn};
 use num_bigint::{BigInt, Sign};
+use smallvec::SmallVec;
 use strum::{EnumDiscriminants, EnumIs, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
@@ -35,7 +37,7 @@ use crate::{
             HyInstr, HyInstrOp, InstructionFlags, fp::*, int::*, mem::*, meta::*, misc::*,
         },
         operand::{Label, Name, Operand},
-        symbol::{FunctionPointer, FunctionPointerType},
+        symbol::Pointer,
         terminator::*,
     },
     types::{
@@ -120,6 +122,9 @@ enum Token<'a> {
     /// 'define' keyword
     Define,
 
+    /// 'const' keyword
+    Const,
+
     /// 'import' keyword
     Import,
 
@@ -181,6 +186,7 @@ impl std::fmt::Display for Token<'_> {
             Token::Define => write!(f, "define"),
             Token::Extern => write!(f, "extern"),
             Token::Void => write!(f, "void"),
+            Token::Const => write!(f, "const"),
             Token::Import => write!(f, "import"),
         }
     }
@@ -190,7 +196,7 @@ impl std::fmt::Display for Token<'_> {
 struct State<'a> {
     label_namespace: BTreeMap<String, Label>,
     register_namespace: BTreeMap<String, Name>,
-    func_retriever: Rc<dyn Fn(String, FunctionPointerType) -> Option<Uuid> + 'a>,
+    ptr_retriever: Rc<dyn Fn(String) -> Uuid + 'a>,
     uuid_generator: Rc<dyn Fn() -> Uuid + 'a>,
     type_registry: &'a TypeRegistry,
 }
@@ -198,13 +204,13 @@ struct State<'a> {
 impl<'a> State<'a> {
     pub fn new(
         type_registry: &'a TypeRegistry,
-        func_retriever: Rc<dyn Fn(String, FunctionPointerType) -> Option<Uuid> + 'a>,
+        ptr_retriever: Rc<dyn Fn(String) -> Uuid + 'a>,
         uuid_generator: Rc<dyn Fn() -> Uuid + 'a>,
     ) -> Self {
         Self {
             label_namespace: BTreeMap::new(),
             register_namespace: BTreeMap::new(),
-            func_retriever,
+            ptr_retriever,
             uuid_generator,
             type_registry,
         }
@@ -585,6 +591,7 @@ fn identifier_parser<'src>()
                     "import" => return Token::Import,
                     "define" => return Token::Define,
                     "extern" => return Token::Extern,
+                    "const" => return Token::Const,
                     _ => {}
                 }
             }
@@ -893,70 +900,42 @@ fn constant_parser<'src, I>() -> impl Parser<'src, I, AnyConst, Extra<'src>> + C
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
 {
-    let itype_const = just_match(TokenDiscriminants::Number)
-        .map(|number| {
-            let (value, ty) = number.try_as_number().unwrap();
-            AnyConst::Int(IConst { ty, value })
-        })
-        .labelled("integer constant");
+    fast_boxed!(recursive(|tree| {
+        let itype_const = just_match(TokenDiscriminants::Number)
+            .map(|number| {
+                let (value, ty) = number.try_as_number().unwrap();
+                AnyConst::Int(IConst { ty, value })
+            })
+            .labelled("integer constant");
 
-    let ftype_const = just_match(TokenDiscriminants::Decimal)
-        .map(|decimal| {
-            let (value, ty) = decimal.try_as_decimal().unwrap();
-            AnyConst::Float(FConst { ty, value })
-        })
-        .labelled("floating-point constant");
+        let ftype_const = just_match(TokenDiscriminants::Decimal)
+            .map(|decimal| {
+                let (value, ty) = decimal.try_as_decimal().unwrap();
+                AnyConst::Float(FConst { ty, value })
+            })
+            .labelled("floating-point constant");
 
-    let func_ptr = just(Token::Identifier("ptr", vec![]))
-        .ignore_then(just(Token::Extern).to(()).or_not())
-        .then(
-            just_match(TokenDiscriminants::Identifier)
-                .map(|token| token.try_as_identifier().unwrap()),
-        )
-        .validate(move |(r#extern, name), extra, emit| {
-            let name = {
-                let mut full_name = name.0.to_string();
-                for part in name.1 {
-                    full_name.push('.');
-                    full_name.push_str(part);
-                }
-                full_name
-            };
-            let ftype = if r#extern.is_some() {
-                FunctionPointerType::External
-            } else {
-                FunctionPointerType::Internal
-            };
+        let func_ptr = just(Token::Identifier("ptr", vec![]))
+            .ignore_then(
+                just_match(TokenDiscriminants::Identifier)
+                    .map(|token| token_identifier_to_string(token, false)),
+            )
+            .map_with(move |name, extra| {
+                let state: &mut SimpleState<State<'src>> = extra.state();
+                let uuid = state.ptr_retriever.as_ref()(name.clone());
+                AnyConst::Ptr(Pointer(uuid))
+            })
+            .labelled("function pointer");
 
-            let state: &mut SimpleState<State<'src>> = extra.state();
-            state.func_retriever.as_ref()(name.clone(), ftype);
-            match (state.func_retriever.as_ref())(name.clone(), ftype) {
-                Some(uuid) => match ftype {
-                    FunctionPointerType::Internal => {
-                        AnyConst::FuncPtr(FunctionPointer::Internal(uuid))
-                    }
-                    FunctionPointerType::External => {
-                        AnyConst::FuncPtr(FunctionPointer::External(uuid))
-                    }
-                },
+        let array = tree
+            .separated_by(just(Token::Colon))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .map(|elements| AnyConst::Array { elements })
+            .labelled("array constant");
 
-                None => {
-                    emit.emit(Rich::custom(
-                        extra.span(),
-                        format!(
-                            "{}function pointer '{}' not found",
-                            if r#extern.is_some() { "external " } else { "" },
-                            name
-                        ),
-                    ));
-
-                    AnyConst::FuncPtr(FunctionPointer::Internal(Uuid::nil()))
-                }
-            }
-        })
-        .labelled("function pointer");
-
-    fast_boxed!(choice((itype_const, ftype_const, func_ptr)))
+        choice((itype_const, ftype_const, func_ptr, array))
+    }))
 }
 
 fn label_parser<'src, I>() -> impl Parser<'src, I, Label, Extra<'src>> + Clone
@@ -1944,6 +1923,66 @@ where
     choice((branch, trap, jump, ret)).boxed()
 }
 
+struct MetaArgs {
+    visibility: Option<Visibility>,
+    cconv: Option<CallingConvention>,
+}
+
+fn meta_args_parser<'src, I>() -> impl Parser<'src, I, MetaArgs, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    any()
+        .filter(|x: &Token| x.is_visibility() || x.is_calling_convention())
+        .repeated()
+        .at_most(2)
+        .collect::<Vec<_>>()
+        .validate(|meta_args, extra, emit| {
+            let mut visibility = None;
+            let mut calling_convention = None;
+
+            for token in meta_args {
+                if token.is_visibility() {
+                    if visibility.is_some() {
+                        emit.emit(Rich::custom(extra.span(), "duplicate visibility metadata"));
+                    }
+                    visibility = Some(token.try_as_visibility().unwrap());
+                } else if token.is_calling_convention() {
+                    if calling_convention.is_some() {
+                        emit.emit(Rich::custom(
+                            extra.span(),
+                            "duplicate calling convention metadata",
+                        ));
+                    }
+                    calling_convention = Some(token.try_as_calling_convention().unwrap());
+                }
+            }
+
+            MetaArgs {
+                visibility,
+                cconv: calling_convention,
+            }
+        })
+        .labelled("meta-args")
+}
+
+fn token_identifier_to_string(token: Token, accept_meta: bool) -> String {
+    let (full_name, meta) = if token.is_identifier() {
+        token.try_as_identifier().unwrap()
+    } else if accept_meta && token.is_meta_identifier() {
+        token.try_as_meta_identifier().unwrap()
+    } else {
+        panic!("token is not an identifier or meta-identifier: {:?}", token);
+    };
+
+    let mut full_name = full_name.to_string();
+    for part in meta {
+        full_name.push('.');
+        full_name.push_str(part);
+    }
+    full_name
+}
+
 fn parse_function<'src, I>() -> impl Parser<'src, I, Function, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
@@ -1967,35 +2006,6 @@ where
             terminator,
         });
 
-    let meta_arguments = any()
-        .filter(|x: &Token| x.is_calling_convention() || x.is_visibility())
-        .repeated()
-        .at_most(2)
-        .collect::<Vec<_>>()
-        .validate(|meta_args, extra, emit| {
-            let mut seen_cconv = false;
-            let mut seen_visibility = false;
-
-            for token in &meta_args {
-                if token.is_calling_convention() {
-                    if seen_cconv {
-                        emit.emit(Rich::custom(
-                            extra.span(),
-                            "duplicate calling convention metadata",
-                        ));
-                    }
-                    seen_cconv = true;
-                } else if token.is_visibility() {
-                    if seen_visibility {
-                        emit.emit(Rich::custom(extra.span(), "duplicate visibility metadata"));
-                    }
-                    seen_visibility = true;
-                }
-            }
-
-            meta_args
-        });
-
     let arglist = register_parser_a()
         .then_ignore(just(Token::Colon))
         .then(type_parser())
@@ -2005,7 +2015,7 @@ where
 
     fast_boxed!(just(Token::Define)
         .ignore_then(type_parser().map(Either::Left).or(just(Token::Void).map(Either::Right)))
-        .then(meta_arguments)
+        .then(meta_args_parser())
         .then(
             any()
                 .filter(|x: &Token| x.is_identifier() || x.is_meta_identifier())
@@ -2038,16 +2048,6 @@ where
         .map_with(move |((((ty, meta), (func_name, is_meta_func)), params), blocks), extra| {
             let state: &mut SimpleState<State<'src>> = extra.state();
             let uuid = (state.uuid_generator)();
-            let mut cconv = None;
-            let mut visibility = None;
-
-            for meta_token in meta {
-                if meta_token.is_calling_convention() {
-                    cconv = Some(meta_token.try_as_calling_convention().unwrap());
-                } else if meta_token.is_visibility() {
-                    visibility = Some(meta_token.try_as_visibility().unwrap());
-                }
-            }
 
             let func = Function {
                 uuid,
@@ -2055,8 +2055,8 @@ where
                 params,
                 return_type: ty.left(),
                 body: blocks.into_iter().map(|block| (block.label, block)).collect(),
-                visibility,
-                cconv,
+                visibility: meta.visibility,
+                cconv: meta.cconv,
                 meta_function: is_meta_func,
                 ..Default::default()
             };
@@ -2108,15 +2108,10 @@ where
                 .map(|x| x.try_as_calling_convention().unwrap()),
         )
         .then(type_parser().map(Some).or(just(Token::Void).to(None)))
-        .then(just_match(TokenDiscriminants::Identifier).map(|x| {
-            let (identifier, meta) = x.try_as_identifier().unwrap();
-            let mut full_name = identifier.to_string();
-            for part in meta {
-                full_name.push('.');
-                full_name.push_str(part);
-            }
-            full_name
-        }))
+        .then(
+            just_match(TokenDiscriminants::Identifier)
+                .map(|x| token_identifier_to_string(x, false)),
+        )
         .then_ignore(just(Token::LParen))
         .then(
             type_parser()
@@ -2138,11 +2133,46 @@ where
         })
 }
 
+fn global_parser<'src, I>() -> impl Parser<'src, I, Global, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span> + Clone,
+{
+    just(Token::Const)
+        .ignore_then(meta_args_parser())
+        .then(
+            just_match(TokenDiscriminants::Identifier)
+                .map(|x| token_identifier_to_string(x, false))
+                .labelled("global name"),
+        )
+        .then_ignore(just(Token::Colon))
+        .then(type_parser())
+        .then(just(Token::Equals).ignore_then(constant_parser()).or_not())
+        .validate(|(((meta, name), ty), value), extra, emit| {
+            let state: &mut SimpleState<State<'src>> = extra.state();
+            let uuid = (state.uuid_generator)();
+            if meta.cconv.is_some() {
+                emit.emit(Rich::custom(
+                    extra.span(),
+                    "calling convention metadata is not applicable to global variables",
+                ));
+            }
+
+            Global {
+                uuid,
+                name: Some(name),
+                ty,
+                value,
+                visibility: meta.visibility,
+            }
+        })
+}
+
 // Final parser, import + function definitions
 enum Item {
     Import(String),
     Function(Function),
     ExternalFunction(ExternalFunction),
+    Global(Global),
 }
 
 fn final_parser<'src, I>() -> impl Parser<'src, I, Vec<Item>, Extra<'src>> + Clone
@@ -2155,12 +2185,302 @@ where
             .ignore_then(choice((
                 import_parser().map(Item::Import),
                 parse_function().map(Item::Function),
+                global_parser().map(Item::Global),
                 external_function_parser().map(Item::ExternalFunction),
             )))
             .then_ignore(just(Token::Newline).or_not())
             .repeated()
             .collect()
     )
+}
+
+fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    entry: P,
+    retriever: impl Fn(&P) -> Result<Cow<'a, str>, Error>,
+    merger: Option<impl Fn(&P, String) -> Result<P, Error>>,
+) -> Result<(), Error> {
+    // Stack of files to process
+    let mut stack = vec![entry];
+    let unresolved_symbols: RefCell<HashMap<String, Uuid>> = Default::default();
+    let mut list_added_internal_functions = vec![];
+    let mut list_added_globals: Vec<Global> = vec![];
+    let mut list_added_external_functions = vec![];
+
+    while let Some(current_path) = stack.pop() {
+        // Read the source file
+        let source = retriever(&current_path)?;
+
+        // Lex the source file
+        let lexer_result = lexer().parse(&source);
+        if lexer_result.has_errors() {
+            error!("Lexing errors encountered in file {}:", current_path);
+
+            let errors = lexer_result
+                .into_errors()
+                .into_iter()
+                .map(|e| ParserError {
+                    file: Some(current_path.to_string()),
+                    start: e.span().start,
+                    end: e.span().end,
+                    message: e.reason().to_string(),
+                })
+                .collect();
+            return Err(Error::ParserError {
+                errors,
+                tokens: vec![],
+            });
+        }
+        let (tokens, spans): (Vec<_>, Vec<_>) =
+            lexer_result.into_output().unwrap().into_iter().unzip();
+
+        let ptr_retriever = Rc::new(|name: String| {
+            if let Some(func_ptr) = module.find_ptr_by_name(&name) {
+                func_ptr.0
+            } else {
+                unresolved_symbols
+                    .borrow_mut()
+                    .entry(name)
+                    .or_insert_with(Uuid::new_v4)
+                    .clone()
+            }
+        });
+
+        let uuid_generator = Rc::new(Uuid::new_v4);
+        let parser = final_parser();
+
+        let mut state = SimpleState(State::new(registry, ptr_retriever, uuid_generator));
+        let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
+        if parse_result.has_errors() {
+            error!("Parsing errors encountered in file {}:", current_path);
+
+            let errors = parse_result
+                .into_errors()
+                .into_iter()
+                .map(|e| {
+                    let span = e.span();
+
+                    // Convert token span to source span
+                    let source_span = SimpleSpan {
+                        start: spans[span.start].start,
+                        end: spans[span.end - 1].end,
+                        context: (),
+                    };
+
+                    ParserError {
+                        file: Some(current_path.to_string()),
+                        start: source_span.start,
+                        end: source_span.end,
+                        message: format!("{}", e.reason()),
+                    }
+                })
+                .collect();
+            return Err(Error::ParserError {
+                errors,
+                tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
+            });
+        }
+
+        // Process parsed items
+        let items = parse_result.into_output().unwrap();
+        for item in items {
+            match item {
+                Item::Import(path) => {
+                    // Push the imported file onto the stack for processing, stop processing current file
+                    if let Some(merger) = &merger {
+                        stack.push(merger(&current_path, path)?);
+                    } else {
+                        error!(
+                            "Import encountered in string source; imports unsupported in this context"
+                        );
+
+                        let errors = vec![ParserError {
+                            file: None,
+                            start: 0,
+                            end: 0,
+                            message: format!(
+                                "import statements are not supported when parsing from string",
+                            ),
+                        }];
+                        return Err(Error::ParserError {
+                            errors,
+                            tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
+                        });
+                    }
+                }
+                Item::Function(mut function) => {
+                    debug!("Adding function {:?} to module", function.name);
+                    function.normalize_ssa();
+
+                    // Add it to the list functions to be added after verification
+                    list_added_internal_functions.push(function);
+                }
+                Item::ExternalFunction(function) => {
+                    debug!("Adding external function {:?} to module", function.name);
+                    list_added_external_functions.push(function);
+                }
+                Item::Global(global) => {
+                    debug!("Adding global {:?} to module", global.name);
+                    list_added_globals.push(global);
+                }
+            }
+        }
+    }
+
+    // Resolve all function, ensuring that (1) everything is resolved, and
+    // (2) unique names are enforced
+    let mut resolving_symbols_table: HashMap<Uuid, Uuid> = HashMap::new();
+    for (name, uuid) in unresolved_symbols.borrow().iter() {
+        // Find the function in the list_added_internal_functions
+        let matching_functions: SmallVec<&Function, 1> = list_added_internal_functions
+            .iter()
+            .filter(|f| f.name.as_ref() == Some(name))
+            .collect();
+        let matching_external_functions: SmallVec<&ExternalFunction, 1> =
+            list_added_external_functions
+                .iter()
+                .filter(|f| f.name == *name)
+                .collect();
+        let matching_globals: SmallVec<&Global, 1> = list_added_globals
+            .iter()
+            .filter(|f| f.name.as_ref() == Some(name))
+            .collect();
+
+        if matching_functions.is_empty()
+            && matching_globals.is_empty()
+            && matching_external_functions.is_empty()
+        {
+            error!(
+                "Unresolved symbol `{}`, no matching internal function, external function, or global found",
+                name
+            );
+            return Err(Error::ValidationFailed(format!(
+                "Unresolved symbol `{}`: no matching internal function, external function, or global found",
+                name
+            )));
+        } else if matching_functions.len()
+            + matching_globals.len()
+            + matching_external_functions.len()
+            > 1
+        {
+            error!("Multiple definitions found with the same name: {}", name);
+            return Err(Error::ValidationFailed(format!(
+                "Multiple definitions found with the same name: {}",
+                name
+            )));
+        }
+
+        if !matching_functions.is_empty() {
+            let function = matching_functions[0];
+            resolving_symbols_table.insert(*uuid, function.uuid);
+        } else if !matching_external_functions.is_empty() {
+            let external_function = matching_external_functions[0];
+            resolving_symbols_table.insert(*uuid, external_function.uuid);
+        } else if !matching_globals.is_empty() {
+            let global = matching_globals[0];
+            resolving_symbols_table.insert(*uuid, global.uuid);
+        }
+    }
+
+    // Check that no symbols defined in the module have the same name as pre-existing symbols in the module
+    let existing_names: BTreeSet<String> = module
+        .functions
+        .values()
+        .filter_map(|f| f.name.as_ref().cloned())
+        .chain(module.external_functions.values().map(|f| f.name.clone()))
+        .chain(
+            module
+                .globals
+                .values()
+                .filter_map(|g| g.name.as_ref().cloned()),
+        )
+        .collect();
+
+    for func in list_added_internal_functions.iter() {
+        if let Some(name) = &func.name {
+            if existing_names.contains(name) {
+                error!(
+                    "Name conflict for function `{}`: a function, external function, or global with the same name already exists in the module",
+                    name
+                );
+                return Err(Error::ValidationFailed(format!(
+                    "Name conflict for function `{}`: a function, external function, or global with the same name already exists in the module",
+                    name
+                )));
+            }
+        }
+    }
+
+    for func in list_added_external_functions.iter() {
+        if existing_names.contains(&func.name) {
+            error!(
+                "Name conflict for external function `{}`: a function, external function, or global with the same name already exists in the module",
+                func.name
+            );
+            return Err(Error::ValidationFailed(format!(
+                "Name conflict for external function `{}`: a function, external function, or global with the same name already exists in the module",
+                func.name
+            )));
+        }
+    }
+
+    for global in list_added_globals.iter() {
+        if let Some(name) = &global.name {
+            if existing_names.contains(name) {
+                error!(
+                    "Name conflict for global `{}`: a function, external function, or global with the same name already exists in the module",
+                    name
+                );
+                return Err(Error::ValidationFailed(format!(
+                    "Name conflict for global `{}`: a function, external function, or global with the same name already exists in the module",
+                    name
+                )));
+            }
+        }
+    }
+
+    // Finally update all the links internally
+    for mut func in list_added_internal_functions.into_iter() {
+        for (_, block) in func.body.iter_mut() {
+            for operands in block
+                .terminator
+                .operands_mut()
+                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut()))
+            {
+                if let Some(pointer) = operands
+                    .try_as_imm_mut()
+                    .and_then(|imm| imm.try_as_ptr_mut())
+                {
+                    if let Some(new_uuid) = resolving_symbols_table.get(&pointer.0) {
+                        *pointer = Pointer(*new_uuid);
+                    }
+                }
+            }
+        }
+
+        // Add it to the module
+        module.functions.insert(func.uuid, Arc::new(func));
+    }
+
+    // Add external functions as well
+    for func in list_added_external_functions.into_iter() {
+        module.external_functions.insert(func.uuid, func);
+    }
+
+    // Add globals
+    for global in list_added_globals.into_iter() {
+        module.globals.insert(global.uuid, global);
+    }
+
+    // Verify module
+    if let Err(e) = module.verify() {
+        error!("Module verification failed: {}", e);
+        return Err(e);
+    }
+
+    // Finally, return success
+    Ok(())
 }
 
 /// Extend a module by parsing a file at the given path, including handling imports
@@ -2181,267 +2501,70 @@ pub fn extend_module_from_path(
     registry: &TypeRegistry,
     path: impl AsRef<Path>,
 ) -> Result<(), Error> {
-    // Canonicalize the path
-    let canonical_path = std::fs::canonicalize(&path)
-        .map_err(|e| {
-            let display_path = path.as_ref().to_string_lossy().to_string();
-            if e.kind() == io::ErrorKind::NotFound {
-                Error::FileNotFound(display_path)
-            } else {
-                Error::IllegalState(format!("Failed to canonicalize `{}`: {}", display_path, e))
-            }
-        })
-        .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))?;
-    debug!(
-        "Extending module from file: {}",
-        canonical_path.to_string_lossy()
-    );
+    #[derive(PartialEq, Eq)]
+    struct PathBufWrapper(PathBuf);
 
-    // Stack of files to process
-    let mut stack = vec![canonical_path];
-    let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
-    let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
-    let mut list_added_internal_functions = vec![];
-    let mut list_added_external_functions = vec![];
+    impl std::fmt::Display for PathBufWrapper {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0.display())
+        }
+    }
 
-    while let Some(current_path) = stack.pop() {
-        // Read the source file
-        debug!(
-            "Reading source file at path: {}",
-            current_path.to_string_lossy()
-        );
-        let source = std::fs::read_to_string(&current_path)
+    let canonicalize_path = |path: &Path| {
+        std::fs::canonicalize(path)
             .map_err(|e| {
-                let display_path = current_path.to_string_lossy().to_string();
+                let display_path = path.to_string_lossy().to_string();
+                if e.kind() == io::ErrorKind::NotFound {
+                    Error::FileNotFound(display_path)
+                } else {
+                    Error::IllegalState(format!("Failed to canonicalize `{}`: {}", display_path, e))
+                }
+            })
+            .map(PathBufWrapper)
+            .inspect_err(|e| error!("An error occurred while canonicalizing the path: {}", e))
+    };
+
+    let path_retriever = |path: &PathBufWrapper| {
+        // Read the source file
+        debug!("Reading source file at path: {}", path);
+        std::fs::read_to_string(&path.0)
+            .map_err(|e| {
+                let display_path = path.to_string();
                 if e.kind() == io::ErrorKind::NotFound {
                     Error::FileNotFound(display_path)
                 } else {
                     Error::IllegalState(format!("Failed to read `{}`: {}", display_path, e))
                 }
             })
-            .inspect_err(|e| error!("An error occurred while reading the source file: {}", e))?;
+            .map(|s| Cow::Owned(s))
+            .inspect_err(|e| error!("An error occurred while reading the source file: {}", e))
+    };
 
-        // Lex the source file
-        let lexer_result = lexer().parse(&source);
-        if lexer_result.has_errors() {
-            error!(
-                "Lexing errors encountered in file {}:",
-                current_path.to_string_lossy()
-            );
+    let merger = |current: &PathBufWrapper, path: String| {
+        // Push the imported file onto the stack for processing, stop processing current file
+        let import_path = current.0.parent().unwrap_or(&current.0).join(&path);
+        debug!("Add file to import list {}", import_path.to_string_lossy());
 
-            let errors = lexer_result
-                .into_errors()
-                .into_iter()
-                .map(|e| ParserError {
-                    file: Some(current_path.to_string_lossy().to_string()),
-                    start: e.span().start,
-                    end: e.span().end,
-                    message: e.reason().to_string(),
-                })
-                .collect();
-            return Err(Error::ParserError {
-                errors,
-                tokens: vec![],
-            });
-        }
-        let (tokens, spans): (Vec<_>, Vec<_>) =
-            lexer_result.into_output().unwrap().into_iter().unzip();
-
-        let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-            if let Some(func_ptr) = module
-                .find_function_uuid_by_name(&name, func_type)
-                .map(|x| x.uuid())
-            {
-                Some(func_ptr)
-            } else {
-                let uuid = Uuid::new_v4();
-                match func_type {
-                    FunctionPointerType::External => unresolved_external_functions
-                        .borrow_mut()
-                        .insert(name, uuid),
-                    FunctionPointerType::Internal => unresolved_internal_functions
-                        .borrow_mut()
-                        .insert(name, uuid),
-                };
-                Some(uuid)
-            }
-        });
-
-        let uuid_generator = Rc::new(Uuid::new_v4);
-        let parser = final_parser();
-
-        let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
-        let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
-        if parse_result.has_errors() {
-            error!(
-                "Parsing errors encountered in file {}:",
-                current_path.to_string_lossy()
-            );
-
-            let errors = parse_result
-                .into_errors()
-                .into_iter()
-                .map(|e| {
-                    let span = e.span();
-
-                    // Convert token span to source span
-                    let source_span = SimpleSpan {
-                        start: spans[span.start].start,
-                        end: spans[span.end - 1].end,
-                        context: (),
-                    };
-
-                    ParserError {
-                        file: Some(current_path.to_string_lossy().to_string()),
-                        start: source_span.start,
-                        end: source_span.end,
-                        message: format!("{}", e.reason()),
-                    }
-                })
-                .collect();
-            return Err(Error::ParserError {
-                errors,
-                tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
-            });
-        }
-
-        // Process parsed items
-        let items = parse_result.into_output().unwrap();
-        for item in items {
-            match item {
-                Item::Import(path) => {
-                    // Push the imported file onto the stack for processing, stop processing current file
-                    let import_path = current_path.parent().unwrap().join(&path);
-                    debug!("Add file to import list {}", import_path.to_string_lossy());
-
-                    let canonical_import_path = std::fs::canonicalize(&import_path)
-                        .map_err(|e| {
-                            if e.kind() == io::ErrorKind::NotFound {
-                                Error::FileNotFound(path.clone())
-                            } else {
-                                Error::IllegalState(format!(
-                                    "Failed to canonicalize import `{}`: {}",
-                                    path, e
-                                ))
-                            }
-                        })
-                        .inspect_err(|e| {
-                            error!(
-                                "An error occurred while canonicalizing the import path: {}",
-                                e
-                            )
-                        })?;
-                    stack.push(canonical_import_path);
+        std::fs::canonicalize(&import_path)
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::NotFound {
+                    Error::FileNotFound(path.clone())
+                } else {
+                    Error::IllegalState(format!("Failed to canonicalize import `{}`: {}", path, e))
                 }
-                Item::Function(mut function) => {
-                    debug!("Adding function {:?} to module", function.name);
-                    function.normalize_ssa();
+            })
+            .map(PathBufWrapper)
+            .inspect_err(|e| {
+                error!(
+                    "An error occurred while canonicalizing the import path: {}",
+                    e
+                )
+            })
+    };
 
-                    // Add it to the list functions to be added after verification
-                    list_added_internal_functions.push(function);
-                }
-                Item::ExternalFunction(function) => {
-                    debug!("Adding external function {:?} to module", function.name);
-                    list_added_external_functions.push(function);
-                }
-            }
-        }
-    }
-
-    // Resolve all function, ensuring that (1) everything is resolved, and
-    // (2) unique names are enforced
-    let mut resolved_internal_functions: HashMap<Uuid, Uuid> = HashMap::new();
-    for (name, uuid) in unresolved_internal_functions.borrow().iter() {
-        // Find the function in the list_added_internal_functions
-        let matching_functions: Vec<_> = list_added_internal_functions
-            .iter()
-            .filter(|f| f.name.as_ref() == Some(name))
-            .collect();
-        if matching_functions.is_empty() {
-            error!("Unresolved internal function: {:?}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Unresolved {:?} function `{}`",
-                FunctionPointerType::Internal,
-                name
-            )));
-        } else if matching_functions.len() > 1 {
-            error!("Multiple functions found with the same name: {}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Function `{}` already exists",
-                name
-            )));
-        }
-
-        let function = matching_functions[0];
-        resolved_internal_functions.insert(*uuid, function.uuid);
-    }
-
-    // Resolve external functions
-    let mut resolved_external_functions: HashMap<Uuid, Uuid> = HashMap::new();
-    for (name, uuid) in unresolved_external_functions.borrow().iter() {
-        // Find the function in the list_added_external_functions
-        let matching_functions: Vec<_> = list_added_external_functions
-            .iter()
-            .filter(|f| f.name == *name)
-            .collect();
-        if matching_functions.is_empty() {
-            error!("Unresolved external function: {:?}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Unresolved {:?} function `{}`",
-                FunctionPointerType::External,
-                name
-            )));
-        } else if matching_functions.len() > 1 {
-            error!(
-                "Multiple external functions found with the same name: {}",
-                name
-            );
-            return Err(Error::ValidationFailed(format!(
-                "External function `{}` already exists",
-                name
-            )));
-        }
-
-        let function = matching_functions[0];
-        resolved_external_functions.insert(*uuid, function.uuid);
-    }
-
-    // Finally update all the links internally
-    for mut func in list_added_internal_functions.into_iter() {
-        for (_, block) in func.body.iter_mut() {
-            for operands in block
-                .terminator
-                .operands_mut()
-                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut()))
-            {
-                if let Some(func_ptr) = operands
-                    .try_as_imm_mut()
-                    .and_then(|imm| imm.try_as_func_ptr_mut())
-                {
-                    match func_ptr {
-                        FunctionPointer::Internal(uuid) => {
-                            if let Some(new_uuid) = resolved_internal_functions.get(uuid) {
-                                *uuid = *new_uuid;
-                            }
-                        }
-                        FunctionPointer::External(_) => {}
-                    }
-                }
-            }
-        }
-
-        // Add it to the module
-        module.functions.insert(func.uuid, Arc::new(func));
-    }
-
-    // Verify module
-    if let Err(e) = module.verify() {
-        error!("Module verification failed: {}", e);
-        return Err(e);
-    }
-
-    // Finally, return success
-    Ok(())
+    // Find the root path
+    let root_path = canonicalize_path(path.as_ref())?;
+    extend_module_from_callbacks(module, registry, root_path, path_retriever, Some(merger))
 }
 
 /// Extend a module by parsing a source string.
@@ -2461,226 +2584,11 @@ pub fn extend_module_from_string(
     registry: &TypeRegistry,
     source: &str,
 ) -> Result<(), Error> {
-    // Lex the source string
-    let lexer_result = lexer().parse(source);
-    if lexer_result.has_errors() {
-        error!("Lexing errors encountered in provided source string:");
-
-        let errors = lexer_result
-            .into_errors()
-            .into_iter()
-            .map(|e| ParserError {
-                file: None,
-                start: e.span().start,
-                end: e.span().end,
-                message: e.reason().to_string(),
-            })
-            .collect();
-        return Err(Error::ParserError {
-            errors,
-            tokens: vec![],
-        });
-    }
-
-    let (tokens, spans): (Vec<_>, Vec<_>) = lexer_result.into_output().unwrap().into_iter().unzip();
-
-    // Final parser, import + function definitions
-    let unresolved_internal_functions: RefCell<HashMap<String, Uuid>> = Default::default();
-    let unresolved_external_functions: RefCell<HashMap<String, Uuid>> = Default::default();
-    let mut list_added_internal_functions = vec![];
-    let mut list_added_external_functions = vec![];
-
-    {
-        let func_retriever = Rc::new(|name: String, func_type: FunctionPointerType| {
-            if let Some(func_ptr) = module
-                .find_function_uuid_by_name(&name, func_type)
-                .map(|x| x.uuid())
-            {
-                Some(func_ptr)
-            } else {
-                let uuid = match func_type {
-                    FunctionPointerType::External => *unresolved_external_functions
-                        .borrow_mut()
-                        .entry(name)
-                        .or_insert_with(Uuid::new_v4),
-                    FunctionPointerType::Internal => *unresolved_internal_functions
-                        .borrow_mut()
-                        .entry(name)
-                        .or_insert_with(Uuid::new_v4),
-                };
-                Some(uuid)
-            }
-        });
-
-        let uuid_generator = Rc::new(Uuid::new_v4);
-        let parser = final_parser();
-
-        let mut state = SimpleState(State::new(registry, func_retriever, uuid_generator));
-        let parse_result = parser.parse_with_state(tokens.as_slice(), &mut state);
-        if parse_result.has_errors() {
-            error!("Parsing errors encountered in provided source string:");
-
-            let errors = parse_result
-                .into_errors()
-                .into_iter()
-                .map(|e| {
-                    let span = e.span();
-
-                    // Convert token span to source span
-                    let source_span = SimpleSpan {
-                        start: spans[span.start].start,
-                        end: spans[span.end - 1].end,
-                        context: (),
-                    };
-
-                    ParserError {
-                        file: None,
-                        start: source_span.start,
-                        end: source_span.end,
-                        message: format!("{}", e.reason()),
-                    }
-                })
-                .collect();
-            return Err(Error::ParserError {
-                errors,
-                tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
-            });
-        }
-
-        // Process parsed items (string source does not support imports)
-        let items = parse_result.into_output().unwrap();
-        for item in items {
-            match item {
-                Item::Import(path) => {
-                    error!(
-                        "Import encountered in string source; imports unsupported in this context: {}",
-                        path
-                    );
-
-                    let errors = vec![ParserError {
-                        file: None,
-                        start: 0,
-                        end: 0,
-                        message: format!(
-                            "import statements are not supported when parsing from string: {}",
-                            path
-                        ),
-                    }];
-                    return Err(Error::ParserError {
-                        errors,
-                        tokens: tokens.iter().map(|t| format!("{:?}", t)).collect(),
-                    });
-                }
-                Item::Function(mut function) => {
-                    debug!("Adding function {:?} to module", function.name);
-                    function.normalize_ssa();
-                    list_added_internal_functions.push(function);
-                }
-                Item::ExternalFunction(function) => {
-                    debug!("Adding external function {:?} to module", function.name);
-                    list_added_external_functions.push(function);
-                }
-            }
-        }
-    } // end of inner scope; drop parser state and func_retriever
-
-    // Resolve all functions: ensure referenced internal functions are defined exactly once
-    let mut resolved_internal_functions: HashMap<Uuid, Uuid> = HashMap::new();
-    for (name, uuid) in unresolved_internal_functions.borrow().iter() {
-        let matching_functions: Vec<_> = list_added_internal_functions
-            .iter()
-            .filter(|f| f.name.as_ref() == Some(name))
-            .collect();
-        if matching_functions.is_empty() {
-            error!("Unresolved internal function: {:?}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Unresolved {:?} function `{}`",
-                FunctionPointerType::Internal,
-                name
-            )));
-        } else if matching_functions.len() > 1 {
-            error!("Multiple functions found with the same name: {}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Function `{}` already exists",
-                name
-            )));
-        }
-
-        let function = matching_functions[0];
-        resolved_internal_functions.insert(*uuid, function.uuid);
-    }
-
-    // Add external functions to the module
-    let mut resolved_external_functions: HashMap<Uuid, Uuid> = HashMap::new();
-    for (name, uuid) in unresolved_external_functions.borrow().iter() {
-        let matching_functions: Vec<_> = list_added_external_functions
-            .iter()
-            .filter(|f| f.name == *name)
-            .collect();
-        if matching_functions.is_empty() {
-            error!("Unresolved external function: {:?}", name);
-            return Err(Error::ValidationFailed(format!(
-                "Unresolved {:?} function `{}`",
-                FunctionPointerType::External,
-                name
-            )));
-        } else if matching_functions.len() > 1 {
-            error!(
-                "Multiple external functions found with the same name: {}",
-                name
-            );
-            return Err(Error::ValidationFailed(format!(
-                "External function `{}` already exists",
-                name
-            )));
-        }
-
-        let function = matching_functions[0];
-        resolved_external_functions.insert(*uuid, function.uuid);
-    }
-
-    // Update all internal function pointer links and insert functions into the module
-    // Ensure parser state is dropped to release any immutable borrows on `module`.
-    // parser state and func_retriever have been dropped by leaving scope above
-    for mut func in list_added_internal_functions.into_iter() {
-        for (_, block) in func.body.iter_mut() {
-            for operands in block
-                .terminator
-                .operands_mut()
-                .chain(block.instructions.iter_mut().flat_map(|x| x.operands_mut()))
-            {
-                if let Some(func_ptr) = operands
-                    .try_as_imm_mut()
-                    .and_then(|imm| imm.try_as_func_ptr_mut())
-                {
-                    match func_ptr {
-                        FunctionPointer::Internal(uuid) => {
-                            if let Some(resolved) = resolved_internal_functions.get(uuid) {
-                                *uuid = *resolved;
-                            }
-                        }
-                        FunctionPointer::External(uuid) => {
-                            if let Some(resolved) = resolved_external_functions.get(uuid) {
-                                *uuid = *resolved;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        module.functions.insert(func.uuid, Arc::new(func));
-    }
-
-    for func in list_added_external_functions.into_iter() {
-        module.external_functions.insert(func.uuid, func);
-    }
-
-    // Verify module integrity
-    if let Err(e) = module.verify() {
-        error!("Module verification failed: {}", e);
-        return Err(e);
-    }
-
-    Ok(())
+    extend_module_from_callbacks(
+        module,
+        registry,
+        "string",
+        |_| Ok(Cow::Borrowed(source)),
+        None as Option<Box<dyn Fn(&&str, String) -> Result<&'static str, Error>>>,
+    )
 }

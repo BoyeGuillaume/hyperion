@@ -6,7 +6,6 @@
 //! module or is an external reference.
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::EnumDiscriminants;
 use uuid::Uuid;
 
 use crate::{modules::CallingConvention, types::Typeref};
@@ -63,40 +62,18 @@ impl ExternalFunction {
     }
 }
 
-/// A reference to a function symbol, internal or external.
+/// A reference to either a function (internal or external) or a global variable
 ///
 /// Internal functions are defined within the current module, while external
-/// functions are declared but defined outside the module.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumDiscriminants)]
-#[strum_discriminants(name(FunctionPointerType))]
+/// functions are declared but defined outside the module. Typically external are
+/// functions used to interface or link with other modules or libraries.
+///
+/// Globals are constant that can be accessed across the module.
+///
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-pub enum FunctionPointer {
-    /// Reference to a function defined within the current module
-    Internal(Uuid),
-
-    /// Reference to an external function (ie., defined in `ExternalFunction`)
-    External(Uuid),
-}
-
-impl FunctionPointer {
-    /// Get the UUID of the function pointer, regardless of its type.
-    pub fn uuid(&self) -> Uuid {
-        match self {
-            FunctionPointer::Internal(uuid) => *uuid,
-            FunctionPointer::External(uuid) => *uuid,
-        }
-    }
-}
-
-impl std::fmt::Display for FunctionPointerType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FunctionPointerType::Internal => write!(f, "internal"),
-            FunctionPointerType::External => write!(f, "external"),
-        }
-    }
-}
+pub struct Pointer(pub Uuid);

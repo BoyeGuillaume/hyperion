@@ -5,7 +5,7 @@
 //! where appropriate.
 use crate::{
     consts::{fp::FConst, int::IConst},
-    modules::{Module, symbol::FunctionPointer},
+    modules::{Module, Symbol, symbol::Pointer},
     types::{
         TypeRegistry, Typeref,
         aggregate::{ArrayType, StructType},
@@ -16,7 +16,6 @@ use crate::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use strum::{EnumIs, EnumTryAs};
-use uuid::Uuid;
 
 pub mod fp;
 pub mod int;
@@ -44,11 +43,8 @@ pub enum AnyConst {
         packed: bool,
     },
 
-    /// Function pointer constant (should be used only for function call instructions)
-    FuncPtr(FunctionPointer),
-
-    /// Global pointer constant (should be used only for global load/store instructions)
-    GlobalPtr(Uuid),
+    /// Pointer to either a function or a global variable
+    Ptr(Pointer),
 }
 
 impl AnyConst {
@@ -70,7 +66,13 @@ impl AnyConst {
                 }
                 Ok(())
             }
-            AnyConst::Struct { .. } => Ok(()), // No restriction on struct element types
+            AnyConst::Struct { elements, .. } => {
+                // Recursively verify all elements of the struct
+                for elem in elements {
+                    elem.verify(type_registry)?;
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -80,9 +82,7 @@ impl AnyConst {
         match self {
             AnyConst::Int(ic) => type_registry.search_or_insert(ic.ty.into()),
             AnyConst::Float(fc) => type_registry.search_or_insert(fc.ty.into()),
-            AnyConst::FuncPtr(_) | AnyConst::GlobalPtr(_) => {
-                type_registry.search_or_insert(PtrType.into())
-            }
+            AnyConst::Ptr(_) => type_registry.search_or_insert(PtrType.into()),
             AnyConst::Array { elements } => {
                 debug_assert!(self.verify(type_registry).is_ok());
                 let ty = elements.first().unwrap().typeref(type_registry);
@@ -95,7 +95,6 @@ impl AnyConst {
                 )
             }
             AnyConst::Struct { elements, packed } => {
-                debug_assert!(self.verify(type_registry).is_ok());
                 let element_types: Vec<Typeref> = elements
                     .iter()
                     .map(|elem| elem.typeref(type_registry))
@@ -147,51 +146,31 @@ impl AnyConst {
                         }
                         write!(f, "}}")
                     }
-                    AnyConst::FuncPtr(fp) => match fp {
-                        FunctionPointer::Internal(uuid) => {
-                            if !f.alternate() {
-                                write!(f, "ptr ")?;
-                            }
+                    AnyConst::Ptr(pointer) => {
+                        if !f.alternate() {
+                            write!(f, "ptr ")?;
+                        }
 
-                            if let Some(module) = self.module {
-                                if let Some(func) = module.functions.get(uuid) {
-                                    if let Some(name) = &func.name {
-                                        write!(f, "{}", name)
-                                    } else {
-                                        write!(f, "@{:?}", uuid)
-                                    }
-                                } else {
-                                    write!(f, "<invalid@{:?}>", uuid)
-                                }
-                            } else {
-                                write!(f, "<unresolved@{:?}>", uuid)
-                            }
-                        }
-                        FunctionPointer::External(name) => {
-                            if let Some(module) = self.module {
-                                if let Some(func) = module.external_functions.get(name) {
-                                    write!(f, "ptr external {}", func.name)
-                                } else {
-                                    write!(f, "ptr external <invalid@{}>", name)
-                                }
-                            } else {
-                                write!(f, "ptr external <unresolved@{}>", name)
-                            }
-                        }
-                    },
-                    AnyConst::GlobalPtr(uuid) => {
                         if let Some(module) = self.module {
-                            if let Some(global) = module.globals.get(uuid) {
-                                if let Some(name) = &global.name {
-                                    write!(f, "{}", name)
-                                } else {
-                                    write!(f, "@{:?}", uuid)
+                            match module.find_symbol_by_ptr(pointer) {
+                                Ok(Symbol::ExternalFunction(external_func)) => {
+                                    write!(f, "ptr external {}", external_func.name)
                                 }
-                            } else {
-                                write!(f, "ptr <invalid@{}>", uuid)
+                                Ok(Symbol::Function(func)) if func.name.is_some() => {
+                                    write!(f, "ptr function {}", func.name.as_ref().unwrap())
+                                }
+                                Ok(Symbol::Global(global)) if global.name.is_some() => {
+                                    write!(f, "ptr global {}", global.name.as_ref().unwrap())
+                                }
+                                Ok(_) => {
+                                    write!(f, "@{:?}", pointer.0)
+                                }
+                                Err(_) => {
+                                    write!(f, "ptr <unresolved@{:?}>", pointer)
+                                }
                             }
                         } else {
-                            write!(f, "ptr <unresolved@{}>", uuid)
+                            write!(f, "ptr <unresolved@{:?}>", pointer)
                         }
                     }
                 }
@@ -217,8 +196,8 @@ impl From<FConst> for AnyConst {
     }
 }
 
-impl From<FunctionPointer> for AnyConst {
-    fn from(value: FunctionPointer) -> Self {
-        AnyConst::FuncPtr(value)
+impl From<Pointer> for AnyConst {
+    fn from(value: Pointer) -> Self {
+        AnyConst::Ptr(value)
     }
 }

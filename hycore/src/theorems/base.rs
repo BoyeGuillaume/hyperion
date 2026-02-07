@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use hyinstr::{
     consts::AnyConst,
-    modules::{Function, InstructionRef, symbol::FunctionPointer},
+    modules::{Function, InstructionRef, symbol::Pointer},
 };
 use uuid::Uuid;
 
@@ -15,8 +15,8 @@ struct TheoremAccelerationStructures {
     /// Collected references to all assume-style meta-instructions found in `function`.
     list_assumptions: Vec<InstructionRef>,
 
-    /// Collected references to all referenced functions found in `function`.
-    list_referenced_functions: BTreeSet<FunctionPointer>,
+    /// Collected references of all function/ptr found in `function`
+    list_referenced_ptr: BTreeSet<Pointer>,
 }
 
 impl TheoremAccelerationStructures {
@@ -33,17 +33,17 @@ impl TheoremAccelerationStructures {
             func.gather_instructions_by_predicate(|instr| instr.is_meta_assume());
     }
 
-    /// Scan the function body and populate [`Theorem::list_referenced_functions`] with every
-    /// directly referenced function pointer.
-    fn derive_referenced_functions(&mut self, func: &Function) {
-        self.list_referenced_functions = func
+    /// Scan the function body and populate [`Theorem::list_referenced_ptr`] with every
+    /// directly referenced pointer.
+    fn derive_referenced_ptr(&mut self, func: &Function) {
+        self.list_referenced_ptr = func
             .iter()
             .filter_map(|(instr, _)| {
                 if let Some(call) = instr.try_as_invoke_ref() {
                     use hyinstr::modules::operand::Operand::*;
 
                     match &call.function {
-                        Imm(AnyConst::FuncPtr(func_ptr)) => Some(func_ptr.clone()),
+                        Imm(AnyConst::Ptr(ptr)) => Some(ptr.clone()),
                         _ => None,
                     }
                 } else {
@@ -57,7 +57,7 @@ impl TheoremAccelerationStructures {
     fn derive(&mut self, func: &Function) {
         self.derive_meta_asserts(func);
         self.derive_meta_assumptions(func);
-        self.derive_referenced_functions(func);
+        self.derive_referenced_ptr(func);
     }
 
     /// Compute func
@@ -67,7 +67,7 @@ impl TheoremAccelerationStructures {
             None => Self {
                 list_asserts: Vec::new(),
                 list_assumptions: Vec::new(),
-                list_referenced_functions: BTreeSet::new(),
+                list_referenced_ptr: BTreeSet::new(),
             },
         };
 
@@ -139,11 +139,11 @@ impl Theorem {
         )
     }
 
-    /// Get a reference to the set of directly referenced function pointers.
-    pub fn list_referenced_functions(&self) -> LazyGuard<'_, BTreeSet<FunctionPointer>> {
+    /// Get a reference to the set of directly referenced ptr
+    pub fn list_referenced_ptr(&self) -> LazyGuard<'_, BTreeSet<Pointer>> {
         self.acceleration.get(
             |x| TheoremAccelerationStructures::compute(x, &self.function),
-            |x| &x.list_referenced_functions,
+            |x| &x.list_referenced_ptr,
         )
     }
 }

@@ -15,7 +15,7 @@ use hyinstr::{
         },
         operand::{Label, Name, Operand},
         parser::{extend_module_from_path, extend_module_from_string},
-        symbol::FunctionPointer,
+        symbol::Pointer,
         terminator::{Branch, HyTerminator, Jump, Ret},
     },
     types::{
@@ -447,9 +447,9 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
     let ty = i32(&reg);
 
     // Caller referencing missing internal function
-    let missing_internal = FunctionPointer::Internal(Uuid::new_v4());
+    let missing_internal = Pointer(Uuid::new_v4());
     let call_instr = HyInstr::from(Invoke {
-        function: Operand::Imm(AnyConst::FuncPtr(missing_internal.clone())),
+        function: Operand::Imm(AnyConst::Ptr(missing_internal.clone())),
         args: vec![Operand::Reg(Name(0))],
         dest: Some(Name(1)),
         ty: Some(ty),
@@ -470,14 +470,13 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
         false,
     );
     let module = Module::default();
-    let err = module.verify_func(&caller).unwrap_err();
-    assert!(matches!(err, Error::ValidationFailed(msg) if msg.contains("internal function")));
+    assert!(module.verify_func(&caller).is_err());
 
     // Caller referencing missing external function
     let module = Module::default();
-    let missing_external = FunctionPointer::External(Uuid::new_v4());
+    let missing_external = Pointer(Uuid::new_v4());
     let call_instr = HyInstr::from(Invoke {
-        function: Operand::Imm(AnyConst::FuncPtr(missing_external.clone())),
+        function: Operand::Imm(AnyConst::Ptr(missing_external.clone())),
         args: vec![],
         dest: None,
         ty: None,
@@ -495,8 +494,7 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
         BTreeSet::new(),
         false,
     );
-    let err = module.verify_func(&caller).unwrap_err();
-    assert!(matches!(err, Error::ValidationFailed(msg) if msg.contains("external function")));
+    assert!(module.verify_func(&caller).is_err());
 }
 
 #[test]
@@ -535,7 +533,7 @@ fn module_verify_succeeds_when_functions_resolved() {
 
     // Caller referencing callee
     let call_instr = HyInstr::from(Invoke {
-        function: Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(callee_uuid))),
+        function: Operand::Imm(AnyConst::Ptr(Pointer(callee_uuid))),
         args: vec![Operand::Imm(1u32.into())],
         dest: Some(Name(1)),
         ty: Some(ty),
@@ -576,9 +574,9 @@ fn parser_simple_round_trip_from_string() {
     extend_module_from_string(&mut module, &reg, source).unwrap();
 
     let uuid = module
-        .find_internal_function_uuid_by_name("add_one")
+        .find_internal_function_by_name("add_one")
         .expect("function should exist");
-    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    let func = module.find_function_by_ptr(&uuid).unwrap();
     assert_eq!(func.params.len(), 1);
     assert_eq!(func.params[0].0, Name(0));
     let first_instr = &func.body[&Label::NIL].instructions[0];
@@ -614,8 +612,8 @@ fn parser_handles_imports_with_extend_module_from_path() {
     let mut module = Module::default();
     extend_module_from_path(&mut module, &reg, &main_path).unwrap();
 
-    assert!(module.find_internal_function_uuid_by_name("inc").is_some());
-    assert!(module.find_internal_function_uuid_by_name("main").is_some());
+    assert!(module.find_internal_function_by_name("inc").is_some());
+    assert!(module.find_internal_function_by_name("main").is_some());
 
     fs::remove_dir_all(temp_dir).unwrap();
 }
@@ -673,28 +671,26 @@ entry:
 
     extend_module_from_string(&mut module, &reg, ir).unwrap();
 
-    let factorial_uuid = module
-        .find_internal_function_uuid_by_name("factorial")
-        .unwrap();
+    let factorial_pointer = module.find_internal_function_by_name("factorial").unwrap();
     let test_a_uuid = module
-        .find_internal_function_uuid_by_name("factorial_test_a")
+        .find_internal_function_by_name("factorial_test_a")
         .unwrap();
     let test_b_uuid = module
-        .find_internal_function_uuid_by_name("factorial_test_b")
+        .find_internal_function_by_name("factorial_test_b")
         .unwrap();
 
-    assert_ne!(factorial_uuid, test_a_uuid);
-    assert_ne!(factorial_uuid, test_b_uuid);
+    assert_ne!(factorial_pointer, test_a_uuid);
+    assert_ne!(factorial_pointer, test_b_uuid);
 
-    let test_a = module.get_internal_function_by_uuid(test_a_uuid).unwrap();
+    let test_a = module.find_function_by_ptr(&test_a_uuid).unwrap();
     assert!(test_a.meta_function);
 
     // Ensure invokes inside test_a point to the parsed factorial uuid
     let mut seen_call = false;
     for (instr, _) in test_a.iter() {
         if let HyInstr::Invoke(inv) = instr {
-            if let Operand::Imm(AnyConst::FuncPtr(FunctionPointer::Internal(uuid))) = inv.function {
-                assert_eq!(uuid, factorial_uuid);
+            if let Operand::Imm(AnyConst::Ptr(pointer)) = &inv.function {
+                assert_eq!(pointer, &factorial_pointer);
                 seen_call = true;
             }
         }
@@ -717,9 +713,9 @@ fn parser_parses_meta_forall_zero_arity_and_bool_type() {
 
     extend_module_from_string(&mut module, &reg, src).unwrap();
     let uuid = module
-        .find_internal_function_uuid_by_name("quant")
+        .find_internal_function_by_name("quant")
         .expect("function should exist");
-    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    let func = module.find_function_by_ptr(&uuid).unwrap();
     assert!(func.meta_function);
     let first = &func.body[&Label::NIL].instructions[0];
     if let HyInstr::MetaForall(mf) = first {
@@ -758,7 +754,7 @@ fn parser_reports_unresolved_external_function() {
     let source = r#"
         define void caller() {
         entry:
-            %r: i32 = invoke ptr extern printf, 0i32
+            %r: i32 = invoke ptr printf, 0i32
             ret void
         }
     "#;
@@ -782,7 +778,7 @@ fn parser_correctly_resolved_external_functions() {
 
         define void caller() {
         entry:
-            %r: i32 = invoke ptr extern printf, 0i32
+            %r: i32 = invoke ptr printf, 0i32
             ret void
         }
     "#;
@@ -797,13 +793,13 @@ fn parser_correctly_resolved_external_functions() {
         .expect("printf should be declared");
 
     let caller_uuid = module
-        .find_internal_function_uuid_by_name("caller")
+        .find_internal_function_by_name("caller")
         .expect("caller should be defined");
-    let caller = module.get_internal_function_by_uuid(caller_uuid).unwrap();
+    let caller = module.find_function_by_ptr(&caller_uuid).unwrap();
     let mut seen_call = false;
     for (instr, _) in caller.iter() {
         if let HyInstr::Invoke(inv) = instr {
-            if let Operand::Imm(AnyConst::FuncPtr(FunctionPointer::External(uuid))) = inv.function {
+            if let Operand::Imm(AnyConst::Ptr(Pointer(uuid))) = inv.function {
                 assert_eq!(uuid, printf_uuid);
                 seen_call = true;
             }
@@ -828,9 +824,9 @@ fn parser_parses_meta_analysis_stat_termination_variant() {
 
     extend_module_from_string(&mut module, &reg, src).unwrap();
     let uuid = module
-        .find_internal_function_uuid_by_name("ana")
+        .find_internal_function_by_name("ana")
         .expect("function should exist");
-    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    let func = module.find_function_by_ptr(&uuid).unwrap();
     assert!(func.meta_function);
     let first = &func.body[&Label::NIL].instructions[0];
     if let HyInstr::MetaAnalysisStat(mas) = first {
@@ -862,10 +858,10 @@ fn parser_parses_meta_analysis_stat_instruction_count_operand() {
     "#;
 
     extend_module_from_string(&mut module, &reg, src).unwrap();
-    let uuid = module
-        .find_internal_function_uuid_by_name("ana2")
+    let pointer = module
+        .find_internal_function_by_name("ana2")
         .expect("function should exist");
-    let func = module.get_internal_function_by_uuid(uuid).unwrap();
+    let func = module.find_function_by_ptr(&pointer).unwrap();
     assert!(func.meta_function);
     let first = &func.body[&Label::NIL].instructions[0];
     if let HyInstr::MetaAnalysisStat(mas) = first {

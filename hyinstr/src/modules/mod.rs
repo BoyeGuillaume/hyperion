@@ -23,7 +23,7 @@ use crate::{
     modules::{
         instructions::{HyInstr, Instruction},
         operand::{Label, Name, Operand},
-        symbol::{ExternalFunction, FunctionPointer, FunctionPointerType},
+        symbol::{ExternalFunction, Pointer},
         terminator::Trap,
     },
     types::{TypeRegistry, Typeref, primary::WType},
@@ -32,7 +32,7 @@ use crate::{
 use petgraph::prelude::DiGraphMap;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
 use uuid::Uuid;
 
 pub mod fmt;
@@ -42,33 +42,6 @@ pub mod operand;
 pub mod parser;
 pub mod symbol;
 pub mod terminator;
-
-/// All Global Variables and Functions have one of the following types of linkage:
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(
-    feature = "borsh",
-    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
-)]
-pub enum Linkage {
-    /// Global values with `Linkage::private` linkage are only directly accessible by objects in the current module.
-    ///
-    /// In particular, linking code into a module with a private global value may cause the private to be renamed
-    /// as necessary to avoid collisions. Because the symbol is private to the module, all references can be updated.
-    ///
-    /// This doesn’t show up in any symbol table in the object file.
-    #[default]
-    Private,
-
-    /// Similar to `Linkage::private`, but the value shows as a local symbol (STB_LOCAL in the case of ELF) in the object file.
-    ///
-    /// This corresponds to the notion of the ‘static’ keyword in C.
-    Internal,
-
-    /// Global values with `Linkage::external` linkage may be referenced by other modules,
-    /// and may also be defined in other modules.
-    External,
-}
 
 /// All Global Variables and Functions have one of the following visibility styles:
 ///
@@ -372,7 +345,7 @@ impl BasicBlock {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-pub struct Globals {
+pub struct Global {
     /// The unique identifier (UUID) of the global variable.
     pub uuid: Uuid,
     /// The display name of the global variable, if any (debugging purposes).
@@ -383,11 +356,9 @@ pub struct Globals {
     pub value: Option<AnyConst>,
     /// The visibility of the global variable.
     pub visibility: Option<Visibility>,
-    /// The linkage of the global variable.
-    pub linkage: Option<Linkage>,
 }
 
-impl Globals {
+impl Global {
     /// Verify the soundness of the global variable.
     pub fn type_check(&self, type_registry: &TypeRegistry) -> Result<(), Error> {
         // Verify that the type of the global variable is valid
@@ -1078,6 +1049,14 @@ pub struct FunctionAnalysis {
     pub dest_map: BTreeMap<Name, InstructionRef>,
 }
 
+/// A reference to a symbol defined in the module, which can be either a function or a global variable.
+#[derive(Debug, Clone, EnumIs, EnumTryAs)]
+pub enum Symbol<'a> {
+    Function(&'a Arc<Function>),
+    ExternalFunction(&'a ExternalFunction),
+    Global(&'a Global),
+}
+
 /// A module containing defined functions and references to external ones.
 ///
 /// `Module` acts as the compilation unit boundary for symbol visibility.
@@ -1091,7 +1070,7 @@ pub struct FunctionAnalysis {
 )]
 pub struct Module {
     /// List of global variables keyed by their UUID.
-    pub globals: BTreeMap<Uuid, Globals>,
+    pub globals: BTreeMap<Uuid, Global>,
     /// Defined functions keyed by their UUID.
     pub functions: BTreeMap<Uuid, Arc<Function>>,
     /// Declared external functions keyed by their UUID.
@@ -1104,41 +1083,31 @@ impl Module {
     /// Notice that recursive calls are allowed, that is to say that function that self-references
     /// are considered valid, even if the function is not defined in the module.
     pub fn verify_func(&self, function: &Function) -> Result<(), Error> {
+        // Verify that all function pointers referenced in the function's instructions and terminators
         for bb in function.body.values() {
-            for instr in &bb.instructions {
-                // If operand is a external function ptr
-                for op in instr.operands() {
-                    if let Operand::Imm(AnyConst::FuncPtr(func_ptr)) = op {
-                        match func_ptr {
-                            FunctionPointer::Internal(uuid) => {
-                                if uuid == &function.uuid {
-                                    continue; // Recursive call are allowed, even if function not currently in the module
-                                }
+            for op in bb
+                .instructions
+                .iter()
+                .flat_map(|x| x.operands())
+                .chain(bb.terminator.operands())
+            {
+                if let Operand::Imm(AnyConst::Ptr(func_ptr)) = op {
+                    // Because we chose to verify_func on functions that can be not yet defined in the module
+                    // we need to allow recursive calls manually using this check
+                    if func_ptr.0 == function.uuid {
+                        continue;
+                    }
 
-                                if !self.functions.contains_key(uuid) {
-                                    return Err(Error::ValidationFailed(format!(
-                                        "Function `{}` references undefined internal function `{}`",
-                                        function
-                                            .name
-                                            .clone()
-                                            .unwrap_or_else(|| function.uuid.to_string()),
-                                        uuid
-                                    )));
-                                }
-                            }
-                            FunctionPointer::External(uuid) => {
-                                if !self.external_functions.contains_key(uuid) {
-                                    return Err(Error::ValidationFailed(format!(
-                                        "Function `{}` references undefined external function `{}`",
-                                        function
-                                            .name
-                                            .clone()
-                                            .unwrap_or_else(|| function.uuid.to_string()),
-                                        uuid
-                                    )));
-                                }
-                            }
-                        }
+                    // Try to find any symbol corresponding with the pointer, if not found return an error
+                    if !self.contains_ptr(&func_ptr) {
+                        return Err(Error::ValidationFailed(format!(
+                            "Function `{}` references undefined function/global `{}`",
+                            function
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| format!("@{}", function.uuid)),
+                            func_ptr.0
+                        )));
                     }
                 }
             }
@@ -1147,52 +1116,104 @@ impl Module {
         Ok(())
     }
 
-    /// Find the UUID of a function by its name and type (internal or external).
+    /// Attempt to find an [`Function`] by name.
     ///
-    /// This operation is in O(n) in the number of functions in the module.
-    ///
-    /// Returns `None` if no function with the given name and type exists.
-    pub fn find_function_uuid_by_name(
-        &self,
-        name: &str,
-        func_type: FunctionPointerType,
-    ) -> Option<FunctionPointer> {
-        match func_type {
-            FunctionPointerType::Internal => self
-                .functions
-                .values()
-                .find(|f| f.as_ref().name.as_deref() == Some(name))
-                .map(|f| FunctionPointer::Internal(f.as_ref().uuid)),
-            FunctionPointerType::External => self
-                .external_functions
-                .values()
-                .find(|f| f.name == name)
-                .map(|f| FunctionPointer::External(f.uuid)),
-        }
-    }
-
-    /// Find the UUID of an internal function by its name.
-    ///
-    /// This operation is in O(n) in the number of functions in the module.
-    ///
-    /// Returns `None` if no internal function with the given name exists.
-    pub fn find_internal_function_uuid_by_name(&self, name: &str) -> Option<Uuid> {
+    /// Returns [`None`] if no internal function with the given name exists.
+    pub fn find_internal_function_by_name(&self, name: &str) -> Option<Pointer> {
         self.functions
             .values()
             .find(|f| f.as_ref().name.as_deref() == Some(name))
-            .map(|f| f.as_ref().uuid)
+            .map(|f| Pointer(f.uuid))
     }
 
-    /// Retrieve a particular function from its Uuid
-    pub fn get_internal_function_by_uuid(&self, uuid: Uuid) -> Option<&Function> {
-        self.functions.get(&uuid).map(|f| f.as_ref())
+    /// Attempt to find an [`ExternalFunction`] by name.
+    ///
+    /// Returns [`None`] if no external function with the given name exists.
+    pub fn find_external_function_by_name(&self, name: &str) -> Option<Pointer> {
+        self.external_functions
+            .values()
+            .find(|f| f.name == name)
+            .map(|f| Pointer(f.uuid))
     }
 
-    /// Retrieve a particular function from its Uuid (mutable)
-    pub fn get_internal_function_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Function> {
+    /// Attempt to find a [`Global`] by name.
+    ///
+    /// Returns [`None`] if no global with the given name exists.
+    pub fn find_global_by_name(&self, name: &str) -> Option<Pointer> {
+        self.globals
+            .values()
+            .find(|f| f.name.as_deref() == Some(name))
+            .map(|f| Pointer(f.uuid))
+    }
+
+    /// Attempt to find a function or global pointer by name
+    ///
+    /// This operation is currently in O(n) in the number of functions and globals in the module, as it performs a linear search.
+    ///
+    /// Returns [`None`] if no function or global with the given name and type exists.
+    pub fn find_ptr_by_name(&self, name: &str) -> Option<Pointer> {
+        self.find_internal_function_by_name(name)
+            .or_else(|| self.find_external_function_by_name(name))
+            .or_else(|| self.find_global_by_name(name))
+    }
+
+    /// Find the [`Function`] corresponding to a pointer.
+    ///
+    /// Returns [`Result::Err`] if no function with the given pointer exists or if the pointer corresponds to a global variable.
+    pub fn find_function_by_ptr(&self, ptr: &Pointer) -> Result<&Function, Error> {
         self.functions
-            .get_mut(&uuid)
-            .and_then(|arc| Arc::get_mut(arc))
+            .get(&ptr.0)
+            .map(|f| f.as_ref())
+            .ok_or_else(|| {
+                Error::ValidationFailed(format!("No function found for pointer `{}`", ptr.0))
+            })
+    }
+
+    /// Find the [`ExternalFunction`] corresponding to a pointer.
+    ///
+    /// Returns [`Result::Err`] if no external function with the given pointer exists or if the pointer corresponds to a global variable.
+    pub fn find_external_function_by_ptr(&self, ptr: &Pointer) -> Result<&ExternalFunction, Error> {
+        self.external_functions.get(&ptr.0).ok_or_else(|| {
+            Error::ValidationFailed(format!(
+                "No external function found for pointer `{}`",
+                ptr.0
+            ))
+        })
+    }
+
+    /// Find the [`Global`] corresponding to a pointer.
+    ///
+    /// Returns [`Result::Err`] if no global with the given pointer exists or if the pointer corresponds to a function.
+    pub fn find_global_by_ptr(&self, ptr: &Pointer) -> Result<&Global, Error> {
+        self.globals.get(&ptr.0).ok_or_else(|| {
+            Error::ValidationFailed(format!("No global found for pointer `{}`", ptr.0))
+        })
+    }
+
+    /// Find the symbol corresponding to a pointer.
+    ///
+    /// Returns [`Result::Err`] if no symbol with the given pointer exists.
+    pub fn find_symbol_by_ptr(&'_ self, ptr: &Pointer) -> Result<Symbol<'_>, Error> {
+        if let Some(func) = self.functions.get(&ptr.0) {
+            Ok(Symbol::Function(func))
+        } else if let Some(ext_func) = self.external_functions.get(&ptr.0) {
+            Ok(Symbol::ExternalFunction(ext_func))
+        } else if let Some(global) = self.globals.get(&ptr.0) {
+            Ok(Symbol::Global(global))
+        } else {
+            Err(Error::ValidationFailed(format!(
+                "No symbol found for pointer `{}`",
+                ptr.0
+            )))
+        }
+    }
+
+    /// Checks whether the module contains a particular key or not (function or global).
+    /// Returns `true` if the module contains a function or global with the given pointer, `false` otherwise.
+    pub fn contains_ptr(&self, ptr: &Pointer) -> bool {
+        self.functions.contains_key(&ptr.0)
+            || self.external_functions.contains_key(&ptr.0)
+            || self.globals.contains_key(&ptr.0)
     }
 
     /// Check each function in the module for SSA validity.

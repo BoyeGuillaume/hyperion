@@ -2,7 +2,7 @@
 use crate::{
     analysis::{AnalysisStatistic, TerminationScope},
     modules::{
-        Function, Globals, Module,
+        Function, Global, Module,
         instructions::{
             HyInstr, Instruction,
             int::{IDiv, IRem},
@@ -371,7 +371,7 @@ impl HyTerminator {
     }
 }
 
-impl Globals {
+impl Global {
     /// Build a formatting helper that renders the global constants in textual form.
     pub fn fmt<'a>(
         &'a self,
@@ -379,7 +379,7 @@ impl Globals {
         module: Option<&'a Module>,
     ) -> impl std::fmt::Display + 'a {
         struct Fmt<'a> {
-            globals: &'a Globals,
+            globals: &'a Global,
             type_registry: &'a TypeRegistry,
             module: Option<&'a Module>,
         }
@@ -389,7 +389,11 @@ impl Globals {
                 if let Some(value) = &self.globals.value {
                     write!(
                         f,
-                        "global {}: {} = {}",
+                        "const {}{}: {} = {}",
+                        match self.globals.visibility {
+                            Some(vis) => format!("{} ", vis.to_str()),
+                            None => "".to_string(),
+                        },
                         self.globals
                             .name
                             .clone()
@@ -400,7 +404,11 @@ impl Globals {
                 } else {
                     write!(
                         f,
-                        "extern global {}: {}",
+                        "extern const {}{}: {}",
+                        match self.globals.visibility {
+                            Some(vis) => format!("{} ", vis.to_str()),
+                            None => "".to_string(),
+                        },
                         self.globals
                             .name
                             .clone()

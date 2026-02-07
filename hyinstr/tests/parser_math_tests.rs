@@ -176,15 +176,15 @@ entry:
         "max_u32",
         "clamp_i32",
     ] {
-        assert!(module.find_internal_function_uuid_by_name(name).is_some());
+        assert!(module.find_internal_function_by_name(name).is_some());
     }
 
     module.verify().unwrap();
 
     let dot_uuid = module
-        .find_internal_function_uuid_by_name("dot_dynamic")
+        .find_internal_function_by_name("dot_dynamic")
         .unwrap();
-    let dot_func = module.get_internal_function_by_uuid(dot_uuid).unwrap();
+    let dot_func = module.find_function_by_ptr(&dot_uuid).unwrap();
     let phi_count = dot_func
         .iter()
         .filter(|(instr, _)| matches!(instr, HyInstr::Phi(_)))
@@ -196,10 +196,8 @@ entry:
             .any(|(instr, _)| matches!(instr, HyInstr::MGetElementPtr(_)))
     );
 
-    let max_uuid = module
-        .find_internal_function_uuid_by_name("max_u32")
-        .unwrap();
-    let max_func = module.get_internal_function_by_uuid(max_uuid).unwrap();
+    let max_uuid = module.find_internal_function_by_name("max_u32").unwrap();
+    let max_func = module.find_function_by_ptr(&max_uuid).unwrap();
     assert!(
         max_func
             .iter()
@@ -207,20 +205,16 @@ entry:
     );
 
     // Basic sanity: pow depends on fmul/isub and clamp uses comparisons.
-    let pow_uuid = module
-        .find_internal_function_uuid_by_name("pow_fp32")
-        .unwrap();
-    let pow_func = module.get_internal_function_by_uuid(pow_uuid).unwrap();
+    let pow_uuid = module.find_internal_function_by_name("pow_fp32").unwrap();
+    let pow_func = module.find_function_by_ptr(&pow_uuid).unwrap();
     assert!(
         pow_func
             .iter()
             .any(|(instr, _)| matches!(instr, HyInstr::FDiv(_) | HyInstr::FMul(_)))
     );
 
-    let clamp_uuid = module
-        .find_internal_function_uuid_by_name("clamp_i32")
-        .unwrap();
-    let clamp_func = module.get_internal_function_by_uuid(clamp_uuid).unwrap();
+    let clamp_uuid = module.find_internal_function_by_name("clamp_i32").unwrap();
+    let clamp_func = module.find_function_by_ptr(&clamp_uuid).unwrap();
     assert!(
         clamp_func
             .iter()

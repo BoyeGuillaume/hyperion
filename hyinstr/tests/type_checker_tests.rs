@@ -17,11 +17,10 @@ fn parse_module(registry: &TypeRegistry, source: &str) -> Module {
 
 fn get_function<'a>(module: &'a Module, name: &str) -> &'a Function {
     let uuid = module
-        .find_internal_function_uuid_by_name(name)
+        .find_internal_function_by_name(name)
         .unwrap_or_else(|| panic!("function `{name}` not found"));
-    module
-        .get_internal_function_by_uuid(uuid)
-        .unwrap_or_else(|| panic!("function `{name}` missing body"))
+
+    module.find_function_by_ptr(&uuid).unwrap()
 }
 
 fn expect_type_mismatch(result: Result<(), Error>) {
