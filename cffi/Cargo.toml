@@ -21,5 +21,3 @@ hycore.workspace = true
 [features]
 # No default features; consumers enable hycore features as needed
 default = []
-
-legacy_nozstd = ["hycore/legacy_nozstd"]

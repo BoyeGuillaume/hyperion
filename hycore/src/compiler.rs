@@ -13,7 +13,7 @@ use smallvec::{SmallVec, smallvec};
 use crate::{
     base::{
         InstanceContext, ModuleKey,
-        api::{ModuleCompileInfo, ModuleSourceType},
+        api::{ModuleCompileFlags, ModuleCompileInfo, ModuleSourceType},
     },
     hyerror, hyinfo, hytrace, hywarn,
     utils::error::{HyError, HyResult},
@@ -26,20 +26,27 @@ pub struct CompiledModuleStorage {
     pub type_registry: TypeRegistry,
 }
 
+struct CompiledModuleStorageHeaderFlags {
+    zstd_enabled: bool,
+}
+
 impl CompiledModuleStorage {
     /// Distinguishing magic bytes for compiled module storage files
-    #[cfg(feature = "legacy_nozstd")]
-    pub const MAGIC_BYTES: [u8; 8] = *b"\x80HYMODIR";
-    #[cfg(not(feature = "legacy_nozstd"))]
-    pub const MAGIC_BYTES: [u8; 8] = *b"\x7FHYMODIR";
+    pub const MAGIC_BYTES_NOZSTD: [u8; 8] = *b"\x80HYMODIR";
+    pub const MAGIC_BYTES_ZSTD: [u8; 8] = *b"\x7FHYMODIR";
 
     fn writer_header<W: std::io::Write>(
         &self,
         instance: &InstanceContext,
         writer: &mut W,
+        zstd_enabled: bool,
     ) -> std::io::Result<()> {
         // Write magic bytes
-        writer.write_all(&Self::MAGIC_BYTES)?;
+        if zstd_enabled {
+            writer.write_all(&Self::MAGIC_BYTES_ZSTD)?;
+        } else {
+            writer.write_all(&Self::MAGIC_BYTES_NOZSTD)?;
+        }
 
         // Write version requirement (using semver format)
         let version_req = semver::VersionReq {
@@ -66,16 +73,20 @@ impl CompiledModuleStorage {
     fn read_header<R: std::io::Read>(
         instance: &InstanceContext,
         reader: &mut R,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<CompiledModuleStorageHeaderFlags> {
         // Read and verify magic bytes
         let mut magic = [0u8; 8];
         reader.read_exact(&mut magic)?;
-        if magic != Self::MAGIC_BYTES {
+        let zstd_enabled = if magic == Self::MAGIC_BYTES_ZSTD {
+            true
+        } else if magic == Self::MAGIC_BYTES_NOZSTD {
+            false
+        } else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "Invalid magic bytes in compiled module storage",
             ));
-        }
+        };
 
         // Read version requirement string until null terminator
         let mut version_req_bytes = Vec::new();
@@ -113,10 +124,10 @@ impl CompiledModuleStorage {
             ));
         }
 
-        Ok(())
+        Ok(CompiledModuleStorageHeaderFlags { zstd_enabled })
     }
 
-    pub fn encode(&self, instance: &InstanceContext) -> HyResult<Vec<u8>> {
+    pub fn encode(&self, instance: &InstanceContext, zstd_enabled: bool) -> HyResult<Vec<u8>> {
         // Serialize inner using borsh
         hytrace!(
             instance,
@@ -126,17 +137,24 @@ impl CompiledModuleStorage {
         let mut buf = Vec::new();
         let mut writer = &mut buf;
 
-        self.writer_header(instance, &mut writer)
+        self.writer_header(instance, &mut writer, zstd_enabled)
             .and_then(|_| {
-                #[cfg(feature = "legacy_nozstd")]
-                borsh::BorshSerialize::serialize(&self, &mut writer)?;
-
-                #[cfg(not(feature = "legacy_nozstd"))]
-                {
+                if zstd_enabled {
+                    hytrace!(
+                        instance,
+                        "Compressing compiled module storage with zstd encoder (level 3)"
+                    );
                     let mut zstd_writer = zstd::stream::write::Encoder::new(writer, 3).unwrap();
                     borsh::BorshSerialize::serialize(&self, &mut zstd_writer)?;
                     zstd_writer.finish()?;
+                } else {
+                    hytrace!(
+                        instance,
+                        "Not compressing compiled module storage, writing directly"
+                    );
+                    borsh::BorshSerialize::serialize(&self, &mut writer)?;
                 }
+
                 Ok(())
             })
             .map_err(|e| {
@@ -163,15 +181,20 @@ impl CompiledModuleStorage {
 
         let mut reader = data;
         Self::read_header(instance, &mut reader)
-            .and_then(|_| {
-                #[cfg(feature = "legacy_nozstd")]
-                {
-                    borsh::BorshDeserialize::deserialize_reader(&mut reader)
-                }
-                #[cfg(not(feature = "legacy_nozstd"))]
-                {
+            .and_then(|header_flags| {
+                if header_flags.zstd_enabled {
+                    hytrace!(
+                        instance,
+                        "Compiled module storage is zstd-compressed, decompressing with zstd decoder"
+                    );
                     let mut zstd_reader = zstd::stream::read::Decoder::new(reader).unwrap();
                     borsh::BorshDeserialize::deserialize_reader(&mut zstd_reader)
+                } else {
+                    hytrace!(
+                        instance,
+                        "Compiled module storage is not compressed, deserializing directly"
+                    );
+                    borsh::BorshDeserialize::deserialize_reader(&mut reader)
                 }
             })
             .map_err(|e| {
@@ -241,59 +264,44 @@ pub fn compile_sources(
     // for each compilation type and call it a day
     if all_sources_missing_data {
         // Read source code from disk using the provided base path and filenames
-        if let Some(base_path) = compile_info.base_path.as_ref() {
+        let base_path = if let Some(base_path) = compile_info.base_path.as_ref() {
             hytrace!(
                 instance,
                 "Compiling sources from disk with provided base path '{}'",
                 base_path
             );
-        } else {
-            hytrace!(
-                instance,
-                "Compiling sources from disk with no base path provided, using current working directory"
-            );
-        }
-        let base_path = compile_info
-            .base_path
-            .as_ref()
-            .map(|p| std::path::PathBuf::from(p))
-            .map(|p| {
-                p.canonicalize().map_err(|e| {
-                    hyerror!(
-                        instance,
-                        "Failed to canonicalize base path '{}': {}",
-                        p.display(),
-                        e
-                    );
-                    HyError::Unknown(format!(
-                        "Failed to canonicalize base path '{}': {}",
-                        p.display(),
-                        e
-                    ))
-                })
-            });
-        let base_path = match base_path {
-            Some(Err(e)) => return Err(e),
-            Some(Ok(p)) => p,
-            None => {
-                let base_path = std::path::PathBuf::from(std::env::current_dir().map_err(|e| {
-                    hyerror!(
-                        instance,
-                        "Failed to get current working directory for base path: {}",
-                        e
-                    );
-                    HyError::Unknown(format!(
-                        "Failed to get current working directory for base path: {}",
-                        e
-                    ))
-                })?);
-                hywarn!(
+            let base_path = std::path::PathBuf::from(base_path);
+            base_path.canonicalize().map_err(|e| {
+                hyerror!(
                     instance,
-                    "No base path provided for compiling sources from disk, using current working directory '{}'",
-                    base_path.display()
+                    "Failed to canonicalize base path '{}': {}",
+                    base_path.display(),
+                    e
                 );
-                base_path
-            }
+                HyError::Unknown(format!(
+                    "Failed to canonicalize base path '{}': {}",
+                    base_path.display(),
+                    e
+                ))
+            })?
+        } else {
+            let base_path = std::path::PathBuf::from(std::env::current_dir().map_err(|e| {
+                hyerror!(
+                    instance,
+                    "Failed to get current working directory for base path: {}",
+                    e
+                );
+                HyError::Unknown(format!(
+                    "Failed to get current working directory for base path: {}",
+                    e
+                ))
+            })?);
+            hywarn!(
+                instance,
+                "No base path provided for compiling sources from disk, using current working directory '{}'",
+                base_path.display()
+            );
+            base_path
         };
 
         let mut initial_source_infos = Vec::new();
@@ -447,7 +455,12 @@ pub fn compile_sources(
         type_registry,
         filenames,
     };
-    let encoded_storage = storage.encode(instance)?;
+    let encoded_storage = storage.encode(
+        instance,
+        compile_info
+            .flags
+            .contains(ModuleCompileFlags::ZSTD_COMPRESSED),
+    )?;
 
     // Information about the compiled module can be used here
     hyinfo!(

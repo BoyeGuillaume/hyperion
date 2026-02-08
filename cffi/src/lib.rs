@@ -6,7 +6,7 @@ use std::{
 
 use hycore::{
     base::{
-        api::{ModuleSourceInfo, ModuleSourceType, VersionInfo},
+        api::{ModuleCompileFlags, ModuleSourceInfo, ModuleSourceType, VersionInfo},
         InstanceContext, ModuleKey,
     },
     ext::hylog::LogLevelEXT,
@@ -57,6 +57,15 @@ pub enum HyStructureType {
     HyStructureTypeModuleSourceInfo,
     HyStructureTypeLogCreateInfoEXT = 0x10000000,
 }
+
+/// cbindgen:rename-all=ScreamingSnakeCase
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq, FromRepr)]
+pub enum HyModuleCompileFlagBits {
+    HyModuleCompileFlagBitsZstdCompressed = 0x1,
+}
+
+pub type HyModuleCompileFlags = u32;
 
 impl Into<HyLogLevelEXT> for LogLevelEXT {
     fn into(self) -> HyLogLevelEXT {
@@ -177,7 +186,8 @@ pub struct HyModuleCompileInfo {
     pub pp_sources: *const *const HyModuleSourceInfo,
     pub sources_count: u32,
     pub p_base_path: *const c_char, // nullable
-    pub p_next: *mut c_void,        // opaque, must be null for now
+    pub flags: HyModuleCompileFlags,
+    pub p_next: *mut c_void, // opaque, must be null for now
 }
 
 /// cbindgen:rename-all=CamelCase
@@ -532,6 +542,7 @@ pub extern "C" fn hyCompileModule(
     let compile_info = hycore::base::api::ModuleCompileInfo {
         sources,
         base_path,
+        flags: ModuleCompileFlags::from_bits_truncate(info_ref.flags),
         ext: compile_info_ext,
     };
     // Compile sources

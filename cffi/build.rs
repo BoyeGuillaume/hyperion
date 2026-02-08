@@ -73,6 +73,7 @@ fn main() {
         .with_after_include(prefix)
         .with_braces(cbindgen::Braces::NextLine)
         .include_item("HyLogCreateInfoEXT")
+        .include_item("HyModuleCompileFlagBits")
         .generate()
         .expect("Unable to generate bindings");
     // bindings.write_to_file(output_file);

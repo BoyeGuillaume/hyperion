@@ -106,6 +106,7 @@ int main(int argc, char **argv) {
   sourceInfo.sourceType = HY_MODULE_SOURCE_TYPE_ASSEMBLY;
   sourceInfo.filename = argv[1]; // The actual filename
   sourceInfo.data = NULL;
+  sourceInfo.pNext = NULL;
 
   const HyModuleSourceInfo *sources[] = {&sourceInfo};
   HyModuleCompileInfo compileInfo;
@@ -113,6 +114,8 @@ int main(int argc, char **argv) {
   compileInfo.ppSources = sources;
   compileInfo.pBasePath = NULL; /* Optional base path for resolving imports */
   compileInfo.sourcesCount = sizeof(sources) / sizeof(sources[0]);
+  compileInfo.flags = HY_MODULE_COMPILE_FLAG_BITS_ZSTD_COMPRESSED;
+  compileInfo.pNext = NULL;
 
   uint8_t *compiledData = NULL;
   uint32_t compiledDataLen = 0;

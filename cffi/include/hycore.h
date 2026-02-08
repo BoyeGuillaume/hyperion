@@ -54,6 +54,18 @@ enum HyLogLevelEXT
 typedef uint32_t HyLogLevelEXT;
 #endif // __cplusplus
 
+enum HyModuleCompileFlagBits
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
+{
+  HY_MODULE_COMPILE_FLAG_BITS_ZSTD_COMPRESSED = 1,
+};
+#ifndef __cplusplus
+typedef uint32_t HyModuleCompileFlagBits;
+#endif // __cplusplus
+
 enum HyModuleSourceType
 #ifdef __cplusplus
   : uint32_t
@@ -144,12 +156,15 @@ typedef struct HyModuleSourceInfo
   void *pNext;
 } HyModuleSourceInfo;
 
+typedef uint32_t HyModuleCompileFlags;
+
 typedef struct HyModuleCompileInfo
 {
   HyStructureType sType;
   const struct HyModuleSourceInfo *const *ppSources;
   uint32_t sourcesCount;
   const char *pBasePath;
+  HyModuleCompileFlags flags;
   void *pNext;
 } HyModuleCompileInfo;
 

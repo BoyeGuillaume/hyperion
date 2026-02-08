@@ -72,11 +72,16 @@ class ModuleSourceInfo:
     filename: Optional[str] = None
     ext: list[object] = Field(default_factory=list)
 
+class ModuleCompileFlagBits(IntEnum):
+    """Bitflags for module compilation options."""
+    ZSTD_COMPRESSED = 0x1
+
 @dataclass
 class ModuleCompileInfo:
     """Information about how to compile a source module."""
     sources: list[ModuleSourceInfo]
     base_path: Optional[str] = None
+    flags: int = ModuleCompileFlagBits.ZSTD_COMPRESSED
     ext: list[object] = Field(default_factory=list)
 
 def create_instance(create_info: InstanceCreateInfo) -> lib.Instance:

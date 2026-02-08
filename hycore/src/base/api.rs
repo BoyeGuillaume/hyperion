@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use bitflags::bitflags;
 #[cfg(feature = "pyo3")]
 use pyo3::{Borrowed, FromPyObject, PyAny, PyErr};
 use strum::FromRepr;
@@ -86,12 +87,30 @@ pub struct ModuleSourceInfo {
     pub ext: OpaqueList,
 }
 
+bitflags! {
+    /// Flags that can be used to control how a module is compiled.
+    pub struct ModuleCompileFlags: u32 {
+        const ZSTD_COMPRESSED = 1 << 0;
+    }
+}
+
+#[cfg(feature = "pyo3")]
+impl<'a, 'py> FromPyObject<'a, 'py> for ModuleCompileFlags {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, PyErr> {
+        let flags_int: u32 = obj.extract()?;
+        Ok(ModuleCompileFlags::from_bits_truncate(flags_int))
+    }
+}
+
 /// Structure containing information about how to compile a list of source files
 #[repr(C)]
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ModuleCompileInfo {
     pub sources: Vec<ModuleSourceInfo>,
     pub base_path: Option<String>,
+    pub flags: ModuleCompileFlags,
     pub ext: OpaqueList,
 }
 
