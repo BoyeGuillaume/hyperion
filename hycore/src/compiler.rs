@@ -1,17 +1,21 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use hyinstr::{
-    modules::{Module, parser::extend_module_from_string},
+    modules::{
+        Module,
+        parser::{extend_module_from_paths, extend_module_from_strings},
+    },
     types::TypeRegistry,
 };
+use smallvec::{SmallVec, smallvec};
 
 use crate::{
     base::{
         InstanceContext, ModuleKey,
         api::{ModuleCompileInfo, ModuleSourceType},
     },
-    hyerror, hyinfo, hytrace,
+    hyerror, hyinfo, hytrace, hywarn,
     utils::error::{HyError, HyResult},
 };
 
@@ -195,33 +199,220 @@ pub fn compile_sources(
     let type_registry = TypeRegistry::new([0u8; 6]);
     let mut filenames = Vec::new();
 
-    // Compile each source in the compile_info
-    for source_info in compile_info.sources {
-        hytrace!(
-            instance,
-            "Compiling source \"{}\"",
-            source_info.filename.as_deref().unwrap_or("<unnamed>")
-        );
+    // Either each source contains source code as a string, or a filename + base path is provided to read the source code
+    // from disk
+    let some_sources_missing_data = compile_info
+        .sources
+        .iter()
+        .any(|source| source.data.is_none());
+    let all_sources_missing_data = compile_info
+        .sources
+        .iter()
+        .all(|source| source.data.is_none());
 
-        match source_info.source_type {
-            ModuleSourceType::Assembly => {
-                // Compile assembly source code into the module
-                extend_module_from_string(&mut module, &type_registry, &source_info.data)
-                    .inspect_err(|e| {
-                        hyerror!(
-                            instance,
-                            "Failed to compile assembly source \"{}\": {}",
-                            source_info.filename.as_deref().unwrap_or("<unnamed>"),
-                            e
-                        );
-                    })?;
+    if compile_info
+        .sources
+        .iter()
+        .any(|source| source.data.is_none() && source.filename.is_none())
+    {
+        hyerror!(
+            instance,
+            "Cannot compile sources: some sources are missing both data and filename"
+        );
+        return Err(HyError::Unknown(
+            "Cannot compile sources: some sources are missing both data and filename".to_string(),
+        ));
+    }
+
+    if some_sources_missing_data != all_sources_missing_data {
+        hyerror!(
+            instance,
+            "Cannot compile sources: some sources are missing data while others have data, this is not allowed"
+        );
+        return Err(HyError::Unknown(
+            "Cannot compile sources: some sources are missing data while others have data, this is not allowed".to_string(),
+        ));
+    }
+
+    // Compile each source in the compile_info,
+    // Note: this approach does not allow to mix source type but
+    // if in the future i ever get to this point, changing it wouldn't
+    // be too hard, simply add just-compiled function (prior to referece checking) in a sort of list
+    // for each compilation type and call it a day
+    if all_sources_missing_data {
+        // Read source code from disk using the provided base path and filenames
+        if let Some(base_path) = compile_info.base_path.as_ref() {
+            hytrace!(
+                instance,
+                "Compiling sources from disk with provided base path '{}'",
+                base_path
+            );
+        } else {
+            hytrace!(
+                instance,
+                "Compiling sources from disk with no base path provided, using current working directory"
+            );
+        }
+        let base_path = compile_info
+            .base_path
+            .as_ref()
+            .map(|p| std::path::PathBuf::from(p))
+            .map(|p| {
+                p.canonicalize().map_err(|e| {
+                    hyerror!(
+                        instance,
+                        "Failed to canonicalize base path '{}': {}",
+                        p.display(),
+                        e
+                    );
+                    HyError::Unknown(format!(
+                        "Failed to canonicalize base path '{}': {}",
+                        p.display(),
+                        e
+                    ))
+                })
+            });
+        let base_path = match base_path {
+            Some(Err(e)) => return Err(e),
+            Some(Ok(p)) => p,
+            None => {
+                let base_path = std::path::PathBuf::from(std::env::current_dir().map_err(|e| {
+                    hyerror!(
+                        instance,
+                        "Failed to get current working directory for base path: {}",
+                        e
+                    );
+                    HyError::Unknown(format!(
+                        "Failed to get current working directory for base path: {}",
+                        e
+                    ))
+                })?);
+                hywarn!(
+                    instance,
+                    "No base path provided for compiling sources from disk, using current working directory '{}'",
+                    base_path.display()
+                );
+                base_path
+            }
+        };
+
+        let mut initial_source_infos = Vec::new();
+        for source_info in compile_info.sources {
+            assert!(source_info.source_type == ModuleSourceType::Assembly);
+            let filename = std::path::PathBuf::from(source_info.filename.as_ref().unwrap());
+            if filename.is_absolute() {
+                initial_source_infos.push(filename);
+            } else {
+                let full_path = base_path.join(&filename).canonicalize().map_err(|e| {
+                    hyerror!(
+                        instance,
+                        "Failed to canonicalize path for source file '{}': {}",
+                        filename.display(),
+                        e
+                    );
+                    HyError::Unknown(format!(
+                        "Failed to canonicalize path for source file '{}': {}",
+                        filename.display(),
+                        e
+                    ))
+                })?;
+                initial_source_infos.push(full_path);
             }
         }
 
-        if let Some(filename) = source_info.filename {
-            filenames.push(filename);
+        // Call the compilation function for each source, with error handling that includes the filename
+        hytrace!(
+            instance,
+            "Compiling sources from disk with base path '{}'",
+            base_path.display()
+        );
+        extend_module_from_paths(
+            &mut module,
+            &type_registry,
+            initial_source_infos.into_iter(),
+            Some(|path: &Path| {
+                hytrace!(
+                    instance,
+                    "Reading source file for compilation from path '{}'",
+                    path.display()
+                );
+                filenames.push(path.to_string_lossy().to_string());
+            }),
+        )
+        .inspect_err(|e| {
+            hyerror!(
+                instance,
+                "Failed to compile sources from disk with base path '{}': {}",
+                base_path.display(),
+                e
+            );
+        })
+        .map_err(|e| {
+            HyError::Unknown(format!(
+                "Failed to compile sources from disk with base path '{}': {}",
+                base_path.display(),
+                e
+            ))
+        })?;
+    } else {
+        // Compile source code directly from the provided strings
+        hytrace!(instance, "Compiling sources from provided strings");
+        let mut contents: SmallVec<String, 2> = smallvec!();
+        for source_info in compile_info.sources {
+            assert!(source_info.source_type == ModuleSourceType::Assembly);
+
+            if let Some(filename) = source_info.filename {
+                filenames.push(filename);
+            }
+
+            contents.push(source_info.data.as_deref().unwrap().to_string());
         }
+
+        extend_module_from_strings(
+            &mut module,
+            &type_registry,
+            contents.iter().map(|s| s.as_str()),
+        )
+        .inspect_err(|e| {
+            hyerror!(
+                instance,
+                "Failed to compile sources from provided strings: {}",
+                e
+            );
+        })
+        .map_err(|e| {
+            HyError::Unknown(format!(
+                "Failed to compile sources from provided strings: {}",
+                e
+            ))
+        })?;
     }
+    // for source_info in compile_info.sources {
+    //     hytrace!(
+    //         instance,
+    //         "Compiling source \"{}\"",
+    //         source_info.filename.as_deref().unwrap_or("<unnamed>")
+    //     );
+
+    //     match source_info.source_type {
+    //         ModuleSourceType::Assembly => {
+    //             // Compile assembly source code into the module
+    //             extend_module_from_string(&mut module, &type_registry, &source_info.data)
+    //                 .inspect_err(|e| {
+    //                     hyerror!(
+    //                         instance,
+    //                         "Failed to compile assembly source \"{}\": {}",
+    //                         source_info.filename.as_deref().unwrap_or("<unnamed>"),
+    //                         e
+    //                     );
+    //                 })?;
+    //         }
+    //     }
+
+    //     if let Some(filename) = source_info.filename {
+    //         filenames.push(filename);
+    //     }
+    // }
 
     // Verify and type check the module
     hytrace!(instance, "Verifying compiled module");

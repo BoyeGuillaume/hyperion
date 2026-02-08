@@ -76,6 +76,7 @@ class ModuleSourceInfo:
 class ModuleCompileInfo:
     """Information about how to compile a source module."""
     sources: list[ModuleSourceInfo]
+    base_path: Optional[str] = None
     ext: list[object] = Field(default_factory=list)
 
 def create_instance(create_info: InstanceCreateInfo) -> lib.Instance:

@@ -176,7 +176,8 @@ pub struct HyModuleCompileInfo {
     pub s_type: HyStructureType,
     pub pp_sources: *const *const HyModuleSourceInfo,
     pub sources_count: u32,
-    pub p_next: *mut c_void, // opaque, must be null for now
+    pub p_base_path: *const c_char, // nullable
+    pub p_next: *mut c_void,        // opaque, must be null for now
 }
 
 /// cbindgen:rename-all=CamelCase
@@ -482,13 +483,15 @@ pub extern "C" fn hyCompileModule(
                 })
             };
             let data = if source_ref.data.is_null() {
-                String::new()
+                None
             } else {
                 // For simplicity, assume data is null-terminated string
                 unsafe {
-                    std::ffi::CStr::from_ptr(source_ref.data as *const c_char)
-                        .to_string_lossy()
-                        .into_owned()
+                    Some(
+                        std::ffi::CStr::from_ptr(source_ref.data as *const c_char)
+                            .to_string_lossy()
+                            .into_owned(),
+                    )
                 }
             };
 
@@ -514,9 +517,21 @@ pub extern "C" fn hyCompileModule(
         Err(err) => return err,
     };
 
+    // If basepath is provided, convert it
+    let base_path = if info_ref.p_base_path.is_null() {
+        None
+    } else {
+        Some(unsafe {
+            std::ffi::CStr::from_ptr(info_ref.p_base_path)
+                .to_string_lossy()
+                .into_owned()
+        })
+    };
+
     // Create compile info
     let compile_info = hycore::base::api::ModuleCompileInfo {
         sources,
+        base_path,
         ext: compile_info_ext,
     };
     // Compile sources

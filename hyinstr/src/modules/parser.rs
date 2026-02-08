@@ -2201,12 +2201,12 @@ where
 fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
     module: &mut Module,
     registry: &TypeRegistry,
-    entry: P,
-    retriever: impl Fn(&P) -> Result<Cow<'a, str>, Error>,
-    merger: Option<impl Fn(&P, String) -> Result<P, Error>>,
+    entry: impl Iterator<Item = P>,
+    mut retriever: impl FnMut(&P) -> Result<Cow<'a, str>, Error>,
+    mut merger: Option<impl FnMut(&P, String) -> Result<P, Error>>,
 ) -> Result<(), Error> {
     // Stack of files to process
-    let mut stack = vec![entry];
+    let mut stack: Vec<P> = entry.collect();
     let unresolved_symbols: RefCell<HashMap<String, Uuid>> = Default::default();
     let mut list_added_internal_functions = vec![];
     let mut list_added_globals: Vec<Global> = vec![];
@@ -2292,7 +2292,7 @@ fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
             match item {
                 Item::Import(path) => {
                     // Push the imported file onto the stack for processing, stop processing current file
-                    if let Some(merger) = &merger {
+                    if let Some(merger) = &mut merger {
                         stack.push(merger(&current_path, path)?);
                     } else {
                         error!(
@@ -2497,14 +2497,15 @@ fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
 /// # Arguments
 ///  - `module`: The module to extend.
 ///  - `registry`: The type registry to use for type resolution.
-///  - `path`: The path to the source file to parse.
+///  - `paths`: An iterator over the paths to the source files to parse.
 ///
 /// # Returns
 /// - `Ok(())` if the module was successfully extended.
-pub fn extend_module_from_path(
+pub fn extend_module_from_paths(
     module: &mut Module,
     registry: &TypeRegistry,
-    path: impl AsRef<Path>,
+    paths: impl Iterator<Item = impl AsRef<Path>>,
+    mut reading_callback: Option<impl FnMut(&Path)>,
 ) -> Result<(), Error> {
     #[derive(PartialEq, Eq)]
     struct PathBufWrapper(PathBuf);
@@ -2531,6 +2532,9 @@ pub fn extend_module_from_path(
 
     let path_retriever = |path: &PathBufWrapper| {
         // Read the source file
+        if let Some(reading_callback) = &mut reading_callback {
+            reading_callback(&path.0);
+        }
         debug!("Reading source file at path: {}", path);
         std::fs::read_to_string(&path.0)
             .map_err(|e| {
@@ -2568,8 +2572,16 @@ pub fn extend_module_from_path(
     };
 
     // Find the root path
-    let root_path = canonicalize_path(path.as_ref())?;
-    extend_module_from_callbacks(module, registry, root_path, path_retriever, Some(merger))
+    extend_module_from_callbacks(
+        module,
+        registry,
+        paths
+            .map(|x| canonicalize_path(x.as_ref()))
+            .collect::<Result<SmallVec<PathBufWrapper, 4>, Error>>()?
+            .into_iter(),
+        path_retriever,
+        Some(merger),
+    )
 }
 
 /// Extend a module by parsing a source string.
@@ -2584,16 +2596,25 @@ pub fn extend_module_from_path(
 /// # Returns
 /// - `Ok(())` if the module was successfully extended.
 ///
-pub fn extend_module_from_string(
+pub fn extend_module_from_strings<'a>(
     module: &mut Module,
     registry: &TypeRegistry,
-    source: &str,
+    source: impl Iterator<Item = &'a str>,
 ) -> Result<(), Error> {
+    let source: SmallVec<&str, 4> = source.into_iter().collect();
     extend_module_from_callbacks(
         module,
         registry,
-        "string",
-        |_| Ok(Cow::Borrowed(source)),
-        None as Option<Box<dyn Fn(&&str, String) -> Result<&'static str, Error>>>,
+        source.iter().cloned(),
+        |elem| Ok(Cow::Borrowed(elem)),
+        None as Option<Box<dyn Fn(&&'a str, String) -> Result<&'a str, Error>>>,
     )
+}
+
+pub fn extend_module_from_string<'a>(
+    module: &mut Module,
+    registry: &TypeRegistry,
+    source: &'a str,
+) -> Result<(), Error> {
+    extend_module_from_strings(module, registry, std::iter::once(source))
 }

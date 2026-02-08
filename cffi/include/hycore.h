@@ -149,6 +149,7 @@ typedef struct HyModuleCompileInfo
   HyStructureType sType;
   const struct HyModuleSourceInfo *const *ppSources;
   uint32_t sourcesCount;
+  const char *pBasePath;
   void *pNext;
 } HyModuleCompileInfo;
 

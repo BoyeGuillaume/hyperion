@@ -4,6 +4,7 @@ use std::{
     fs,
 };
 
+use hyinstr::modules::parser::extend_module_from_paths;
 use hyinstr::{
     consts::AnyConst,
     modules::{
@@ -14,7 +15,7 @@ use hyinstr::{
             misc::{Invoke, Phi},
         },
         operand::{Label, Name, Operand},
-        parser::{extend_module_from_path, extend_module_from_string},
+        parser::extend_module_from_string,
         symbol::Pointer,
         terminator::{Branch, HyTerminator, Jump, Ret},
     },
@@ -610,7 +611,13 @@ fn parser_handles_imports_with_extend_module_from_path() {
     fs::write(&main_path, main_content).unwrap();
 
     let mut module = Module::default();
-    extend_module_from_path(&mut module, &reg, &main_path).unwrap();
+    extend_module_from_paths(
+        &mut module,
+        &reg,
+        std::iter::once(main_path),
+        None as Option<fn(&std::path::Path)>,
+    )
+    .unwrap();
 
     assert!(module.find_internal_function_by_name("inc").is_some());
     assert!(module.find_internal_function_by_name("main").is_some());

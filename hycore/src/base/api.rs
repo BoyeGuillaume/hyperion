@@ -82,7 +82,7 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ModuleSourceType {
 pub struct ModuleSourceInfo {
     pub source_type: ModuleSourceType,
     pub filename: Option<String>,
-    pub data: String,
+    pub data: Option<String>,
     pub ext: OpaqueList,
 }
 
@@ -91,6 +91,7 @@ pub struct ModuleSourceInfo {
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ModuleCompileInfo {
     pub sources: Vec<ModuleSourceInfo>,
+    pub base_path: Option<String>,
     pub ext: OpaqueList,
 }
 

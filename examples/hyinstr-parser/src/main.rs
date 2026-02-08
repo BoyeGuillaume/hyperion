@@ -1,7 +1,7 @@
 use ariadne::{ColorGenerator, Label, Report, Source};
 use clap::Parser as ClapParser;
 use hyinstr::{
-    modules::{Module, parser::extend_module_from_path},
+    modules::{Module, parser::extend_module_from_paths},
     types::TypeRegistry,
 };
 
@@ -22,7 +22,12 @@ fn main() {
     let a = colors.next();
 
     let path = std::path::Path::new(&args.input);
-    match extend_module_from_path(&mut module, &type_registry, path) {
+    match extend_module_from_paths(
+        &mut module,
+        &type_registry,
+        std::iter::once(path),
+        None as Option<fn(&std::path::Path)>,
+    ) {
         Ok(_) => {
             println!("Successfully parsed module from {}", args.input);
             if let Err(e) = module.type_check(&type_registry) {
