@@ -167,6 +167,7 @@ pub struct HyModuleSourceInfo {
     pub source_type: HyModuleSourceType,
     pub filename: *const c_char, // nullable
     pub data: *const u8,
+    pub p_next: *mut c_void, // opaque, must be null for now
 }
 
 /// cbindgen:rename-all=CamelCase
@@ -175,6 +176,7 @@ pub struct HyModuleCompileInfo {
     pub s_type: HyStructureType,
     pub pp_sources: *const *const HyModuleSourceInfo,
     pub sources_count: u32,
+    pub p_next: *mut c_void, // opaque, must be null for now
 }
 
 /// cbindgen:rename-all=CamelCase
@@ -489,19 +491,34 @@ pub extern "C" fn hyCompileModule(
                         .into_owned()
                 }
             };
+
+            let ext = match unsafe { convert_opaque_list_from_next(source_ref.p_next) } {
+                Ok(list) => list,
+                Err(err) => return err,
+            };
+
             let source_type: ModuleSourceType = source_ref.source_type.into();
             sources_vec.push(ModuleSourceInfo {
                 source_type,
                 filename,
                 data,
+                ext,
             });
         }
         sources_vec
     };
 
-    // Create compile info
-    let compile_info = hycore::base::api::ModuleCompileInfo { sources };
+    // Convert opaque list from pNext
+    let compile_info_ext = match unsafe { convert_opaque_list_from_next(info_ref.p_next) } {
+        Ok(list) => list,
+        Err(err) => return err,
+    };
 
+    // Create compile info
+    let compile_info = hycore::base::api::ModuleCompileInfo {
+        sources,
+        ext: compile_info_ext,
+    };
     // Compile sources
     match hycore::base::api::compile_sources(&inst.0, compile_info) {
         Ok(buf) => {

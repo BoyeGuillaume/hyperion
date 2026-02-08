@@ -83,6 +83,7 @@ pub struct ModuleSourceInfo {
     pub source_type: ModuleSourceType,
     pub filename: Option<String>,
     pub data: String,
+    pub ext: OpaqueList,
 }
 
 /// Structure containing information about how to compile a list of source files
@@ -90,6 +91,7 @@ pub struct ModuleSourceInfo {
 #[cfg_attr(feature = "pyo3", derive(FromPyObject))]
 pub struct ModuleCompileInfo {
     pub sources: Vec<ModuleSourceInfo>,
+    pub ext: OpaqueList,
 }
 
 /// Creates and initializes a new [`InstanceContext`] from the provided metadata.

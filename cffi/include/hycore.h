@@ -141,6 +141,7 @@ typedef struct HyModuleSourceInfo
   HyModuleSourceType sourceType;
   const char *filename;
   const uint8_t *data;
+  void *pNext;
 } HyModuleSourceInfo;
 
 typedef struct HyModuleCompileInfo
@@ -148,6 +149,7 @@ typedef struct HyModuleCompileInfo
   HyStructureType sType;
   const struct HyModuleSourceInfo *const *ppSources;
   uint32_t sourcesCount;
+  void *pNext;
 } HyModuleCompileInfo;
 
 typedef struct HyLogMessageEXT
