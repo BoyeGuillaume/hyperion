@@ -25,7 +25,7 @@ This section outlines the planned roadmap for the development and enhancement of
 - [ ] Implement first `Executor`, a simple single-threaded evaluator.
 - [x] Construct core IR data structures
 - [x] Build typesystem to support typed IR
-- [!] Add type checker for the IR
+- [x] Add type checker for the IR
 - [ ] Implement basic IR theorem-derivation and proof system
 - [ ] Implement theorem derivation strategies
 - [ ] Build equivalent function from theorem

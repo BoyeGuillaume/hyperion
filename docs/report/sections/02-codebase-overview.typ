@@ -101,8 +101,9 @@ Hyperion's codebase is structured to promote a clear separation between the core
       // IR components
       blob([IR], (3.8, -3.4), size: (7.8, 8.2), color: red.lighten(60%), text_anchor: "bottom-center")
       blob([Module], (5, 0), size: (3, 1), color: red)
-      blob([Function], (5, -1), size: (3, 1), color: red)
-      blob([BasicBlock], (5, -2), size: (3, 1), color: red)
+      blob([Function], (4, -1), size: (3, 1), color: red)
+      blob([Global], (6, -1), size: (3, 1), color: red)
+      blob([BasicBlock], (4, -2), size: (3, 1), color: red)
       blob([Instruction], (4, -3), size: (3, 1), color: red)
       blob([Terminator], (6, -3), size: (3, 1), color: red)
 
@@ -113,10 +114,11 @@ Hyperion's codebase is structured to promote a clear separation between the core
 
       arrow((2.75, 0), (2.75, -0.48), side: 4)
 
-      arrow((5.75, -.01), (5.75, -0.48), side: 4)
-      arrow((5.75, -1.01), (5.75, -1.48), side: 4)
-      arrow((5.75, -2.01), (4.75, -2.48), side: 4)
-      arrow((5.75, -2.01), (6.75, -2.48), side: 3)
+      arrow((5.75, -.01), (4.75, -0.48), side: 4)
+      arrow((5.75, -.01), (6.75, -0.48), side: 4)
+      arrow((4.75, -1.01), (4.75, -1.48), side: 4)
+      arrow((4.75, -2.01), (4.75, -2.48), side: 4)
+      arrow((4.75, -2.01), (6.75, -2.48), side: 3)
     },
     padding: (5mm, 0),
   ),

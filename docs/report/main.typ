@@ -1,7 +1,6 @@
 #import "@preview/codly:1.3.0": *
 #import "@preview/codly-languages:0.1.1": *
 #import "@preview/cetz:0.4.2": *
-#show: codly-init.with()
 
 #let report_title = "Hyperion: Technical Report"
 #let report_subtitle = "Building a Framework for High-Level Optimizations, for Massively Scalable Programs"
@@ -74,6 +73,7 @@
 
 #set heading(numbering: "1.")
 
+#show: codly-init.with()
 #show raw: it => text(it, font: "JetBrainsMono NF")
 #show raw.where(block: false): it => highlight(
   it,
@@ -83,6 +83,7 @@
   top-edge: 1em,
 )
 #codly(zebra-fill: luma(248))
+#set raw(syntaxes: "hyir.sublime-syntax")
 
 #set document(
   title: report_title,

@@ -45,18 +45,18 @@ Instruction forms are written as either producing a value or as a statement:
 <opcode> <operands>*
 ```
 
-Literals are written using an explicit type annotation when ambiguous:
+Literals are always written using an explicit type annotation:
 
-```llvm
-i32 0
-fp32 1.0
+```hyir
+0i32
+1.0fp32
 ```
 
 Labels identify blocks, and functions are referenced by name:
 
-```llvm
+```hyir
 jump exit
-%r: i32 = call pow_i32, %a, %e
+%r: i32 = invoke ptr pow_i32, %a, %e
 ```
 
 == Structuring IR programs
@@ -347,22 +347,22 @@ Supported meta-instructions (current):
 The following snippet illustrates (1) explicit overflow semantics and (2) common control-flow constructs. This function computes integer exponentiation by repeated multiplication:
 
 #figure(
-  ```llvm
+  ```hyir
   define i32 pow(%a: i32, %n: i32) {
   entry:
-      %is_null: i1 = icmp.eq %n, i32 0
+      %is_null: i1 = icmp.eq %n, 0i32
       branch %is_null, output, loop
 
   loop:
       %current_n: i32 = phi [%n, entry], [%next_n, loop]
-      %current_res: i32 = phi [i32 1, entry], [%next_res, loop]
-      %next_n: i32 = isub.wrap %current_n, i32 1
+      %current_res: i32 = phi [1i32, entry], [%next_res, loop]
+      %next_n: i32 = isub.wrap %current_n, 1i32
       %next_res: i32 = imul.usat %current_res, %a
-      %loop.is_null: i32 = icmp.eq %next_n, i32 0
+      %loop.is_null: i32 = icmp.eq %next_n, 0i32
       branch %loop.is_null, output, loop
 
   output:
-      %output: i32 = phi [i32 1, entry], [%next_res, loop]
+      %output: i32 = phi [1i32, entry], [%next_res, loop]
       ret %output
   }
   ```,
@@ -373,17 +373,17 @@ The following snippet illustrates (1) explicit overflow semantics and (2) common
 
 #pagebreak()
 Here is another example implementing square root using the Newton-Raphson method:
-```llvm
+```hyir
 define fp32 sqrt_newton(%x: fp32) {
 entry:
-    %half_x: fp32 = fmul %x, fp32 0.5
-    %guess0: fp32 = fadd %half_x, fp32 1.0
+    %half_x: fp32 = fmul %x, 0.5fp32
+    %guess0: fp32 = fadd %half_x, 1.0fp32
     %reciprocal: fp32 = fdiv %x, %guess0
     %avg: fp32 = fadd %guess0, %reciprocal
-    %guess1: fp32 = fmul %avg, fp32 0.5
+    %guess1: fp32 = fmul %avg, 0.5fp32
     %reciprocal2: fp32 = fdiv %x, %guess1
     %avg2: fp32 = fadd %guess1, %reciprocal2
-    %guess2: fp32 = fmul %avg2, fp32 0.5
+    %guess2: fp32 = fmul %avg2, 0.5fp32
     ret %guess2
 }
 ```

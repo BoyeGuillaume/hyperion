@@ -1,0 +1,37 @@
+%YAML 1.2
+---
+name: Hyperion IR
+file_extensions: ["hyir"]
+scope: source.hyir
+
+contexts:
+  main:
+    - match: \b(define|void|import|const|hidden|default|protected)\b
+      scope: constant.language.hyir
+    - match: ;.*$
+      scope: comment.line.hyir
+    - scope: keyword.control.hyir
+      match: \b(iadd|isub|imul|idiv|irem|icmp|isht|ineg|and|or|xor|not|implies|equiv|fadd|fsub|fmul|fdiv|frem|fcmp|fneg|load|store|alloca|getelementptr|invoke|phi|select|cast|insertvalue|extractvalue|assert|assume|isdef|prob|analysis|forall|ret|trap|jump|branch)\b
+    - scope: support.type
+      match: \b(i\d+|fp16|bf16|fp32|fp64|fp128|x86_fp80|ppc_fp128|ptr)\b
+    - scope: variable.name
+      match: "%[a-zA-Z0-9_]+"
+
+    - scope: constant.numeric.hyir
+      match: \b\d+(\.\d*)?(i\d+|fp16|fp32|fp64|fp128|x86_fp80|ppc_fp128)\b
+    - scope: constant.numeric.hyir
+      match: \b0x[0-9a-fA-F]+(i\d+)\b
+    - scope: constant.numeric.hyir
+      match: \b0b[01]+(i\d+)\b
+    - scope: constant.numeric.hyir
+      match: \b0o[0-7]+(i\d+)\b
+    - scope: constant.numeric.hyir
+      match: \b\d+(\.\d*)?+[eE][+-]?\d+(fp16|fp32|fp64|fp128|x86_fp80|ppc_fp128)\b
+    - scope: meta.preprocessor
+      match: \b\d+\b
+    - scope: meta.preprocessor
+      match: \b0x[0-9a-fA-F]+\b
+    - scope: meta.preprocessor
+      match: \b0b[01]+\b
+    - scope: meta.preprocessor
+      match: \b0o[0-7]+\b
