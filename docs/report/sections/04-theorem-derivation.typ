@@ -7,11 +7,11 @@ In hyperion framework we wanted optimizations to be more powerful than tradition
 Consider the kernel presented in @ir-kernel-example-pow, which computes the power of a base integer raised to an exponent using a loop. The end goal of theorem derivation in this context is to automatically derive the following theorem about this function:
 
 #figure(
-  ```llvm
+  ```hyir
   define void pow_t1(%a: i32, %b: i32, %c: i32) {
   entry:
     %term: i8 = !analysis.term.blockexit ; This block will always terminate
-    %ok_term: i1 = icmp.eq %term, i8 0 ; Normal termination (always terminate)
+    %ok_term: i1 = icmp.eq %term, 0i8 ; Normal termination (always terminate)
     !assert %ok_term
     %pab: i32 = invoke pow, %a, %b
     %pac: i32 = invoke pow, %a, %c
@@ -24,15 +24,15 @@ Consider the kernel presented in @ir-kernel-example-pow, which computes the powe
   }
   define void pow_t2(%a: i32) {
   entry:
-    %pa0: i32 = invoke pow, %a, i32 0
-    %ok0: i1 = icmp.eq %pa0, i32 1
+    %pa0: i32 = invoke pow, %a, 0i32
+    %ok0: i1 = icmp.eq %pa0, 1i32
     !assert %ok0
-    %pa1: i32 = invoke pow, %a, i32 1
+    %pa1: i32 = invoke pow, %a, 1i32
     %ok1: i1 = icmp.eq %pa1, %a
     !assert %ok1
-    %pa2: i32 = invoke pow, i32 1, %a
-    %ok2: i1 = icmp.eq %pa2, i32 1
-    %a_eq_zero: i1 = icmp.eq %a, i32 0
+    %pa2: i32 = invoke pow, 1i32, %a
+    %ok2: i1 = icmp.eq %pa2, 1i32
+    %a_eq_zero: i1 = icmp.eq %a, 0i32
     %okk2: i1 = ior %ok2, %a_eq_zero
     !assert %okk2
     ret void
@@ -69,6 +69,37 @@ In hyperion, theorem derivation is the process of automatically generating and p
     *Similar function reuse*: Leverage previously derived assertions and proofs from similar functions to accelerate the derivation process. This problem is hard and still under research.
   ],
 )
+
+=== Seeding and Initiation
+
+Initial analysis starts by extracting some property from the function implementation. Property takes the form of Haare's triplet $(cal(P), cal(Q), gamma)$ where $cal(P)$ is a precondition, $cal(Q)$ and postcondition and $gamma$ a relation.
+
+We can always start with the initial trivial precondition (largest valid set).
+From there we derive properties internal to the function. Some other strategy exists that provide stronger preconditions, such as (1) user-provided annotations, (2) automatic assumption for pure functions, and (3) mining from similar functions.
+
+From here, we need to analyse the function to derive more properties. Here are a list of fundamental axioms:
+```hyir
+%c: i32 = iadd.utrap %a, %b
+; Here %c >= %a and %c >= %b, also if %a, %b > 0 then strict comparison
+```
+
+=== Looping strategies
+Loops are one of the central challenges for theorem derivation, as they often involve complex state changes and invariants. Ensuring derivation, and property (such as termination) of loops is often NP-hard, or even undecidable. In practice, however, most loops fall into a few common patterns (e.g., reductions, counting loops, search loops).
+
+- *Counting Loops*: Loops that iterate a fixed number of times based on a loop variable. For example, `for i in 0..N: ...`. The invariant is often related to the loop variable and its relationship to the bounds.
+
+- *Reduction Loops*: Finding recurrence relations is a very powerful way to derive loop invariants. For example, if we have a loop that computes a sum, we can derive an invariant that relates the current value of the sum to the iteration variable.
+
+- *Search Loops*: Loops that search for a condition (e.g., `while not found: ...`). The invariant often captures the state of the search and the conditions under which it will terminate. When loops provide index, of another structure, we can also derive properties about the relationship between the index and the structure (e.g., sortedness, bounds).
+```hyir
+%x = invoke list.search, %list, %target
+; Here we have x == -1 || (0 <= x < len(list) && list[x] == target)
+```
+
+=== Simplification, normalization, and theorem application
+
+Assume we have a meta-function `f!` that provide some property. We can simplify boolean expression, substitute known properties. This suppose a way of indexing and retrieving properties, and a set of rewrite rules that are semantics-preserving. For example, if we have `f!(x) = true` as a known property, then any occurrence of `f!(x)` in the function can be replaced with `true`, which may enable further simplifications.
+
 
 == From theorems to transformations
 

@@ -1,6 +1,7 @@
 #import "@preview/codly:1.3.0": *
 #import "@preview/codly-languages:0.1.1": *
 #import "@preview/cetz:0.4.2": *
+#import "@preview/cetz:0.4.2"
 
 #let report_title = "Hyperion: Technical Report"
 #let report_subtitle = "Building a Framework for High-Level Optimizations, for Massively Scalable Programs"
@@ -124,6 +125,7 @@
   #pagebreak()
   #document
 ]
+
 
 #include "sections/00-introduction.typ"
 #pagebreak()

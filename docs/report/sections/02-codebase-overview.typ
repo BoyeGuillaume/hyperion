@@ -1,87 +1,4 @@
-#import "@preview/cetz:0.4.2"
-
-#let vc_add = (coordinate, delta) => (coordinate.at(0) + delta.at(0), coordinate.at(1) + delta.at(1))
-#let vc_sub = (coordinate, delta) => (coordinate.at(0) - delta.at(0), coordinate.at(1) - delta.at(1))
-#let vc_scale = (coordinate, factor) => (coordinate.at(0) * factor, coordinate.at(1) * factor)
-#let vc_midpoint = (coord_a, coord_b, pos: 50%) => {
-  let t = pos / 100%
-  (
-    coord_a.at(0) + t * (coord_b.at(0) - coord_a.at(0)),
-    coord_a.at(1) + t * (coord_b.at(1) - coord_a.at(1)),
-  )
-}
-#let vc_distance = (coord_a, coord_b) => {
-  let dx = coord_b.at(0) - coord_a.at(0)
-  let dy = coord_b.at(1) - coord_a.at(1)
-  calc.sqrt(dx * dx + dy * dy)
-}
-
-#let blob = (_content, coord_a, size: (3, 1), color: red, padding: 1, text_padding: 0.3, text_anchor: "center") => {
-  import cetz.draw: *
-
-  let coord_a = vc_scale(coord_a, 1 + padding)
-  let coord_b = vc_add(coord_a, size)
-
-  let coord_c = vc_midpoint(coord_a, coord_b)
-
-  if text_anchor.starts-with("top-") {
-    coord_c = (coord_c.at(0), coord_b.at(1) - text_padding)
-  } else if text_anchor.starts-with("bottom-") {
-    coord_c = (coord_c.at(0), coord_a.at(1) + text_padding)
-  }
-  if text_anchor.ends-with("-left") {
-    coord_c = (coord_a.at(0) + text_padding, coord_c.at(1))
-  } else if text_anchor.ends-with("-right") {
-    coord_c = (coord_b.at(0) - text_padding, coord_c.at(1))
-  }
-
-  rect(
-    coord_a,
-    coord_b,
-    fill: color.lighten(60%),
-    stroke: color.darken(30%) + 0.5mm,
-    anchor: "center",
-    radius: 2mm,
-  )
-  content(coord_c, text(fill: color.darken(60%), size: 1.1em, font: "Open Sans", _content))
-}
-
-#let arrow = (from, to, color: black, width: 0.5mm, side: 3, head-size: 0.1, padding: 1, horizontal: false) => {
-  import cetz.draw: *
-  let from = vc_scale(from, 1 + padding)
-  let to = vc_scale(to, 1 + padding)
-
-  let mid_a = (0, 0)
-  let mid_b = (0, 0)
-  if (horizontal) {
-    mid_a = (to.at(0), from.at(1))
-    mid_b = (from.at(0), to.at(1))
-  } else {
-    mid_a = (from.at(0), to.at(1))
-    mid_b = (to.at(0), from.at(1))
-  }
-
-  let direction = vc_scale(vc_sub(to, mid_b), 1 / (vc_distance(mid_b, to) + 1e-3))
-  let angle = calc.atan2(direction.at(0), direction.at(1))
-  let to = vc_sub(to, vc_scale(direction, head-size))
-
-  // Project mid on either the
-  // line(from, mid_a, mid_b, to, stroke: blue + width)
-  bezier(
-    from,
-    to,
-    mid_a,
-    mid_b,
-    stroke: color + width,
-  )
-  polygon(
-    to,
-    side,
-    angle: angle + 0deg,
-    radius: head-size,
-    fill: color,
-  )
-}
+#import "../utils/cetz.typ": *
 
 = Codebase overview
 
@@ -94,31 +11,35 @@ Hyperion's codebase is structured to promote a clear separation between the core
     {
       import cetz.draw: *
       // Public API
-      blob([Public API], (1.8, -1.4), size: (3.8, 4.2), color: yellow.lighten(60%), text_anchor: "bottom-center")
-      blob([Instance], (2, 0), size: (3, 1), color: yellow)
-      blob([Module], (2, -1), size: (3, 1), color: yellow)
+      blob([Public API], (-.5, -2), size: (4, 4), color: yellow.lighten(60%), text_anchor: "bottom-center")
+      blob([Instance], (0, 0.5), size: (3, 1), color: yellow)
+      blob([Module], (0, -1), size: (3, 1), color: yellow)
 
       // IR components
-      blob([IR], (3.8, -3.4), size: (7.8, 8.2), color: red.lighten(60%), text_anchor: "bottom-center")
-      blob([Module], (5, 0), size: (3, 1), color: red)
-      blob([Function], (4, -1), size: (3, 1), color: red)
-      blob([Global], (6, -1), size: (3, 1), color: red)
-      blob([BasicBlock], (4, -2), size: (3, 1), color: red)
-      blob([Instruction], (4, -3), size: (3, 1), color: red)
-      blob([Terminator], (6, -3), size: (3, 1), color: red)
+      blob([IR], (4, -6), size: (8, 8), color: red.lighten(60%), text_anchor: "bottom-center")
+      blob([Module], (6.5, 0.8), size: (3, 1), color: red)
+      blob([Function], (4.5, -1), size: (3, 1), color: red)
+      blob([Global], (8.5, -1), size: (3, 1), color: red)
+      blob([BasicBlock], (4.5, -3), size: (3, 1), color: red)
+      blob([Instruction], (4.5, -5), size: (3, 1), color: red)
+      blob([Terminator], (8.5, -5), size: (3, 1), color: red)
 
       // Optimizer components
-      blob([Theorem Library], (8, 0), size: (4, 1), color: blue)
-      blob([Theorem], (8.25, -1), size: (3, 1), color: blue)
-      blob([State], (8.25, -2), size: (3, 1), color: color.navy)
+      blob([Theorem Library], (13, 0.5), size: (4, 1), color: blue)
+      blob([Theorem], (13.5, -1), size: (3, 1), color: blue)
+      blob([Attached Function], (13, -3), size: (4, 1), color: blue)
+      // blob([State], (13.5, -5), size: (3, 1), color: color.navy)
 
-      arrow((2.75, 0), (2.75, -0.48), side: 4)
+      arrow(((1.5, 0.5), (1.5, 0)), symbol: "<>")
 
-      arrow((5.75, -.01), (4.75, -0.48), side: 4)
-      arrow((5.75, -.01), (6.75, -0.48), side: 4)
-      arrow((4.75, -1.01), (4.75, -1.48), side: 4)
-      arrow((4.75, -2.01), (4.75, -2.48), side: 4)
-      arrow((4.75, -2.01), (6.75, -2.48), side: 3)
+      arrow(((8, 0.8), (8, 0.4), (6, 0.4), (6, 0)), symbol: "<>")
+      arrow(((8, 0.8), (8, 0.4), (10, 0.4), (10, 0)), symbol: "<>")
+      arrow(((6, -1), (6, -2)), symbol: "<>")
+      arrow(((6, -3), (6, -4)), symbol: "<>")
+      arrow(((6, -3), (6, -3.5), (10, -3.5), (10, -4)), symbol: "<>")
+      arrow(((15, 0.5), (15, 0)), symbol: "<>")
+      arrow(((15, -2), (15, -1.5), (6.5, -1.5), (6.5, -1)), symbol: ">")
+      // arrow(((15, -3), (15, -4)), symbol: "<>")
     },
     padding: (5mm, 0),
   ),

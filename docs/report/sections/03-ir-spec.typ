@@ -24,17 +24,19 @@ A module is a sequence of function declarations/definitions:
 
 ```llvm
 ; Module defined with following external/internal functions
-declare <ret-ty> <name>(<param-tys>*)
-define  <ret-ty> <name>(<params>*) { <blocks>* }
+define <ret-ty> <name>(<param-tys>*)
+define <ret-ty> <name>(<params>*) { <blocks>* }
 ```
 
 A function definition contains labeled blocks:
 
 ```llvm
 define <ret-ty> <name>(<params>*) {
-<label>:
-  <instructions>*
-  <terminator>
+(
+  <label>:
+    <instructions>*
+    <terminator>
+)*
 }
 ```
 
