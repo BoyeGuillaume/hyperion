@@ -331,6 +331,25 @@ impl BasicBlock {
             reserved: 0,
         }
     }
+
+    /// Construct an iterator over all instruction references in the block.
+    pub(crate) fn iter(&self, label: Label) -> impl Iterator<Item = (&HyInstr, InstructionRef)> {
+        self.instructions
+            .iter()
+            .enumerate()
+            .map(move |(idx, instr)| (instr, InstructionRef::from((label, idx))))
+    }
+
+    /// Construct a mutable iterator over all instruction references in the block.
+    pub(crate) fn iter_mut(
+        &mut self,
+        label: Label,
+    ) -> impl Iterator<Item = (&mut HyInstr, InstructionRef)> {
+        self.instructions
+            .iter_mut()
+            .enumerate()
+            .map(move |(idx, instr)| (instr, InstructionRef::from((label, idx))))
+    }
 }
 
 /// Globals are values with a fixed address in the memory space of a module.
@@ -963,28 +982,16 @@ impl Function {
 
     /// Iterate over all instructions in the function.
     pub fn iter(&self) -> impl Iterator<Item = (&HyInstr, InstructionRef)> {
-        self.body.iter().flat_map(|(block_label, block)| {
-            block
-                .instructions
-                .iter()
-                .enumerate()
-                .map(move |(instr_index, instr)| {
-                    (instr, InstructionRef::from((*block_label, instr_index)))
-                })
-        })
+        self.body
+            .iter()
+            .flat_map(|(block_label, block)| block.iter(*block_label))
     }
 
     /// Iterate mutably over all instructions in the function.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&mut HyInstr, InstructionRef)> {
-        self.body.iter_mut().flat_map(|(block_label, block)| {
-            block
-                .instructions
-                .iter_mut()
-                .enumerate()
-                .map(move |(instr_index, instr)| {
-                    (instr, InstructionRef::from((*block_label, instr_index)))
-                })
-        })
+        self.body
+            .iter_mut()
+            .flat_map(|(block_label, block)| block.iter_mut(*block_label))
     }
 
     /// Retrieve an instruction from its SSA destination name.

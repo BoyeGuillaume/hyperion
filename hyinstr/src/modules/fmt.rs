@@ -1,6 +1,7 @@
 //! Pretty-print helpers for Hy instructions, terminators, functions, and modules.
 use crate::{
     analysis::{AnalysisStatistic, TerminationScope},
+    attached::AttachedFunction,
     modules::{
         Function, Global, Module,
         instructions::{
@@ -533,6 +534,68 @@ impl Module {
         Fmt {
             module: self,
             type_registry,
+        }
+    }
+}
+
+impl AttachedFunction {
+    pub fn fmt<'a>(
+        &'a self,
+        type_registry: &'a TypeRegistry,
+        module: Option<&'a Module>,
+    ) -> impl std::fmt::Display + 'a {
+        struct Fmt<'a> {
+            attached_function: &'a AttachedFunction,
+            type_registry: &'a TypeRegistry,
+            module: Option<&'a Module>,
+        }
+
+        impl<'a> std::fmt::Display for Fmt<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                for block in self.attached_function.blocks() {
+                    // Display the label (except for special label, in which case display the name)
+                    if block.label() == AttachedFunction::BEGIN_LABEL {
+                        writeln!(f, "BEGIN:")?;
+                    } else if block.label() == AttachedFunction::END_LABEL {
+                        writeln!(f, "END:")?;
+                    } else {
+                        writeln!(f, "{}:", block.label())?;
+                    }
+
+                    // Display instructions
+                    for (instr, iref) in block.iter() {
+                        let prefix = if iref.reserved != 0 { "!" } else { "" };
+                        writeln!(
+                            f,
+                            "  {}{}",
+                            prefix,
+                            instr.fmt(self.type_registry, self.module)
+                        )?;
+                    }
+
+                    // Display terminator
+                    if let Some(terminator) = block.terminator() {
+                        writeln!(
+                            f,
+                            "  {}",
+                            terminator.fmt(Some(self.type_registry), self.module)
+                        )?;
+                    } else {
+                        writeln!(
+                            f,
+                            "  ; No terminator because this is an attached function block"
+                        )?;
+                    }
+                }
+
+                Ok(())
+            }
+        }
+
+        Fmt {
+            attached_function: self,
+            type_registry,
+            module,
         }
     }
 }

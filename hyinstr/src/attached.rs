@@ -4,9 +4,10 @@ use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 use smallvec::SmallVec;
 
 use crate::modules::{
-    Function, InstructionRef,
+    BasicBlock, Function, InstructionRef,
     instructions::{HyInstr, Instruction},
     operand::{Label, Name, Operand},
+    terminator::HyTerminator,
 };
 
 /// Represents an meta-function attached to an existing function for theorem derivation.
@@ -151,6 +152,30 @@ impl AttachedFunction {
         self.derive_dest_map
             .get(name)
             .map(|(instr_ref, _)| *instr_ref)
+    }
+
+    /// Iterate over all blocks of the attached function, including the begin and end assertions.
+    pub fn blocks(&self) -> impl Iterator<Item = AttachedBlock<'_>> + '_ {
+        let begin_block = AttachedBlock {
+            label: Self::BEGIN_LABEL,
+            block: None,
+            instructions: &self.begin_assert,
+        };
+        let end_block = AttachedBlock {
+            label: Self::END_LABEL,
+            block: None,
+            instructions: &self.end_assert,
+        };
+        std::iter::once(begin_block)
+            .chain(std::iter::once(end_block))
+            .chain(self.target.body.iter().map(|(label, block)| AttachedBlock {
+                label: *label,
+                block: Some(block),
+                instructions:
+                    self.overlay.get(label).expect(
+                        "Overlay must contain an entry for each block in the target function.",
+                    ),
+            }))
     }
 
     /// Add a new instruction to the overlay at the specified label.
@@ -309,5 +334,36 @@ impl AttachedFunction {
         instructions
             .remove(key)
             .expect("Cannot remove non-existent instruction from overlay.")
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct AttachedBlock<'a> {
+    label: Label,
+    block: Option<&'a BasicBlock>,
+    instructions: &'a SlotMap<DefaultKey, HyInstr>,
+}
+
+impl<'a> AttachedBlock<'a> {
+    pub fn label(&self) -> Label {
+        self.label
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&HyInstr, InstructionRef)> + '_ {
+        self.block
+            .iter()
+            .flat_map(|x| x.iter(self.label))
+            .chain(self.instructions.iter().map(move |(key, instr)| {
+                let instr_ref = InstructionRef {
+                    block: self.label,
+                    index: 0, // Index is unused for overlay instructions
+                    reserved: key.data().as_ffi(),
+                };
+                (instr, instr_ref)
+            }))
+    }
+
+    pub fn terminator(&self) -> Option<&HyTerminator> {
+        self.block.map(|b| &b.terminator)
     }
 }

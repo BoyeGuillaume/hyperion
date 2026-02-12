@@ -21,7 +21,7 @@ macro_rules! register {
     (plugin $ty:ty) => {
         $crate::register_plugin!($ty);
     };
-    (derivation_strategy $ty:ty) => {
-        $crate::register_derivation_strategy!($ty);
+    (formal_strategy $ty:ty) => {
+        $crate::register_formal_strategy!($ty);
     };
 }
