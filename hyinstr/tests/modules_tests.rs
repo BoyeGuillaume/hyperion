@@ -76,7 +76,7 @@ fn simple_ok_function(reg: &TypeRegistry) -> Function {
         variant: OverflowSignednessPolicy::Wrap,
     });
     let entry = block(
-        Label::NIL,
+        Label::ENTRY,
         vec![add],
         HyTerminator::from(Ret {
             value: Some(Operand::Reg(Name(1))),
@@ -116,7 +116,7 @@ fn function_normalize_ssa_relabels_all_uses() {
                 variant: OverflowSignednessPolicy::Wrap,
             });
             block(
-                Label::NIL,
+                Label::ENTRY,
                 vec![add],
                 HyTerminator::from(Ret {
                     value: Some(Operand::Reg(Name(20))),
@@ -140,7 +140,7 @@ fn function_normalize_ssa_relabels_all_uses() {
     let deps: Vec<Name> = instr.dependencies().collect();
     assert_eq!(deps, vec![Name(0), Name(1)]);
 
-    if let HyTerminator::Ret(ret) = &func.body[&Label::NIL].terminator {
+    if let HyTerminator::Ret(ret) = &func.body[&Label::ENTRY].terminator {
         assert_eq!(ret.value, Some(Operand::Reg(Name(2))));
     } else {
         panic!("ret missing");
@@ -169,7 +169,7 @@ fn function_verify_rejects_duplicate_ssa() {
         "dup",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![add1, add2],
             HyTerminator::from(Ret {
                 value: Some(Operand::Reg(Name(1))),
@@ -219,12 +219,12 @@ fn function_verify_detects_undefined_operand_and_block() {
         "undef",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![add],
             HyTerminator::from(Branch {
                 cond: Operand::Reg(Name(0)),
                 target_true: Label(1), // missing block
-                target_false: Label::NIL,
+                target_false: Label::ENTRY,
             }),
         )],
         Some(ty),
@@ -243,7 +243,7 @@ fn function_verify_rejects_phi_not_first() {
     let phi = HyInstr::from(Phi {
         dest: Name(2),
         ty,
-        values: vec![(Operand::Reg(Name(1)), Label::NIL)],
+        values: vec![(Operand::Reg(Name(1)), Label::ENTRY)],
     });
     let add = HyInstr::from(IAdd {
         dest: Name(1),
@@ -256,7 +256,7 @@ fn function_verify_rejects_phi_not_first() {
         "phi_order",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![add, phi],
             HyTerminator::from(Ret {
                 value: Some(Operand::Reg(Name(2))),
@@ -267,7 +267,7 @@ fn function_verify_rejects_phi_not_first() {
         false,
     );
 
-    let nil_label = format!("{}", Label::NIL);
+    let nil_label = format!("{}", Label::ENTRY);
     assert!(matches!(
         func.verify(),
         Err(Error::ValidationFailed(msg)) if msg.contains("Phi instructions") && msg.contains(&nil_label)
@@ -292,7 +292,7 @@ fn function_verify_rejects_meta_elements_in_non_meta_function() {
         "meta",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![meta_op_instr, meta_instr],
             HyTerminator::from(Ret { value: None }),
         )],
@@ -320,7 +320,7 @@ fn function_verify_checks_wildcard_soundness() {
         "wildcard",
         vec![(Name(0), wildcard)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![instr],
             HyTerminator::from(Ret {
                 value: Some(Operand::Reg(Name(1))),
@@ -345,7 +345,7 @@ fn function_verify_enforces_parameter_limit() {
         "too_many_params",
         params,
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![],
             HyTerminator::from(Ret { value: None }),
         )],
@@ -367,7 +367,7 @@ fn function_analysis_helpers_produce_expected_graphs() {
 
     // entry: branch to l1 or l2
     let entry_block = block(
-        Label::NIL,
+        Label::ENTRY,
         vec![HyInstr::from(ICmp {
             dest: Name(1),
             ty: i1(&reg),
@@ -420,15 +420,15 @@ fn function_analysis_helpers_produce_expected_graphs() {
     let func = Arc::new(func);
 
     let cfg = func.derive_function_flow();
-    assert!(cfg.contains_node(Label::NIL));
+    assert!(cfg.contains_node(Label::ENTRY));
     assert_eq!(cfg.edge_count(), 4);
-    assert!(cfg.edge_weight(Label::NIL, Label(1)).is_some());
-    assert!(cfg.edge_weight(Label::NIL, Label(2)).is_some());
+    assert!(cfg.edge_weight(Label::ENTRY, Label(1)).is_some());
+    assert!(cfg.edge_weight(Label::ENTRY, Label(2)).is_some());
     assert!(cfg.edge_weight(Label(1), Label(3)).is_some());
     assert!(cfg.edge_weight(Label(2), Label(3)).is_some());
 
     let dest_map = func.derive_dest_map();
-    assert_eq!(dest_map.get(&Name(1)).unwrap().block, Label::NIL);
+    assert_eq!(dest_map.get(&Name(1)).unwrap().block, Label::ENTRY);
     assert_eq!(dest_map.get(&Name(2)).unwrap().block, Label(3));
 
     let phis: Vec<_> = func
@@ -460,7 +460,7 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
         "caller",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![call_instr],
             HyTerminator::from(Ret {
                 value: Some(Operand::Reg(Name(1))),
@@ -487,7 +487,7 @@ fn module_verify_func_fails_on_missing_internal_or_external() {
         "caller2",
         vec![],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![call_instr],
             HyTerminator::from(Ret { value: None }),
         )],
@@ -513,9 +513,9 @@ fn module_verify_succeeds_when_functions_resolved() {
         params: vec![(Name(0), ty)],
         return_type: Some(ty),
         body: BTreeMap::from([(
-            Label::NIL,
+            Label::ENTRY,
             block(
-                Label::NIL,
+                Label::ENTRY,
                 vec![HyInstr::from(IAdd {
                     dest: Name(1),
                     ty,
@@ -544,7 +544,7 @@ fn module_verify_succeeds_when_functions_resolved() {
         "caller",
         vec![(Name(0), ty)],
         vec![block(
-            Label::NIL,
+            Label::ENTRY,
             vec![call_instr],
             HyTerminator::from(Ret {
                 value: Some(Operand::Reg(Name(1))),
@@ -580,7 +580,7 @@ fn parser_simple_round_trip_from_string() {
     let func = module.find_function_by_ptr(&uuid).unwrap();
     assert_eq!(func.params.len(), 1);
     assert_eq!(func.params[0].0, Name(0));
-    let first_instr = &func.body[&Label::NIL].instructions[0];
+    let first_instr = &func.body[&Label::ENTRY].instructions[0];
     assert_eq!(first_instr.destination(), Some(Name(1)));
 }
 
@@ -724,7 +724,7 @@ fn parser_parses_meta_forall_zero_arity_and_bool_type() {
         .expect("function should exist");
     let func = module.find_function_by_ptr(&uuid).unwrap();
     assert!(func.meta_function);
-    let first = &func.body[&Label::NIL].instructions[0];
+    let first = &func.body[&Label::ENTRY].instructions[0];
     if let HyInstr::MetaForall(mf) = first {
         use hyinstr::types::primary::IType;
         let ty = reg.search_or_insert(IType::I1.into());
@@ -835,7 +835,7 @@ fn parser_parses_meta_analysis_stat_termination_variant() {
         .expect("function should exist");
     let func = module.find_function_by_ptr(&uuid).unwrap();
     assert!(func.meta_function);
-    let first = &func.body[&Label::NIL].instructions[0];
+    let first = &func.body[&Label::ENTRY].instructions[0];
     if let HyInstr::MetaAnalysisStat(mas) = first {
         let ty = i32(&reg);
         assert_eq!(mas.destination(), Some(Name(0)));
@@ -870,7 +870,7 @@ fn parser_parses_meta_analysis_stat_instruction_count_operand() {
         .expect("function should exist");
     let func = module.find_function_by_ptr(&pointer).unwrap();
     assert!(func.meta_function);
-    let first = &func.body[&Label::NIL].instructions[0];
+    let first = &func.body[&Label::ENTRY].instructions[0];
     if let HyInstr::MetaAnalysisStat(mas) = first {
         let ty = i32(&reg);
         assert_eq!(mas.destination(), Some(Name(0)));

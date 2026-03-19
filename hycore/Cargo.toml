@@ -4,6 +4,10 @@ version = "0.1.2"
 edition = "2024"
 
 [dependencies]
+bevy_ecs = { workspace = true }
+thread_local = { workspace = true }
+smallbox = { workspace = true }
+anyhow = { workspace = true, features = ["backtrace"] }
 hyinstr = { workspace = true, features = ["serde", "chumsky", "borsh"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 borsh = { workspace = true, features = ["derive"] }
@@ -11,7 +15,6 @@ serde = { workspace = true, features = ["derive"] }
 petgraph.workspace = true
 smallvec.workspace = true
 semver.workspace = true
-thiserror.workspace = true
 parking_lot.workspace = true
 crossbeam.workspace = true
 build-info.workspace = true

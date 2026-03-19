@@ -71,7 +71,7 @@ fn attached_function_pushes_and_resolves_overlay_instructions() {
     let mut attached = AttachedFunction::new(Arc::clone(&function));
     let entry = function
         .body
-        .get(&Label::NIL)
+        .get(&Label::ENTRY)
         .expect("entry block should exist");
 
     let op_a = Operand::Reg(
@@ -96,7 +96,7 @@ fn attached_function_pushes_and_resolves_overlay_instructions() {
         signedness: hyinstr::modules::instructions::int::IntegerSignedness::Unsigned,
     };
 
-    let (_, overlay_ref) = attached.push(Label::NIL, new_op.clone().into());
+    let (_, overlay_ref) = attached.push(Label::ENTRY, new_op.clone().into());
 
     assert_ne!(overlay_ref.reserved, 0);
     assert_eq!(attached.find_by_dest(&overlay_dest), Some(overlay_ref));
@@ -134,7 +134,7 @@ fn attached_function_pop_respects_dependency_counters() {
     let mut attached = AttachedFunction::new(function.clone());
     let entry = function
         .body
-        .get(&Label::NIL)
+        .get(&Label::ENTRY)
         .expect("entry block should exist");
 
     let op_twice = entry.instructions[0]
@@ -155,7 +155,7 @@ fn attached_function_pop_respects_dependency_counters() {
     }
     .into();
     let expected_first = first_overlay.clone();
-    let (_, first_ref) = attached.push(Label::NIL, first_overlay);
+    let (_, first_ref) = attached.push(Label::ENTRY, first_overlay);
 
     let second_dest = attached.next_available_name();
     let second_overlay: HyInstr = IAdd {
@@ -167,7 +167,7 @@ fn attached_function_pop_respects_dependency_counters() {
     }
     .into();
     let expected_second = second_overlay.clone();
-    let (_, second_ref) = attached.push(Label::NIL, second_overlay);
+    let (_, second_ref) = attached.push(Label::ENTRY, second_overlay);
 
     let pop_dependency_result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         let _ = attached.pop(first_ref);
@@ -189,14 +189,14 @@ fn attached_function_dedup_correctly() {
     let (function, type_registry) = build_chain_function();
     let op_a = function
         .body
-        .get(&Label::NIL)
+        .get(&Label::ENTRY)
         .expect("entry block should exist")
         .instructions[0]
         .destination()
         .unwrap();
     let op_b = function
         .body
-        .get(&Label::NIL)
+        .get(&Label::ENTRY)
         .expect("entry block should exist")
         .instructions[1]
         .destination()
@@ -214,7 +214,7 @@ fn attached_function_dedup_correctly() {
         rhs: Operand::Reg(op_b),
         variant: OverflowSignednessPolicy::Wrap,
     };
-    let (dest, instr_unique_ref) = attached.push(Label::NIL, instr_unique.into());
+    let (dest, instr_unique_ref) = attached.push(Label::ENTRY, instr_unique.into());
     assert_eq!(dest, Some(dest_a));
     assert_ne!(instr_unique_ref.reserved, 0);
 
@@ -227,7 +227,7 @@ fn attached_function_dedup_correctly() {
         rhs: Operand::Reg(op_b),
         variant: OverflowSignednessPolicy::USat,
     };
-    let (dest, instr_not_deduped_ref) = attached.push(Label::NIL, instr_not_deduped.into());
+    let (dest, instr_not_deduped_ref) = attached.push(Label::ENTRY, instr_not_deduped.into());
     assert_eq!(dest, Some(dest_b));
     assert_ne!(instr_not_deduped_ref.reserved, 0);
     assert_ne!(instr_not_deduped_ref, instr_unique_ref);
@@ -241,7 +241,7 @@ fn attached_function_dedup_correctly() {
         rhs: Operand::Reg(op_b),
         variant: OverflowSignednessPolicy::Wrap,
     };
-    let (dest, instr_deduped_ref) = attached.push(Label::NIL, instr_deduped.into());
+    let (dest, instr_deduped_ref) = attached.push(Label::ENTRY, instr_deduped.into());
     assert_eq!(dest, Some(dest_a));
     assert_ne!(dest, Some(dest_c));
     assert_eq!(instr_deduped_ref, instr_unique_ref,);
@@ -252,7 +252,7 @@ fn attached_function_do_not_dedup_non_simple() {
     let (function, type_registry) = build_chain_function();
     let op_a = function
         .body
-        .get(&Label::NIL)
+        .get(&Label::ENTRY)
         .expect("entry block should exist")
         .instructions[0]
         .destination()
@@ -272,7 +272,7 @@ fn attached_function_do_not_dedup_non_simple() {
             value: Operand::Reg(op_a),
             variant: hyinstr::modules::instructions::misc::CastVariant::IntToPtr,
         };
-        let (new_dest, cast_ref) = attached.push(Label::NIL, instr.into());
+        let (new_dest, cast_ref) = attached.push(Label::ENTRY, instr.into());
         let new_dest = new_dest.expect("cast instruction should define a value");
         assert_eq!(new_dest, dest);
         assert_ne!(cast_ref.reserved, 0);
@@ -289,7 +289,7 @@ fn attached_function_do_not_dedup_non_simple() {
         ordering: None,
         volatile: false,
     };
-    let (dest, instr_non_simple_ref) = attached.push(Label::NIL, instr_non_simple.into());
+    let (dest, instr_non_simple_ref) = attached.push(Label::ENTRY, instr_non_simple.into());
     assert_ne!(instr_non_simple_ref.reserved, 0);
     assert_eq!(dest, Some(dest_a));
 
@@ -303,7 +303,7 @@ fn attached_function_do_not_dedup_non_simple() {
         ordering: None,
         volatile: false,
     };
-    let (dest, instr_not_deduped_ref) = attached.push(Label::NIL, instr_not_deduped.into());
+    let (dest, instr_not_deduped_ref) = attached.push(Label::ENTRY, instr_not_deduped.into());
     assert_eq!(dest, Some(dest_b));
     assert_ne!(instr_not_deduped_ref.reserved, 0);
     assert_ne!(instr_not_deduped_ref, instr_non_simple_ref);

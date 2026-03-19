@@ -435,22 +435,31 @@ impl Global {
 pub struct Function {
     /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
+
     /// The display name of the function, if any (debugging purposes).
     pub name: Option<String>,
+
     /// The list of parameters for the function (as `(Name, Typeref)` pairs).
     pub params: Vec<(Name, Typeref)>,
+
     /// The return type of the function. `None` indicates `void` return type.
     pub return_type: Option<Typeref>,
+
     /// The body of the function, represented as a mapping from basic block labels to basic blocks.
     pub body: BTreeMap<Label, BasicBlock>,
+
     /// The visibility of the function (ignored for meta-functions).
     pub visibility: Option<Visibility>,
+
     /// The linkage of the function (ignored for meta-functions).
     pub cconv: Option<CallingConvention>,
+
     /// The set of wildcard types used in the function.
     pub wildcard_types: BTreeSet<WType>,
+
     /// Indicates whether this function is a meta-function (i.e., used for verification or analysis purposes).
     pub meta_function: bool,
+
     /// If this function was derived from another, holds the source function UUID.
     pub derived_from: Option<Uuid>,
 }
@@ -463,9 +472,9 @@ impl Default for Function {
             params: vec![],
             return_type: None,
             body: [(
-                Label::NIL,
+                Label::ENTRY,
                 BasicBlock {
-                    label: Label::NIL,
+                    label: Label::ENTRY,
                     instructions: vec![],
                     terminator: terminator::HyTerminator::Trap(Trap),
                 },
@@ -811,11 +820,11 @@ impl Function {
         self.verify_size_constraints()?;
 
         // Ensure existence of entry block
-        if !self.body.contains_key(&Label::NIL) {
+        if !self.body.contains_key(&Label::ENTRY) {
             return Err(Error::IllegalState(format!(
                 "Function `{}` is missing entry block (label: {:?})",
                 self.name.clone().unwrap_or_else(|| self.uuid.to_string()),
-                Label::NIL
+                Label::ENTRY
             )));
         }
 

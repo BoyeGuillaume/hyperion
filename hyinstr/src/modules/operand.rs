@@ -70,12 +70,12 @@ pub struct Label(pub u32);
 
 impl Label {
     /// Reserved entry label used for the first basic block.
-    pub const NIL: Label = Label(0);
+    pub const ENTRY: Label = Label(0);
 
     /// Returns true if this is the "nil" label (i.e., label 0).
     /// This label is reserved as the function entry label and should always be present.
     pub fn is_nil(&self) -> bool {
-        self == &Label::NIL
+        self == &Label::ENTRY
     }
 }
 
