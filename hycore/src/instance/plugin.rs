@@ -2,7 +2,7 @@ use bevy_ecs::prelude::*;
 use downcast_rs::{DowncastSync, impl_downcast};
 use smallbox::{SmallBox, space};
 
-use crate::instance::Instance;
+use crate::{ext::ExtList, instance::Instance};
 
 /// Plugins configure the behavior of the Hyperion instance
 ///
@@ -55,14 +55,24 @@ pub trait Plugin: DowncastSync {
 }
 impl_downcast!(sync Plugin);
 
+/// Constructor trait for plugins, used for the inventory
+pub trait PluginConstructor: Plugin + Sized {
+    fn new(ext: &mut ExtList) -> Self;
+
+    fn new_boxed(ext: &mut ExtList) -> DynPlugin {
+        smallbox::smallbox!(Self::new(ext))
+    }
+}
+
 /// Type erased plugin type, used for storing plugins in the instance
 pub type DynPlugin = SmallBox<dyn Plugin, space::S4>;
 
 /// Plugin registry using the inventory crate
 pub struct PublicPluginInventory {
-    pub name: &'static str,
+    // pub name: &'static str,
+    pub name: fn() -> &'static str,
     pub type_id: std::any::TypeId,
-    pub constructor: fn() -> DynPlugin,
+    pub constructor: fn(&mut ExtList) -> DynPlugin,
 }
 inventory::collect!(PublicPluginInventory);
 
@@ -70,19 +80,14 @@ inventory::collect!(PublicPluginInventory);
 #[macro_export]
 macro_rules! register_plugin {
     (
-        $plugin_type:ty,
-        $name:expr
+        $plugin_type:ty
     ) => {
         crate::inventory::submit! {
             crate::instance::plugin::PublicPluginInventory {
-                // name: std::any::type_name::<$plugin_type>(), // unstable const #63084
-                name: $name,
+                name: || std::any::type_name::<$plugin_type>(), // unstable const #63084
                 type_id: std::any::TypeId::of::<$plugin_type>(),
-                constructor: || {
-                    // Construct the instance of the plugin using the default constructor, and put it in a SmallBox
-                    let plugin: $plugin_type = Default::default();
-                    crate::smallbox::smallbox!(plugin)
-                },
+                constructor:
+                    <$plugin_type as crate::instance::plugin::PluginConstructor>::new_boxed,
             }
         }
     };

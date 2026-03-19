@@ -1,16 +1,94 @@
+use std::fmt::Debug;
+
+use crate::HyResult;
 use downcast_rs::{Downcast, impl_downcast};
 
 #[cfg(feature = "pyo3")]
 use pyo3::prelude::*;
 
-#[cfg(feature = "cffi")]
-use crate::HyResult;
-
 /// Empty trait to mark objects that are extension objects, that is portion of the API that is fully extendable
-pub trait ExtObject: Downcast {}
+pub trait ExtObject: Downcast + Debug {}
 impl_downcast!(ExtObject);
 
 pub type DynExtObject = Box<dyn ExtObject>;
+
+/// List of ext objects that can be passed to the instance create info
+#[derive(Debug)]
+pub struct ExtList(Vec<DynExtObject>);
+
+impl ExtList {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    #[inline]
+    pub fn push(&mut self, ext: DynExtObject) -> HyResult<()> {
+        // Verify that the type of the ext object is not already in the list, to avoid duplicates and ambiguity when retrieving the ext object later
+        if self
+            .0
+            .iter()
+            .any(|e| e.as_ref().type_id() == ext.as_ref().type_id())
+        {
+            return Err(anyhow::anyhow!(
+                "Duplicate ext object of type {:?} found in ExtList. All ext objects must be unique.",
+                ext.as_ref().type_id()
+            ));
+        }
+
+        self.0.push(ext);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &DynExtObject> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn get<T: ExtObject + 'static>(&self) -> Option<&T> {
+        self.0
+            .iter()
+            .find(|e| e.as_ref().type_id() == std::any::TypeId::of::<T>())
+            .and_then(|e| e.as_ref().downcast_ref::<T>())
+    }
+
+    #[inline]
+    pub fn pop<T: ExtObject + 'static>(&mut self) -> Option<T> {
+        if let Some(pos) = self
+            .0
+            .iter()
+            .position(|e| e.as_ref().type_id() == std::any::TypeId::of::<T>())
+        {
+            let ext = self.0.remove(pos);
+            ext.downcast::<T>().ok().map(|boxed| *boxed)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    #[inline]
+    pub fn contains<T: ExtObject + 'static>(&self) -> bool {
+        self.0
+            .iter()
+            .any(|e| e.as_ref().type_id() == std::any::TypeId::of::<T>())
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
 
 /// CFFI struct for extension objects, which contains a callback function to create the object from a pointer
 #[cfg(feature = "cffi")]

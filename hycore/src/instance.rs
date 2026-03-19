@@ -7,7 +7,7 @@ use crate::{
     HyError, HyResult,
     api::InstanceCreateInfo,
     instance::plugin::{DynPlugin, Plugin},
-    inventory, register_plugin,
+    inventory,
     resource::TypeRegistryRes,
 };
 
@@ -51,7 +51,10 @@ impl Instance {
     }
 
     #[inline]
-    fn internal_world_init(world: &mut World, create_info: InstanceCreateInfo<'_>) -> HyResult<()> {
+    fn internal_world_init(
+        world: &mut World,
+        create_info: &mut InstanceCreateInfo<'_>,
+    ) -> HyResult<()> {
         // Add the type registry resource to the world, so that it can be accessed by plugins and systems
         let node_id = {
             let node_id = create_info.node_rank.to_ne_bytes();
@@ -132,7 +135,7 @@ impl Instance {
     }
 
     /// Create a new instance of the Hyperion library runtime, given an [`InstanceCreateInfo`] struct
-    pub fn new(create_info: InstanceCreateInfo<'_>) -> HyResult<Self> {
+    pub fn new(mut create_info: InstanceCreateInfo<'_>) -> HyResult<Self> {
         // Create the instance with the initial state, and an empty world and plugin list
         let mut instance = Instance {
             world: RwLock::new(World::new()),
@@ -141,26 +144,26 @@ impl Instance {
         };
 
         let mut world = instance.world.write();
-        Self::internal_world_init(&mut world, create_info)?;
+        Self::internal_world_init(&mut world, &mut create_info)?;
         drop(world);
 
         // Add public plugins specified in the create info, by looking them up in the inventory
         for enabled_plugin_name in create_info.enabled_plugins {
             let constructor = inventory::iter::<plugin::PublicPluginInventory>
                 .into_iter()
-                .find(|constructor| constructor.name == *enabled_plugin_name)
+                .find(|constructor| (constructor.name)() == *enabled_plugin_name)
                 .ok_or_else(|| {
                     HyError::msg(format!(
                         "InstanceCreateInfo specifies enabled plugin '{}' which is not registered in the inventory. Possible values are: {}",
                         enabled_plugin_name,
                         inventory::iter::<plugin::PublicPluginInventory>
                             .into_iter()
-                            .map(|constructor| constructor.name)
+                            .map(|constructor| (constructor.name)())
                             .collect::<Vec<_>>()
                             .join(", ")
                     ))
                 })?;
-            let plugin = (constructor.constructor)();
+            let plugin = (constructor.constructor)(&mut create_info.ext);
 
             // Verify that the plugin returned by the constructor has the correct type and name, to avoid mistakes in the implementation of the constructor
             if constructor.type_id != plugin.type_id() {
@@ -170,7 +173,7 @@ impl Instance {
                 )));
             }
 
-            if constructor.name != plugin.name() {
+            if (constructor.name)() != plugin.name() {
                 return Err(HyError::msg(format!(
                     "Plugin constructor for plugin '{}' returned a plugin with a different name ('{}'). This is likely an internal bug, please report it to the developers",
                     enabled_plugin_name,
@@ -219,6 +222,7 @@ impl std::ops::Drop for Instance {
 /// A dummy plugin used as a placeholder during instance initialization, just ignore
 #[derive(Default)]
 struct _InstanceDummyPlugin;
+
 impl Plugin for _InstanceDummyPlugin {
     fn is_public(&self) -> bool {
         false
@@ -226,5 +230,3 @@ impl Plugin for _InstanceDummyPlugin {
 
     fn init(&mut self, _instance: &mut Instance) {}
 }
-
-register_plugin!(_InstanceDummyPlugin, "_InstanceDummyPlugin");
