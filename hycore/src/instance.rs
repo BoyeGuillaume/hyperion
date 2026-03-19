@@ -35,6 +35,7 @@ pub struct Instance {
 }
 
 impl Instance {
+    #[inline]
     pub fn get<T: Plugin + 'static>(&self) -> Option<&T> {
         self.plugins
             .iter()
@@ -42,12 +43,14 @@ impl Instance {
             .and_then(|p| p.downcast_ref::<T>())
     }
 
+    #[inline]
     pub fn has_plugin<T: Plugin + 'static>(&self) -> bool {
         self.plugins
             .iter()
             .any(|p| p.type_id() == std::any::TypeId::of::<T>())
     }
 
+    #[inline]
     fn internal_world_init(world: &mut World, create_info: InstanceCreateInfo<'_>) -> HyResult<()> {
         // Add the type registry resource to the world, so that it can be accessed by plugins and systems
         let node_id = {
@@ -72,6 +75,7 @@ impl Instance {
         Ok(())
     }
 
+    #[inline]
     fn internal_add_plugin(
         &mut self,
         mut plugin: DynPlugin,
@@ -122,6 +126,7 @@ impl Instance {
     ///   more details on public vs private plugin.
     /// - Should not be called after the instance is ready, as the `finish` method of the plugin won't be called
     ///
+    #[inline]
     pub fn add_plugin<T: Plugin + 'static>(&mut self, plugin: T) -> HyResult<()> {
         self.internal_add_plugin(smallbox!(plugin), false)
     }
@@ -198,6 +203,7 @@ impl Instance {
 }
 
 impl std::ops::Drop for Instance {
+    #[inline]
     fn drop(&mut self) {
         // Transition state to dropping, so that no more plugin can be added, and call the `cleanup` method of each plugin
         self.state = InstanceState::Dropping;
