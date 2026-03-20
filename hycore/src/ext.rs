@@ -1,10 +1,9 @@
-use std::fmt::Debug;
-
 use crate::HyResult;
 use downcast_rs::{Downcast, impl_downcast};
+use std::fmt::Debug;
 
 #[cfg(feature = "pyo3")]
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyList};
 
 /// Empty trait to mark objects that are extension objects, that is portion of the API that is fully extendable
 pub trait ExtObject: Downcast + Debug {}
@@ -13,8 +12,53 @@ impl_downcast!(ExtObject);
 pub type DynExtObject = Box<dyn ExtObject>;
 
 /// List of ext objects that can be passed to the instance create info
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct ExtList(Vec<DynExtObject>);
+
+impl Into<ExtList> for DynExtObject {
+    fn into(self) -> ExtList {
+        let mut list = ExtList::new();
+        list.push(self)
+            .expect("Failed to push ext object to ExtList");
+        list
+    }
+}
+
+macro_rules! recurse_tuple_def_inner {
+    (
+        $list:expr, $self:expr =>
+        $head:tt
+        $(, $tail:tt)*
+    ) => {
+        $list.push(Box::new($self.$head) as DynExtObject)
+            .expect("Failed to push ext object to ExtList");
+        recurse_tuple_def_inner!($list, $self => $($tail),*);
+    };
+    ($list:expr, $self:expr => ) => {};
+}
+
+macro_rules! recurse_tuple_def {
+    ($head:tt) => {};
+    (
+        $head:tt
+        $(, $tail:tt)*
+    ) => {
+        paste::paste! {
+            impl<$( [< _ $tail >]: ExtObject + 'static ),*> Into<ExtList> for ( $( [< _ $tail >] ),* , ) {
+                fn into(self) -> ExtList {
+                    let mut list = ExtList::new();
+                    recurse_tuple_def_inner!(list, self => $($tail),*);
+                    list
+                }
+            }
+        }
+
+        recurse_tuple_def!($($tail),*);
+    };
+}
+
+// Generate definition from 0 to 12
+recurse_tuple_def!(13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
 
 impl ExtList {
     #[inline]
@@ -87,6 +131,28 @@ impl ExtList {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+#[cfg(feature = "pyo3")]
+impl<'a, 'py> FromPyObject<'a, 'py> for ExtList {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        let list: Borrowed<PyList> = obj.cast::<PyList>()?;
+        let mut ext_list = ExtList::new();
+
+        for item in list.iter() {
+            let ext_object: DynExtObject = item.extract()?;
+            ext_list.push(ext_object).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to push ext object to ExtList: {}",
+                    e
+                ))
+            })?;
+        }
+
+        Ok(ext_list)
     }
 }
 

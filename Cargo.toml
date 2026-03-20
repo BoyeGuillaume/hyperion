@@ -1,11 +1,20 @@
 [workspace]
 resolver = "2"
-members = ["hyinstr", "hycore", "python", "cffi", "examples/hyinstr-parser"]
-default-members = ["hyinstr", "hycore"]
+members = [
+    "hyinstr",
+    "hycore",
+    # "python",
+    # "cffi",
+    "examples/hyinstr-parser",
+    "examples/hycore-example",
+]
+# default-members = ["hyinstr", "hycore"]
 
 [workspace.dependencies]
 semver = "^1"
 bevy_ecs = "0.18.1"
+bevy_tasks = "0.18.1"
+single_thread_cell = "0.3.0"
 thread_local = "1.1.9"
 toml = "0.9.10"
 smallvec = "2.0.0-alpha.12"
@@ -46,6 +55,7 @@ zstd = "=0.13.3"
 borsh = "^1"
 libc = "^0.2"
 dashmap = "^6"
+paste = "^1.0"
 # graph-cycles = "0.3"        # I used a crate caused I am stupid
 smallbox = "0.8.8"
 

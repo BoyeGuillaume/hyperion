@@ -3,8 +3,13 @@ name = "hycore"
 version = "0.1.2"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
-bevy_ecs = { workspace = true }
+single_thread_cell = { workspace = true }
+bevy_ecs = { workspace = true, features = ["async_executor", "debug"] }
+bevy_tasks = { workspace = true }
 thread_local = { workspace = true }
 smallbox = { workspace = true }
 anyhow = { workspace = true, features = ["backtrace"] }
@@ -31,6 +36,7 @@ chrono.workspace = true
 inventory.workspace = true
 zstd.workspace = true
 dashmap.workspace = true
+paste.workspace = true
 pyo3 = { workspace = true, features = [
     "uuid",
     "extension-module",
@@ -38,13 +44,17 @@ pyo3 = { workspace = true, features = [
     "chrono",
 ], optional = true }
 
+# cffi dependencies
+libc = { workspace = true, optional = true }
+
 [build-dependencies]
 build-info-build.workspace = true
+cbindgen = { version = "0.28", optional = true }
 
 [features]
 default = []
 pyo3 = ["dep:pyo3"]
-cffi = []
+cffi = ["dep:libc", "dep:cbindgen"]
 
 ext_hylog = []
 ext_all = ["ext_hylog"]

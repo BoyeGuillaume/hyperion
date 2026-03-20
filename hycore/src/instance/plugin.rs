@@ -1,8 +1,7 @@
-use bevy_ecs::prelude::*;
 use downcast_rs::{DowncastSync, impl_downcast};
 use smallbox::{SmallBox, space};
 
-use crate::{ext::ExtList, instance::Instance};
+use crate::{HyResult, ext::ExtList, instance::Instance};
 
 /// Plugins configure the behavior of the Hyperion instance
 ///
@@ -16,13 +15,13 @@ pub trait Plugin: DowncastSync {
     }
 
     /// First step toward plugin initialization
-    fn init(&mut self, instance: &mut Instance);
+    fn init(&mut self, instance: &mut Instance, ext: Option<&mut ExtList>) -> HyResult<()>;
 
     /// Has the plugin finished its setup?
     ///
     /// Once the [`Self::init`] method is called, the plugin won't be considered ready until this method
     /// returns `true`. Useful when asynchronous setup is required
-    fn ready(&self, _world: &World) -> bool {
+    fn ready(&self) -> bool {
         true
     }
 
@@ -57,10 +56,16 @@ impl_downcast!(sync Plugin);
 
 /// Constructor trait for plugins, used for the inventory
 pub trait PluginConstructor: Plugin + Sized {
-    fn new(ext: &mut ExtList) -> Self;
+    fn new(ext: &mut ExtList) -> HyResult<Self>;
 
-    fn new_boxed(ext: &mut ExtList) -> DynPlugin {
-        smallbox::smallbox!(Self::new(ext))
+    fn new_boxed(ext: &mut ExtList) -> HyResult<DynPlugin> {
+        Ok(smallbox::smallbox!(Self::new(ext)?))
+    }
+}
+
+impl<T: Default + Plugin + Sized> PluginConstructor for T {
+    fn new(_ext: &mut ExtList) -> HyResult<Self> {
+        Ok(Self::default())
     }
 }
 
@@ -72,7 +77,7 @@ pub struct PublicPluginInventory {
     // pub name: &'static str,
     pub name: fn() -> &'static str,
     pub type_id: std::any::TypeId,
-    pub constructor: fn(&mut ExtList) -> DynPlugin,
+    pub constructor: fn(&mut ExtList) -> HyResult<DynPlugin>,
 }
 inventory::collect!(PublicPluginInventory);
 
