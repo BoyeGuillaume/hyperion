@@ -156,11 +156,33 @@ impl<'a, 'py> FromPyObject<'a, 'py> for ExtList {
     }
 }
 
+#[cfg(feature = "cffi")]
+impl ExtList {
+    /// Get an extension object from an opaque pointer, by iterating over the list and trying to downcast each object to the desired type, and returning the first one that matches
+    ///
+    /// SAFETY:
+    /// - Caller must ensure that the pointer is valid and points to an object of the correct type for the given sType.
+    /// - Caller must ensure that the sType correspond to the real type of the object pointed to by ptr.
+    #[inline]
+    pub unsafe fn from_cffi(mut ptr: *mut std::ffi::c_void) -> HyResult<Self> {
+        let mut list = ExtList::new();
+
+        while !ptr.is_null() {
+            let (ext_object, next) = unsafe { ExtObjectCFFIInventory::get(ptr)? };
+            list.push(ext_object)?;
+            ptr = next;
+        }
+
+        Ok(list)
+    }
+}
+
 /// CFFI struct for extension objects, which contains a callback function to create the object from a pointer
 #[cfg(feature = "cffi")]
 pub struct ExtObjectCFFIInventory {
     pub stype: u32,
-    pub callback: unsafe fn(ptr: *mut std::ffi::c_void) -> HyResult<DynExtObject>,
+    pub callback:
+        unsafe fn(ptr: *mut std::ffi::c_void) -> HyResult<(DynExtObject, *mut std::ffi::c_void)>,
 }
 #[cfg(feature = "cffi")]
 inventory::collect!(ExtObjectCFFIInventory);
@@ -174,7 +196,9 @@ impl ExtObjectCFFIInventory {
     /// - Caller must ensure that the sType correspond to the real type of the object pointed to by ptr.
     ///
     #[inline]
-    pub unsafe fn get(ptr: *mut std::ffi::c_void) -> HyResult<DynExtObject> {
+    pub unsafe fn get(
+        ptr: *mut std::ffi::c_void,
+    ) -> HyResult<(DynExtObject, *mut std::ffi::c_void)> {
         assert!(!ptr.is_null(), "Pointer must not be null");
 
         // Retrieve the sType from the pointer, which is always the first field of the struct (u32)
@@ -183,7 +207,7 @@ impl ExtObjectCFFIInventory {
             .into_iter()
             .find(|entry| entry.stype == stype)
             .ok_or_else(|| {
-                anyhow::anyhow!("ExtObjectCFFIInventory not found for sType {}", stype)
+                anyhow::anyhow!("ExtObjectCFFIInventory not found for sType {:?}", stype)
             })?;
 
         // Call the callback function to get the extension object
@@ -194,16 +218,16 @@ impl ExtObjectCFFIInventory {
     #[inline]
     pub fn verify() -> HyResult<()> {
         // Verify that all stypes in the inventory are unique
-        let mut seen = std::collections::HashSet::new();
+        let mut seen = std::collections::BTreeSet::new();
         for entry in inventory::iter::<Self> {
             if !seen.insert(entry.stype) {
                 return Err(anyhow::anyhow!(
-                    "Duplicate stype {} found in ExtObjectCFFIInventory. All stypes must be unique. This is likely a bug in the code, please report it to the developers. The duplicate stype was found in the following entries: {}",
+                    "Duplicate stype {:?} found in ExtObjectCFFIInventory. All stypes must be unique. This is likely a bug in the code, please report it to the developers. The duplicate stype was found in the following entries: {}",
                     entry.stype,
                     inventory::iter::<Self>()
                         .into_iter()
                         .filter(|e| e.stype == entry.stype)
-                        .map(|e| format!("{} (callback: {:p})", e.stype, e.callback as *const ()))
+                        .map(|e| format!("{:?} (callback: {:p})", e.stype, e.callback as *const ()))
                         .collect::<Vec<_>>()
                         .join(", ")
                 ));

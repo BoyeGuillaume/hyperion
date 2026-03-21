@@ -48,6 +48,172 @@ pub struct LoggerPluginCreateInfo {
     pub sink_callback: Box<dyn Fn(LoggerRecord) + Send>,
 }
 
+#[cfg(feature = "cffi")]
+pub mod cffi {
+    use crate::{
+        api::cffi::r#struct::HyStructureType,
+        ext::{ExtObject, ExtObjectCFFIInventory},
+        plugin::logger::{LoggerPluginCreateInfo, LoggerRecord},
+    };
+
+    use super::LoggerLevel;
+
+    // Basically same as LoggerRecord but responding naming convention for CFFI
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[repr(u32)]
+    pub enum HyLoggerLevel {
+        Trace,
+        Debug,
+        Info,
+        Warn,
+        Error,
+    }
+
+    impl From<LoggerLevel> for HyLoggerLevel {
+        fn from(level: LoggerLevel) -> Self {
+            match level {
+                LoggerLevel::Trace => HyLoggerLevel::Trace,
+                LoggerLevel::Debug => HyLoggerLevel::Debug,
+                LoggerLevel::Info => HyLoggerLevel::Info,
+                LoggerLevel::Warn => HyLoggerLevel::Warn,
+                LoggerLevel::Error => HyLoggerLevel::Error,
+            }
+        }
+    }
+
+    impl From<HyLoggerLevel> for LoggerLevel {
+        fn from(level: HyLoggerLevel) -> Self {
+            match level {
+                HyLoggerLevel::Trace => LoggerLevel::Trace,
+                HyLoggerLevel::Debug => LoggerLevel::Debug,
+                HyLoggerLevel::Info => LoggerLevel::Info,
+                HyLoggerLevel::Warn => LoggerLevel::Warn,
+                HyLoggerLevel::Error => LoggerLevel::Error,
+            }
+        }
+    }
+
+    #[repr(C)]
+    pub struct HyLoggerRecord {
+        pub timestamp: i64, // Unix timestamp in milliseconds
+        pub level: HyLoggerLevel,
+        pub p_message: *const std::os::raw::c_char,
+        pub p_file: *const std::os::raw::c_char,
+        pub line: u32,
+        pub p_module_path: *const std::os::raw::c_char,
+        pub p_thread_name: *const std::os::raw::c_char,
+    }
+
+    impl HyLoggerRecord {
+        /// SAFETY: Technically secure, because memory leaks are not a security issue. However,
+        /// marked unsafe because called must call CString::from_raw on the string fields to
+        /// avoid memory leaks (do this after call of the callback).
+        unsafe fn from_logger_record(record: LoggerRecord) -> Self {
+            Self {
+                timestamp: record.timestamp.timestamp_millis(),
+                level: record.level.into(),
+                p_message: std::ffi::CString::new(record.message).unwrap().into_raw(),
+                p_file: record.file.map_or(std::ptr::null(), |s| {
+                    std::ffi::CString::new(s).unwrap().into_raw()
+                }),
+                line: record.line.unwrap_or(0),
+                p_module_path: record.module_path.map_or(std::ptr::null(), |s| {
+                    std::ffi::CString::new(s).unwrap().into_raw()
+                }),
+                p_thread_name: record.thread_name.map_or(std::ptr::null(), |s| {
+                    std::ffi::CString::new(s).unwrap().into_raw()
+                }),
+            }
+        }
+
+        /// SAFETY: Caller must call this function on the HyLoggerRecord pointer after the callback
+        /// returns to free the C strings and avoid memory leaks.
+        unsafe fn destroy(&self) {
+            unsafe {
+                if !self.p_message.is_null() {
+                    let _ =
+                        std::ffi::CString::from_raw(self.p_message as *mut std::os::raw::c_char);
+                }
+                if !self.p_file.is_null() {
+                    let _ = std::ffi::CString::from_raw(self.p_file as *mut std::os::raw::c_char);
+                }
+                if !self.p_module_path.is_null() {
+                    let _ = std::ffi::CString::from_raw(
+                        self.p_module_path as *mut std::os::raw::c_char,
+                    );
+                }
+                if !self.p_thread_name.is_null() {
+                    let _ = std::ffi::CString::from_raw(
+                        self.p_thread_name as *mut std::os::raw::c_char,
+                    );
+                }
+            }
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub type HyLoggerSinkCallback =
+        unsafe fn(pRecord: *const HyLoggerRecord, pUserData: *mut std::ffi::c_void);
+
+    #[derive(Clone, Copy)]
+    #[repr(C)]
+    pub struct HyLoggerPluginCreateInfo {
+        pub s_type: HyStructureType,
+        pub level: HyLoggerLevel,
+        pub p_sink_callback: HyLoggerSinkCallback,
+        pub p_user_data: *mut std::ffi::c_void,
+        pub p_next: *mut std::ffi::c_void,
+    }
+
+    impl TryFrom<HyLoggerPluginCreateInfo> for LoggerPluginCreateInfo {
+        type Error = anyhow::Error;
+
+        fn try_from(value: HyLoggerPluginCreateInfo) -> Result<Self, Self::Error> {
+            #[derive(Clone, Copy)]
+            pub struct TrustMe(*mut std::ffi::c_void);
+            unsafe impl Send for TrustMe {}
+            let user_data_trustme = TrustMe(value.p_user_data);
+
+            if value.s_type != HyStructureType::LoggerPluginCreateInfo {
+                return Err(anyhow::anyhow!(
+                    "Invalid structure type: expected LoggerPluginCreateInfo, got {:?}",
+                    value.s_type
+                ));
+            }
+
+            Ok(LoggerPluginCreateInfo {
+                level: value.level.into(),
+                sink_callback: Box::new(move |record| {
+                    let user_data = user_data_trustme;
+
+                    let cffi_record = unsafe { HyLoggerRecord::from_logger_record(record) };
+                    unsafe {
+                        (value.p_sink_callback)(
+                            &cffi_record as *const HyLoggerRecord as *mut HyLoggerRecord,
+                            user_data.0,
+                        );
+                    }
+
+                    // Don't forget to free the C strings to avoid memory leaks
+                    unsafe { cffi_record.destroy() };
+                }),
+            })
+        }
+    }
+
+    inventory::submit! {
+        ExtObjectCFFIInventory {
+            stype: HyStructureType::LoggerPluginCreateInfo as u32,
+            callback: |ptr| {
+                let create_info = unsafe { *(ptr as *const HyLoggerPluginCreateInfo) };
+                let p_next = create_info.p_next;
+                let logger_create_info = LoggerPluginCreateInfo::try_from(create_info)?;
+                Ok((Box::new(logger_create_info) as Box<dyn ExtObject>, p_next))
+            },
+        }
+    }
+}
+
 impl std::fmt::Debug for LoggerPluginCreateInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LoggerPluginCreateInfo")
@@ -184,7 +350,7 @@ impl LoggerExt for Instance {
     }
 }
 
-/// Logger macro
+/// Logger macro exposed to plugins
 #[macro_export]
 macro_rules! hylog {
     (

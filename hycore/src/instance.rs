@@ -232,7 +232,7 @@ impl Instance {
             env!("CARGO_PKG_VERSION"),
             instance.plugins.iter().filter_map(|p| if p.is_public() { Some(p.name()) } else { None }).collect::<Vec<_>>().join(", ")
         );
-        hyinfo!(instance; "Instance node rank: {:02x?}", create_info.node_rank);
+        hyinfo!(instance; "Instance node rank: {}", create_info.node_rank);
         hyinfo!(instance; "Application name: '{}' ({}), Engine name: '{}' ({})",
             create_info.application_info.application_name,
             create_info.application_info.application_version,
@@ -249,7 +249,7 @@ impl Instance {
             build_info.compiler.host_triple,
             build_info.compiler.version,
             build_info.optimization_level,
-            build_info.timestamp,
+            build_info.timestamp.to_utc().format("%Y-%m-%d %H:%M:%S %Z"),
         );
         if let Some(git) = build_info.version_control.as_ref().and_then(|g| g.git()) {
             hyinfo!(instance; "Git info: branch '{}', commit '{}', commit timestamp: '{}', dirty: {}",
@@ -258,7 +258,7 @@ impl Instance {
                     None => "<unknown>"
                 },
                 git.commit_short_id,
-                git.commit_timestamp,
+                git.commit_timestamp.to_utc().format("%Y-%m-%d %H:%M:%S %Z"),
                 git.dirty,
             );
         }

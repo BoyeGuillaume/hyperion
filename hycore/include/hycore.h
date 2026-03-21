@@ -37,6 +37,37 @@
 #define HY_VERSION_PATCH 2
 #define HY_VERSION "0.1.2"
 
+static const char *HY_LOGGER_PLUGIN_NAME = "hycore::plugin::logger::LoggerPlugin";
+
+enum HyLoggerLevel
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
+{
+  HY_LOGGER_LEVEL_TRACE,
+  HY_LOGGER_LEVEL_DEBUG,
+  HY_LOGGER_LEVEL_INFO,
+  HY_LOGGER_LEVEL_WARN,
+  HY_LOGGER_LEVEL_ERROR,
+};
+#ifndef __cplusplus
+typedef uint32_t HyLoggerLevel;
+#endif // __cplusplus
+
+enum HyStructureType
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
+{
+  HY_STRUCTURE_TYPE_APPLICATION_INFO = 1,
+  HY_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+  HY_STRUCTURE_TYPE_LOGGER_PLUGIN_CREATE_INFO,
+};
+#ifndef __cplusplus
+typedef uint32_t HyStructureType;
+#endif // __cplusplus
 
 typedef struct HyInstance HyInstance;
 
@@ -49,6 +80,7 @@ typedef struct
 
 typedef struct
 {
+  HyStructureType sType;
   const char *pApplicationName;
   HyVersionInfo applicationVersion;
   const char *pEngineName;
@@ -57,16 +89,46 @@ typedef struct
 
 typedef struct
 {
+  HyStructureType sType;
   const HyApplicationInfo *pApplicationInfo;
   uint64_t enabledPluginCount;
   const char *const *ppEnabledPlugins;
-  uint32_t nodeRank;
-  void *ext;
+  uint64_t nodeRank;
+  void *pNext;
 } HyInstanceCreateInfo;
+
+typedef struct
+{
+  int64_t timestamp;
+  HyLoggerLevel level;
+  const char *pMessage;
+  const char *pFile;
+  uint32_t line;
+  const char *pModulePath;
+  const char *pThreadName;
+} HyLoggerRecord;
+
+typedef void (*HyLoggerSinkCallback)(const HyLoggerRecord *pRecord, void *pUserData);
+
+typedef struct
+{
+  HyStructureType sType;
+  HyLoggerLevel level;
+  HyLoggerSinkCallback pSinkCallback;
+  void *pUserData;
+  void *pNext;
+} HyLoggerPluginCreateInfo;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+void hyGetVersionInfo(HyVersionInfo *pVersionInfo);
+
+int hyGetLastError(char *pBuffer,
+                   uint32_t bufferSize,
+                   char *pBacktraceBuffer,
+                   uint32_t backtraceBufferSize);
 
 int hyCreateInstance(const HyInstanceCreateInfo *pCreateInfo, HyInstance **ppInstance);
 

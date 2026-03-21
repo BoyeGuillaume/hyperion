@@ -3,7 +3,7 @@ mod cffi {
     use std::{io::Write, path::Path};
 
     use build_info_build::semver;
-    use cbindgen::{Config, ConstantConfig, FunctionConfig, RenameRule, StructConfig};
+    use cbindgen::{Config, ConstantConfig, EnumConfig, FunctionConfig, RenameRule, StructConfig};
 
     pub(super) fn main_cffi() {
         // Generate C header using cbindgen
@@ -17,7 +17,8 @@ mod cffi {
             "\n#define HY_VERSION_MAJOR {}\n\
                #define HY_VERSION_MINOR {}\n\
                #define HY_VERSION_PATCH {}\n\
-               #define HY_VERSION \"{}\"\n",
+               #define HY_VERSION \"{}\"\n\n\
+               static const char *HY_LOGGER_PLUGIN_NAME = \"hycore::plugin::logger::LoggerPlugin\";",
             version.major,
             version.minor,
             version.patch,
@@ -77,10 +78,17 @@ mod cffi {
                     rename_args: RenameRule::CamelCase,
                     ..Default::default()
                 },
+                enumeration: EnumConfig {
+                    rename_variants: RenameRule::ScreamingSnakeCase,
+                    add_sentinel: false,
+                    prefix_with_name: true,
+                    ..Default::default()
+                },
                 ..Default::default()
             })
             .with_crate(crate_dir)
             .with_after_include(prefix)
+            .include_item("HyLoggerPluginCreateInfo")
             .with_braces(cbindgen::Braces::NextLine)
             .generate()
             .expect("Unable to generate bindings");
