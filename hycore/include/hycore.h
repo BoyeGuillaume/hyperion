@@ -55,6 +55,18 @@ enum HyLoggerLevel
 typedef uint32_t HyLoggerLevel;
 #endif // __cplusplus
 
+enum HyModuleCompileInfoFlagBits
+#ifdef __cplusplus
+  : uint32_t
+#endif // __cplusplus
+
+{
+  HY_MODULE_COMPILE_INFO_FLAG_BITS_ENABLE_ZSTD_COMPRESSION = (1 << 0),
+};
+#ifndef __cplusplus
+typedef uint32_t HyModuleCompileInfoFlagBits;
+#endif // __cplusplus
+
 enum HyStructureType
 #ifdef __cplusplus
   : uint32_t
@@ -64,12 +76,15 @@ enum HyStructureType
   HY_STRUCTURE_TYPE_APPLICATION_INFO = 1,
   HY_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
   HY_STRUCTURE_TYPE_LOGGER_PLUGIN_CREATE_INFO,
+  HY_STRUCTURE_TYPE_MODULE_COMPILE_INFO,
 };
 #ifndef __cplusplus
 typedef uint32_t HyStructureType;
 #endif // __cplusplus
 
 typedef struct HyInstance HyInstance;
+
+typedef struct ModuleCompileInfoFlags ModuleCompileInfoFlags;
 
 typedef struct
 {
@@ -99,6 +114,27 @@ typedef struct
 
 typedef struct
 {
+  const char *pData;
+  uint32_t dataSize;
+  const char *pFilename;
+  uint32_t filenameSize;
+} HyModuleCompileInfoSourceDescriptor;
+
+typedef uint32_t HyModuleCompileInfoFlags;
+
+typedef struct
+{
+  HyStructureType sType;
+  const char *pBasePath;
+  uint32_t basePathSize;
+  const HyModuleCompileInfoSourceDescriptor *pSourceDescriptors;
+  uint32_t sourceDescriptorCount;
+  HyModuleCompileInfoFlags flags;
+  void *pNext;
+} HyModuleCompileInfo;
+
+typedef struct
+{
   int64_t timestamp;
   HyLoggerLevel level;
   const char *pMessage;
@@ -119,6 +155,8 @@ typedef struct
   void *pNext;
 } HyLoggerPluginCreateInfo;
 
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -133,6 +171,13 @@ int hyGetLastError(char *pBuffer,
 int hyCreateInstance(const HyInstanceCreateInfo *pCreateInfo, HyInstance **ppInstance);
 
 void hyDestroyInstance(HyInstance *pInstance);
+
+int hyCompileModule(HyInstance *pInstance,
+                    const HyModuleCompileInfo *pCompileInfo,
+                    uint8_t **ppOutputBuffer,
+                    uint32_t *pOutputBufferSize);
+
+void hyFreeCompiledModuleBuffer(uint8_t *pBuffer);
 
 #ifdef __cplusplus
 }  // extern "C"

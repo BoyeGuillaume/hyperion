@@ -1,5 +1,6 @@
 pub mod api;
 pub mod ext;
+pub mod hyir;
 pub mod instance;
 pub mod plugin;
 pub mod resource;

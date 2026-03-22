@@ -544,6 +544,12 @@ impl TypeRegistry {
     pub fn is_empty(&self) -> bool {
         self.array.read().is_empty()
     }
+
+    /// Get the node ID used by this registry for UUID generation. Should be used for debugging
+    /// because of concurrency.
+    pub fn node_id(&self) -> [u8; 6] {
+        self.node_id
+    }
 }
 
 #[cfg(test)]

@@ -2198,11 +2198,11 @@ where
     )
 }
 
-fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
+pub fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
     module: &mut Module,
     registry: &TypeRegistry,
     entry: impl Iterator<Item = P>,
-    mut retriever: impl FnMut(&P) -> Result<Cow<'a, str>, Error>,
+    mut retriever: impl FnMut(&P) -> Result<Option<Cow<'a, str>>, Error>,
     mut merger: Option<impl FnMut(&P, String) -> Result<P, Error>>,
 ) -> Result<(), Error> {
     // Stack of files to process
@@ -2214,7 +2214,12 @@ fn extend_module_from_callbacks<'a, P: Eq + std::fmt::Display>(
 
     while let Some(current_path) = stack.pop() {
         // Read the source file
-        let source = retriever(&current_path)?;
+        let source = match retriever(&current_path)? {
+            Some(content) => content,
+            None => {
+                continue;
+            }
+        };
 
         // Lex the source file
         let lexer_result = lexer().parse(&source);
@@ -2545,7 +2550,7 @@ pub fn extend_module_from_paths(
                     Error::IllegalState(format!("Failed to read `{}`: {}", display_path, e))
                 }
             })
-            .map(|s| Cow::Owned(s))
+            .map(|s| Some(Cow::Owned(s)))
             .inspect_err(|e| error!("An error occurred while reading the source file: {}", e))
     };
 
@@ -2606,7 +2611,7 @@ pub fn extend_module_from_strings<'a>(
         module,
         registry,
         source.iter().cloned(),
-        |elem| Ok(Cow::Borrowed(elem)),
+        |elem| Ok(Some(Cow::Borrowed(elem))),
         None as Option<Box<dyn Fn(&&'a str, String) -> Result<&'a str, Error>>>,
     )
 }

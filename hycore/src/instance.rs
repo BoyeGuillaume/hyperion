@@ -42,6 +42,10 @@ pub struct Instance {
 }
 
 impl Instance {
+    pub(crate) fn library_version() -> semver::Version {
+        hy_build_info().crate_info.version.clone()
+    }
+
     #[inline]
     pub fn get<T: Plugin + 'static>(&self) -> Option<&T> {
         self.plugins
@@ -304,6 +308,24 @@ impl Instance {
         let mut schedules = self.world.resource_mut::<Schedules>();
         schedules.add_systems(label, systems);
         self
+    }
+
+    /// Get a specific resource from the world, if it exists
+    pub fn get_resource<T: Resource>(&self) -> Option<&T> {
+        self.world.get_resource::<T>()
+    }
+
+    /// Get the type registry of the instance
+    pub fn type_registry(&self) -> &TypeRegistry {
+        &self
+            .get_resource::<TypeRegistryRes>()
+            .expect("TypeRegistryRes should have been inserted during instance initialization")
+            .type_registry
+    }
+
+    /// Get an entity from the world, if it exists
+    pub fn get_entity(&self, entity: Entity) -> Option<EntityRef<'_>> {
+        self.world.get_entity(entity).ok()
     }
 }
 

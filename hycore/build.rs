@@ -3,7 +3,10 @@ mod cffi {
     use std::{io::Write, path::Path};
 
     use build_info_build::semver;
-    use cbindgen::{Config, ConstantConfig, EnumConfig, FunctionConfig, RenameRule, StructConfig};
+    use cbindgen::{
+        Config, ConstantConfig, EnumConfig, FunctionConfig, MacroExpansionConfig, RenameRule,
+        StructConfig,
+    };
 
     pub(super) fn main_cffi() {
         // Generate C header using cbindgen
@@ -84,11 +87,13 @@ mod cffi {
                     prefix_with_name: true,
                     ..Default::default()
                 },
+                macro_expansion: MacroExpansionConfig { bitflags: true },
                 ..Default::default()
             })
             .with_crate(crate_dir)
             .with_after_include(prefix)
             .include_item("HyLoggerPluginCreateInfo")
+            .include_item("HyModuleCompileInfoFlagBits")
             .with_braces(cbindgen::Braces::NextLine)
             .generate()
             .expect("Unable to generate bindings");

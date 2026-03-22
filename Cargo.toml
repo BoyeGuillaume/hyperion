@@ -3,8 +3,6 @@ resolver = "2"
 members = [
     "hyinstr",
     "hycore",
-    # "python",
-    # "cffi",
     "examples/hyinstr-parser",
     "examples/hycore-example",
 ]

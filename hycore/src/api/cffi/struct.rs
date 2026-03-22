@@ -1,8 +1,13 @@
+use std::path::PathBuf;
+
 use anyhow::Context;
 use strum::FromRepr;
 
 use crate::{
-    api::{ApplicationInfo, VersionInfo},
+    HyResult,
+    api::{
+        ApplicationInfo, ModuleCompileInfoFlags, ModuleCompileInfoSourceDescriptor, VersionInfo,
+    },
     ext::ExtList,
 };
 
@@ -12,6 +17,7 @@ pub enum HyStructureType {
     ApplicationInfo = 1,
     InstanceCreateInfo,
     LoggerPluginCreateInfo,
+    ModuleCompileInfo,
 }
 
 impl HyStructureType {
@@ -170,6 +176,113 @@ impl HyInstanceCreateInfo {
             enabled_plugins,
             node_rank: self.node_rank,
             // ext: self.ext,
+            ext: unsafe {
+                ExtList::from_cffi(self.p_next)
+                    .with_context(|| format!("Failed to build ExtList from p_next"))?
+            },
+        })
+    }
+}
+
+#[repr(u32)]
+pub enum HyModuleCompileInfoFlagBits {
+    EnableZstdCompression = 1 << 0,
+}
+
+pub type HyModuleCompileInfoFlags = u32;
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct HyModuleCompileInfoSourceDescriptor {
+    pub p_data: *const std::os::raw::c_char,
+    pub data_size: u32,
+    pub p_filename: *const std::os::raw::c_char,
+    pub filename_size: u32,
+}
+
+impl HyModuleCompileInfoSourceDescriptor {
+    fn from_cffi(self) -> HyResult<ModuleCompileInfoSourceDescriptor> {
+        let data = {
+            if self.p_data.is_null() || self.data_size == 0 {
+                None
+            } else {
+                let data_slice = unsafe {
+                    std::slice::from_raw_parts(self.p_data as *const u8, self.data_size as usize)
+                };
+                Some(str::from_utf8(data_slice)?.to_string())
+            }
+        };
+
+        let filename = {
+            if self.p_filename.is_null() || self.filename_size == 0 {
+                None
+            } else {
+                let filename_slice = unsafe {
+                    std::slice::from_raw_parts(
+                        self.p_filename as *const u8,
+                        self.filename_size as usize,
+                    )
+                };
+                let str = str::from_utf8(filename_slice)?;
+                Some(str.into())
+            }
+        };
+
+        Ok(ModuleCompileInfoSourceDescriptor { data, filename })
+    }
+}
+
+/// Module compile info struct for CFFI boundaries
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct HyModuleCompileInfo {
+    pub s_type: HyStructureType,
+    pub p_base_path: *const std::os::raw::c_char,
+    pub base_path_size: u32,
+    pub p_source_descriptors: *const HyModuleCompileInfoSourceDescriptor,
+    pub source_descriptor_count: u32,
+    pub flags: HyModuleCompileInfoFlags,
+    pub p_next: *mut std::os::raw::c_void,
+}
+
+impl HyModuleCompileInfo {
+    pub unsafe fn to_module_compile_info(&self) -> anyhow::Result<crate::api::ModuleCompileInfo> {
+        if self.s_type != HyStructureType::ModuleCompileInfo {
+            return Err(anyhow::anyhow!(
+                "Invalid structure type: expected ModuleCompileInfo, got {:?}",
+                self.s_type
+            ));
+        }
+
+        if self.p_source_descriptors.is_null() && self.source_descriptor_count > 0 {
+            return Err(anyhow::anyhow!(
+                "Source descriptor count is {}, but p_source_descriptors is null",
+                self.source_descriptor_count
+            ));
+        }
+
+        let base_path = if self.p_base_path.is_null() || self.base_path_size == 0 {
+            None
+        } else {
+            let path_slice = unsafe {
+                std::slice::from_raw_parts(
+                    self.p_base_path as *const u8,
+                    self.base_path_size as usize,
+                )
+            };
+            Some(PathBuf::from(str::from_utf8(path_slice)?))
+        };
+
+        let mut source_descriptors = Vec::new();
+        for i in 0..self.source_descriptor_count {
+            let descriptor = unsafe { *self.p_source_descriptors.add(i as usize) };
+            source_descriptors.push(descriptor.from_cffi()?);
+        }
+
+        Ok(crate::api::ModuleCompileInfo {
+            base_path,
+            source_descriptors,
+            flags: ModuleCompileInfoFlags::from_bits_retain(self.flags),
             ext: unsafe {
                 ExtList::from_cffi(self.p_next)
                     .with_context(|| format!("Failed to build ExtList from p_next"))?

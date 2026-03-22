@@ -1,8 +1,10 @@
-#![allow(unused_variables)]
 use semver::Version;
 
 use crate::{
-    api::cffi::{r#struct::*, *},
+    api::{
+        cffi::{r#struct::*, *},
+        hy_compile_module,
+    },
     hydebug,
     instance::Instance,
 };
@@ -146,4 +148,66 @@ pub unsafe extern "C" fn hyDestroyInstance(p_instance: *mut HyInstance) {
     );
 
     // Instance will be dropped here when it goes out of scope
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyCompileModule(
+    p_instance: *mut HyInstance,
+    p_compile_info: *const HyModuleCompileInfo,
+    pp_output_buffer: *mut *mut u8,
+    p_output_buffer_size: *mut u32,
+) -> std::ffi::c_int {
+    if p_instance.is_null() {
+        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+    }
+
+    if p_compile_info.is_null() {
+        return return_error(anyhow::anyhow!("Compile info pointer cannot be null"));
+    }
+
+    if pp_output_buffer.is_null() || p_output_buffer_size.is_null() {
+        return return_error(anyhow::anyhow!("Output buffer pointer cannot be null"));
+    }
+
+    // Convert the compile info to the internal Rust representation
+    let compile_info = unsafe { &*p_compile_info };
+    let compile_info = match unsafe { compile_info.to_module_compile_info() } {
+        Ok(info) => info,
+        Err(e) => return return_error(e),
+    };
+    let instance: &Instance = unsafe { &*(p_instance as *mut Instance) };
+
+    // Compile here
+    match hy_compile_module(instance, compile_info) {
+        Ok(compiled_module) => {
+            let buffer_size = compiled_module.len() as u32;
+            let buffer = unsafe { libc::malloc(buffer_size as usize) } as *mut u8;
+            if buffer.is_null() {
+                return return_error(anyhow::anyhow!("Failed to allocate output buffer"));
+            }
+
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    compiled_module.as_ptr(),
+                    buffer,
+                    buffer_size as usize,
+                );
+                *pp_output_buffer = buffer;
+                *p_output_buffer_size = buffer_size;
+            }
+            0
+        }
+        Err(e) => return_error(e),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyFreeCompiledModuleBuffer(p_buffer: *mut u8) {
+    if p_buffer.is_null() {
+        return;
+    }
+
+    unsafe {
+        libc::free(p_buffer as *mut std::ffi::c_void);
+    }
 }

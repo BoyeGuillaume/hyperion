@@ -1,6 +1,8 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
-use crate::{HyResult, ext::ExtList, instance::Instance};
+use bitflags::bitflags;
+
+use crate::{HyResult, ext::ExtList, hyerror, hyir::compile_sources, instance::Instance};
 
 #[cfg(feature = "cffi")]
 pub mod cffi;
@@ -87,6 +89,43 @@ pub struct InstanceCreateInfo<'a> {
     pub ext: ExtList,
 }
 
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct ModuleCompileInfoFlags: u32 {
+        /// Whether to use ZSTD compression on the compiled module. This significantly reduces the size of the compiled module
+        const ZSTD_COMPRESSION = 1 << 0;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleCompileInfoSourceDescriptor {
+    pub data: Option<String>,
+    pub filename: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct ModuleCompileInfo {
+    pub base_path: Option<PathBuf>,
+    pub source_descriptors: Vec<ModuleCompileInfoSourceDescriptor>,
+    pub flags: ModuleCompileInfoFlags,
+    pub ext: ExtList,
+}
+
 pub fn hy_create_instance<'a>(create_info: InstanceCreateInfo<'a>) -> HyResult<Instance> {
     Instance::new(create_info)
+}
+
+pub fn hy_compile_module(
+    instance: &Instance,
+    compile_info: ModuleCompileInfo,
+) -> HyResult<Vec<u8>> {
+    compile_sources(instance, compile_info).inspect_err(|error| {
+        hyerror!(instance; "{}", error);
+    })
+}
+
+pub fn hy_version() -> semver::Version {
+    let version = semver::Version::parse(env!("CARGO_PKG_VERSION"))
+        .expect("Invalid version format in CARGO_PKG_VERSION");
+    version
 }

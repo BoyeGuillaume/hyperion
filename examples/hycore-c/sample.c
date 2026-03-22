@@ -1,6 +1,8 @@
 #include <hycore.h>
 #include <math.h>
+#include <memory.h>
 #include <stdio.h>
+#include <string.h>
 
 #if defined(_MSC_VER)
 #define COLOR_RESET ""
@@ -18,7 +20,7 @@
 #define COLOR_BRIGHT_BLACK "\x1b[90m"
 #endif
 
-static const char *log_level_to_color(HyLoggerLevel level) {
+static const char *logLevelToColour(HyLoggerLevel level) {
   switch (level) {
   case HY_LOGGER_LEVEL_TRACE:
     return COLOR_BRIGHT_BLACK;
@@ -35,7 +37,7 @@ static const char *log_level_to_color(HyLoggerLevel level) {
   }
 }
 
-static const char *log_level_to_string(HyLoggerLevel level) {
+static const char *logLevelToString(HyLoggerLevel level) {
   switch (level) {
   case HY_LOGGER_LEVEL_TRACE:
     return "[TRACE]";
@@ -52,17 +54,17 @@ static const char *log_level_to_string(HyLoggerLevel level) {
   }
 }
 
-void callback_function(const HyLoggerRecord *pMessage, void *pUserData);
-void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats);
-void print_error_message();
+void logCallback(const HyLoggerRecord *pMessage, void *pUserData);
+void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats);
+void printErrorMessage();
 
 int main(int argc, char **argv) {
-  // if (argc < 1)
-  //   return 1;
-  // if (argc != 2) {
-  //   printf("Usage: %s <assembly_file>\n", argv[0]);
-  //   return -1;
-  // }
+  if (argc < 1)
+    return 1;
+  if (argc != 2) {
+    printf("Usage: %s <assembly_file>\n", argv[0]);
+    return -1;
+  }
 
   /* Retrieve and print Hycore version information */
   HyVersionInfo version;
@@ -81,7 +83,7 @@ int main(int argc, char **argv) {
   HyLoggerPluginCreateInfo loggerPluginCreateInfo;
   loggerPluginCreateInfo.sType = HY_STRUCTURE_TYPE_LOGGER_PLUGIN_CREATE_INFO;
   loggerPluginCreateInfo.level = HY_LOGGER_LEVEL_DEBUG;
-  loggerPluginCreateInfo.pSinkCallback = callback_function;
+  loggerPluginCreateInfo.pSinkCallback = logCallback;
   loggerPluginCreateInfo.pUserData = NULL;
   loggerPluginCreateInfo.pNext = NULL;
 
@@ -98,19 +100,43 @@ int main(int argc, char **argv) {
 
   HyInstance *instance;
   if (hyCreateInstance(&createInfo, &instance) < 0) {
-    print_error_message();
+    printErrorMessage();
     return -1;
   }
 
-  printf("Instance created successfully.\n");
+  // Compile the assembly file
+  HyModuleCompileInfoSourceDescriptor sourceDescriptors[1];
+  sourceDescriptors[0].pFilename = argv[1];
+  sourceDescriptors[0].filenameSize = (uint32_t)strlen(argv[1]);
+  sourceDescriptors[0].pData = NULL;
 
+  HyModuleCompileInfo compileInfo;
+  compileInfo.sType = HY_STRUCTURE_TYPE_MODULE_COMPILE_INFO;
+  compileInfo.pBasePath = NULL;
+  compileInfo.pSourceDescriptors = sourceDescriptors;
+  compileInfo.sourceDescriptorCount =
+      sizeof(sourceDescriptors) / sizeof(sourceDescriptors[0]);
+  compileInfo.flags = HY_MODULE_COMPILE_INFO_FLAG_BITS_ENABLE_ZSTD_COMPRESSION;
+  compileInfo.pNext = NULL;
+
+  uint8_t *outputBuffer;
+  uint32_t outputBufferSize;
+  if (hyCompileModule(instance, &compileInfo, &outputBuffer,
+                      &outputBufferSize) < 0) {
+    printErrorMessage();
+    hyDestroyInstance(instance);
+    return -1;
+  }
+
+  printf("Compiled module size: %u bytes\n", outputBufferSize);
+  printHexASCII(outputBuffer, outputBufferSize, true);
+
+  hyFreeCompiledModuleBuffer(outputBuffer);
   hyDestroyInstance(instance);
-
-  printf("Instance destroyed successfully.\n");
   return 0;
 }
 
-void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats) {
+void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats) {
   uint32_t frequency[256] = {0};
 
   uint32_t offset = 0;
@@ -156,7 +182,7 @@ void print_hex_ascii(const uint8_t *data, uint32_t length, bool compute_stats) {
   }
 }
 
-void print_error_message() {
+void printErrorMessage() {
   char errorBuffer[256];
   char backtraceBuffer[1024];
   if (hyGetLastError(errorBuffer, sizeof(errorBuffer), backtraceBuffer,
@@ -167,12 +193,12 @@ void print_error_message() {
   printf("Error: %s\nBacktrace:\n%s\n", errorBuffer, backtraceBuffer);
 }
 
-void callback_function(const HyLoggerRecord *pRecord, void *pUserData) {
+void logCallback(const HyLoggerRecord *pRecord, void *pUserData) {
   if (pUserData != NULL) {
     printf("User data: %p\n", pUserData);
   }
 
-  printf("%s%s[%s:%u] -- %s\n" COLOR_RESET, log_level_to_color(pRecord->level),
-         log_level_to_string(pRecord->level), pRecord->pFile, pRecord->line,
+  printf("%s%s[%s:%u] -- %s\n" COLOR_RESET, logLevelToColour(pRecord->level),
+         logLevelToString(pRecord->level), pRecord->pFile, pRecord->line,
          pRecord->pMessage);
 }
