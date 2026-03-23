@@ -55,6 +55,10 @@ pub struct PostUpdate;
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Last;
 
+/// Runs once, when the [`crate::instance::Instance`] is being dropped. This is where all plugins should perform their cleanup.
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct DropSchedule;
+
 /// A list of schedule labels, used for defining the order of schedules. See [`ScheduleOrder`] for more details.
 #[derive(Debug)]
 pub struct ScheduleOrderList {
@@ -140,12 +144,16 @@ impl Plugin for SchedulePlugin {
         let mut main_schedule = Schedule::new(Main);
         main_schedule.set_executor_kind(ExecutorKind::SingleThreaded);
 
+        let mut drop_schedule = Schedule::new(DropSchedule);
+        drop_schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+
         instance.add_schedule(setup_schedule);
         instance.add_systems(MainStartup, main_startup_system);
 
         instance.add_schedule(main_schedule);
         instance.add_systems(Main, main_schedule_system);
 
+        instance.add_schedule(drop_schedule);
         instance.insert_resource(ScheduleOrder::default());
         Ok(())
     }

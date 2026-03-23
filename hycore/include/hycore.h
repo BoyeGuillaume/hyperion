@@ -84,8 +84,6 @@ typedef uint32_t HyStructureType;
 
 typedef struct HyInstance HyInstance;
 
-typedef struct ModuleCompileInfoFlags ModuleCompileInfoFlags;
-
 typedef struct
 {
   uint16_t major;
@@ -133,6 +131,8 @@ typedef struct
   void *pNext;
 } HyModuleCompileInfo;
 
+typedef uint64_t HyModule;
+
 typedef struct
 {
   int64_t timestamp;
@@ -178,6 +178,13 @@ int hyCompileModule(HyInstance *pInstance,
                     uint32_t *pOutputBufferSize);
 
 void hyFreeCompiledModuleBuffer(uint8_t *pBuffer);
+
+int hyLoadCompiledModule(HyInstance *pInstance,
+                         const uint8_t *pModuleBuffer,
+                         uint32_t moduleBufferSize,
+                         HyModule *pModule);
+
+int hyDestroyModule(HyInstance *pInstance, HyModule module);
 
 #ifdef __cplusplus
 }  // extern "C"

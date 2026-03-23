@@ -1,6 +1,7 @@
 #include <hycore.h>
 #include <math.h>
 #include <memory.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -20,43 +21,12 @@
 #define COLOR_BRIGHT_BLACK "\x1b[90m"
 #endif
 
-static const char *logLevelToColour(HyLoggerLevel level) {
-  switch (level) {
-  case HY_LOGGER_LEVEL_TRACE:
-    return COLOR_BRIGHT_BLACK;
-  case HY_LOGGER_LEVEL_DEBUG:
-    return COLOR_BLUE;
-  case HY_LOGGER_LEVEL_INFO:
-    return COLOR_GREEN;
-  case HY_LOGGER_LEVEL_WARN:
-    return COLOR_YELLOW;
-  case HY_LOGGER_LEVEL_ERROR:
-    return COLOR_RED;
-  default:
-    return COLOR_RESET;
-  }
-}
-
-static const char *logLevelToString(HyLoggerLevel level) {
-  switch (level) {
-  case HY_LOGGER_LEVEL_TRACE:
-    return "[TRACE]";
-  case HY_LOGGER_LEVEL_DEBUG:
-    return "[DEBUG ]";
-  case HY_LOGGER_LEVEL_INFO:
-    return "[INFO  ]";
-  case HY_LOGGER_LEVEL_WARN:
-    return "[WARN  ]";
-  case HY_LOGGER_LEVEL_ERROR:
-    return "[ERROR]";
-  default:
-    return "[UNKNOWN]";
-  }
-}
-
-void logCallback(const HyLoggerRecord *pMessage, void *pUserData);
-void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats);
-void printErrorMessage();
+static const char *logLevelToColour(HyLoggerLevel level);
+static const char *logLevelToString(HyLoggerLevel level);
+static void logCallback(const HyLoggerRecord *pMessage, void *pUserData);
+static void printHexASCII(const uint8_t *data, uint32_t length,
+                          bool compute_stats);
+static void printErrorMessage();
 
 int main(int argc, char **argv) {
   if (argc < 1)
@@ -75,7 +45,9 @@ int main(int argc, char **argv) {
   /* Construct a new instance */
   HyApplicationInfo appInfo;
   appInfo.sType = HY_STRUCTURE_TYPE_APPLICATION_INFO;
-  appInfo.applicationVersion = version;
+  appInfo.applicationVersion.major = 1;
+  appInfo.applicationVersion.minor = 0;
+  appInfo.applicationVersion.patch = 0;
   appInfo.pApplicationName = "SimpleCApp";
   appInfo.engineVersion = version;
   appInfo.pEngineName = "HycoreEngine";
@@ -123,7 +95,7 @@ int main(int argc, char **argv) {
   uint32_t outputBufferSize;
   if (hyCompileModule(instance, &compileInfo, &outputBuffer,
                       &outputBufferSize) < 0) {
-    printErrorMessage();
+    // printErrorMessage();
     hyDestroyInstance(instance);
     return -1;
   }
@@ -131,21 +103,39 @@ int main(int argc, char **argv) {
   printf("Compiled module size: %u bytes\n", outputBufferSize);
   printHexASCII(outputBuffer, outputBufferSize, true);
 
+  /* Load the compiled module into the instance */
+  HyModule module;
+  if (hyLoadCompiledModule(instance, outputBuffer, outputBufferSize, &module) <
+      0) {
+    // printErrorMessage();
+    hyFreeCompiledModuleBuffer(outputBuffer);
+    hyDestroyInstance(instance);
+    return -1;
+  }
   hyFreeCompiledModuleBuffer(outputBuffer);
+
+  /* Finally destroy the module and instance */
+  hyDestroyModule(instance, module);
   hyDestroyInstance(instance);
   return 0;
 }
 
-void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats) {
+static void printHexASCII(const uint8_t *data, uint32_t length,
+                          bool compute_stats) {
   uint32_t frequency[256] = {0};
 
   uint32_t offset = 0;
   while (offset < length) {
-    printf("%08X | ", offset); /* offset */
+    printf(COLOR_BRIGHT_BLACK "%08X " COLOR_RESET " | ", offset); /* offset */
     for (uint32_t i = 0; i < 16; i++) {
-      if (offset + i < length)
-        printf("%02X ", data[offset + i]);
-      else
+      if (offset + i < length) {
+        uint8_t byte = data[offset + i];
+        if (byte == 0) {
+          printf(COLOR_BRIGHT_BLACK "%02X " COLOR_RESET, byte);
+        } else {
+          printf("%02X ", byte);
+        }
+      } else
         printf("   ");
     }
     printf("| ");
@@ -155,7 +145,7 @@ void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats) {
         if (c >= 32 && c <= 126)
           printf("%c", c);
         else
-          printf(".");
+          printf(COLOR_BRIGHT_BLACK "." COLOR_RESET);
 
         // Update frequency count
         frequency[(uint8_t)c]++;
@@ -177,23 +167,50 @@ void printHexASCII(const uint8_t *data, uint32_t length, bool compute_stats) {
     }
 
     // Display histogram
-    printf("Shannon Entropy: %.4f bits/byte (max 8.0000 bits/byte)\n", entropy);
-    printf("Number of bytes: %u\n", length);
+    printf(COLOR_BRIGHT_BLACK "Shannon Entropy:" COLOR_RESET
+                              " %.4f " COLOR_BRIGHT_BLACK
+                              "bits/byte (max 8.0000 bits/byte)\n" COLOR_RESET,
+           entropy);
+    printf(COLOR_BRIGHT_BLACK "Number of bytes: " COLOR_RESET "%u\n", length);
   }
 }
 
-void printErrorMessage() {
+static void printStringLinePrefix(const char *prefix, const char *str,
+                                  bool skipFirstLinePrefix) {
+  bool firstLine = skipFirstLinePrefix;
+
+  while (*str) {
+    // Find position of first newline in string
+    if (!firstLine) {
+      printf("%s", prefix);
+    }
+    firstLine = false;
+
+    while (*str && *str != '\n') {
+      putchar(*str++);
+    }
+    if (*str == '\n') {
+      putchar('\n');
+      str++;
+    }
+  }
+}
+
+static void printErrorMessage() {
   char errorBuffer[256];
   char backtraceBuffer[1024];
   if (hyGetLastError(errorBuffer, sizeof(errorBuffer), backtraceBuffer,
-                     sizeof(backtraceBuffer))) {
+                     sizeof(backtraceBuffer)) == 0) {
     printf("Failed to retrieve error message.\n");
     return;
   }
-  printf("Error: %s\nBacktrace:\n%s\n", errorBuffer, backtraceBuffer);
+  printf(COLOR_RED "Error: %s", errorBuffer);
+  printf(COLOR_BRIGHT_BLACK "\n\nBacktrace: ");
+  printStringLinePrefix("           ", backtraceBuffer, true);
+  printf("\n" COLOR_RESET);
 }
 
-void logCallback(const HyLoggerRecord *pRecord, void *pUserData) {
+static void logCallback(const HyLoggerRecord *pRecord, void *pUserData) {
   if (pUserData != NULL) {
     printf("User data: %p\n", pUserData);
   }
@@ -201,4 +218,38 @@ void logCallback(const HyLoggerRecord *pRecord, void *pUserData) {
   printf("%s%s[%s:%u] -- %s\n" COLOR_RESET, logLevelToColour(pRecord->level),
          logLevelToString(pRecord->level), pRecord->pFile, pRecord->line,
          pRecord->pMessage);
+}
+
+static const char *logLevelToColour(HyLoggerLevel level) {
+  switch (level) {
+  case HY_LOGGER_LEVEL_TRACE:
+    return COLOR_BRIGHT_BLACK;
+  case HY_LOGGER_LEVEL_DEBUG:
+    return COLOR_BLUE;
+  case HY_LOGGER_LEVEL_INFO:
+    return COLOR_GREEN;
+  case HY_LOGGER_LEVEL_WARN:
+    return COLOR_YELLOW;
+  case HY_LOGGER_LEVEL_ERROR:
+    return COLOR_RED;
+  default:
+    return COLOR_RESET;
+  }
+}
+
+static const char *logLevelToString(HyLoggerLevel level) {
+  switch (level) {
+  case HY_LOGGER_LEVEL_TRACE:
+    return "[TRACE]";
+  case HY_LOGGER_LEVEL_DEBUG:
+    return "[DEBUG ]";
+  case HY_LOGGER_LEVEL_INFO:
+    return "[INFO  ]";
+  case HY_LOGGER_LEVEL_WARN:
+    return "[WARN  ]";
+  case HY_LOGGER_LEVEL_ERROR:
+    return "[ERROR]";
+  default:
+    return "[UNKNOWN]";
+  }
 }

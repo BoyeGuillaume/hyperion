@@ -2,7 +2,13 @@ use std::{borrow::Cow, path::PathBuf};
 
 use bitflags::bitflags;
 
-use crate::{HyResult, ext::ExtList, hyerror, hyir::compile_sources, instance::Instance};
+use crate::{
+    HyResult,
+    ext::ExtList,
+    hyerror,
+    hyir::{compile_sources, load_compiled_module},
+    instance::{Instance, core::ModuleHandle},
+};
 
 #[cfg(feature = "cffi")]
 pub mod cffi;
@@ -120,7 +126,7 @@ pub fn hy_compile_module(
     compile_info: ModuleCompileInfo,
 ) -> HyResult<Vec<u8>> {
     compile_sources(instance, compile_info).inspect_err(|error| {
-        hyerror!(instance; "{}", error);
+        hyerror!(instance; "{:?}", error);
     })
 }
 
@@ -128,4 +134,16 @@ pub fn hy_version() -> semver::Version {
     let version = semver::Version::parse(env!("CARGO_PKG_VERSION"))
         .expect("Invalid version format in CARGO_PKG_VERSION");
     version
+}
+
+pub fn hy_load_compiled_module(instance: &mut Instance, data: &[u8]) -> HyResult<ModuleHandle> {
+    load_compiled_module(instance, data).inspect_err(|error| {
+        hyerror!(instance; "{:?}", error);
+    })
+}
+
+pub fn hy_destroy_module(instance: &mut Instance, module_handle: ModuleHandle) -> HyResult<()> {
+    instance.remove_module(module_handle).inspect_err(|error| {
+        hyerror!(instance; "{:?}", error);
+    })
 }

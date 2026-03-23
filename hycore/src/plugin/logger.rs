@@ -313,6 +313,13 @@ impl LoggerExt for LoggerStateRes {
     }
 }
 
+impl<'a> LoggerExt for Res<'a, LoggerStateRes> {
+    #[inline]
+    fn log(&self, msg: LoggerRecord) {
+        self.as_ref().log(msg);
+    }
+}
+
 impl<T: LoggerExt> LoggerExt for Option<T> {
     #[inline]
     fn log(&self, msg: LoggerRecord) {

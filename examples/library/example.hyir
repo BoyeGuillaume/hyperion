@@ -152,7 +152,7 @@ define void !example_meta() {
 entry:
     %x: i32 = !forall
     %y: i32 = iadd.wrap 0i32, 0i32
-    %z: i32 = !analysis.term.reach stop, other
+    %z: i2 = !analysis.term.reach stop, other
     jump entry
 stop:
     ret void

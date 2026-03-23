@@ -1,21 +1,29 @@
 use anyhow::Context;
 use bevy_ecs::{prelude::*, schedule::ScheduleLabel, system::ScheduleSystem};
 use build_info::build_info;
-use hyinstr::types::TypeRegistry;
+use hyinstr::{modules::Module, types::TypeRegistry};
 use smallbox::{SmallBox, smallbox, space};
 
 use crate::{
     HyError, HyResult,
     api::InstanceCreateInfo,
     ext::ExtList,
-    hydebug, hyinfo, hytrace,
-    instance::plugin::{DynPlugin, Plugin},
+    hydebug, hyinfo, hytrace, hywarn,
+    instance::{
+        core::{
+            ExternalFunctionComponent, FunctionComponent, GlobalComponent, ModuleComponent,
+            ModuleHandle,
+        },
+        plugin::{DynPlugin, Plugin},
+    },
     inventory,
+    plugin::logger::LoggerStateRes,
     resource::TypeRegistryRes,
-    schedule::{MainStartup, SchedulePlugin},
+    schedule::{DropSchedule, MainStartup, SchedulePlugin},
     task_pool::TaskPoolPlugin,
 };
 
+pub mod core;
 pub mod plugin;
 
 build_info!(fn hy_build_info);
@@ -159,6 +167,7 @@ impl Instance {
         // Add public plugins specified in the create info, by looking them up in the inventory
         instance.add_plugin(SchedulePlugin)?;
         instance.add_plugin(TaskPoolPlugin)?;
+        instance.add_plugin(DropModuleWarningPlugin)?;
         for enabled_plugin_name in create_info.enabled_plugins {
             let constructor = inventory::iter::<plugin::PublicPluginInventory>
                 .into_iter()
@@ -327,6 +336,103 @@ impl Instance {
     pub fn get_entity(&self, entity: Entity) -> Option<EntityRef<'_>> {
         self.world.get_entity(entity).ok()
     }
+
+    /// Add a module to the instance, meant to be used internally (or by extensions)
+    pub fn add_module(&mut self, module: Module) -> HyResult<ModuleHandle> {
+        // Verify & Typecheck
+        module.verify()?;
+        module.type_check(self.type_registry())?;
+
+        // Insert the module in the world, and return the entity of the module
+        hyinfo!(self; "Adding module to instance (globals: [{}], functions: [{}], external functions: [{}])",
+            module.globals.values()
+                .map(|global| global.name.clone().unwrap_or_else(|| format!("@{}", global.uuid)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            module.functions.values()
+                .map(|function| function.name.clone().unwrap_or_else(|| format!("@{}", function.uuid)))
+                .collect::<Vec<_>>()
+                .join(", "),
+            module.external_functions.values()
+                .map(|external_function| external_function.name.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        let mut commands = self.world.commands();
+
+        let mut module_entity = commands.spawn_empty();
+        let mut module_entity_component = ModuleComponent::default();
+
+        for (uuid, global) in module.globals.into_iter() {
+            let global_entity = module_entity.with_child(GlobalComponent { inner: global });
+            module_entity_component
+                .globals
+                .insert(uuid, global_entity.id());
+        }
+
+        for (uuid, function) in module.functions.into_iter() {
+            let function_entity = module_entity.with_child(FunctionComponent { inner: function });
+            module_entity_component
+                .functions
+                .insert(uuid, function_entity.id());
+        }
+
+        for (uuid, external_function) in module.external_functions.into_iter() {
+            let external_function_entity = module_entity.with_child(ExternalFunctionComponent {
+                inner: external_function,
+            });
+            module_entity_component
+                .external_functions
+                .insert(uuid, external_function_entity.id());
+        }
+
+        let num_functions = module_entity_component.functions.len();
+        let num_globals = module_entity_component.globals.len();
+        let num_external_functions = module_entity_component.external_functions.len();
+
+        module_entity.insert(module_entity_component);
+        let entity_id = module_entity.id();
+        hyinfo!(self; "Module added with entity id {:?} (entity with {} globals, {} functions and {} external functions)",
+            entity_id,
+            num_globals,
+            num_functions,
+            num_external_functions,
+        );
+        self.flush();
+        Ok(ModuleHandle(entity_id))
+    }
+
+    pub fn remove_module(&mut self, module_handle: ModuleHandle) -> HyResult<()> {
+        let entity = module_handle.get();
+
+        // Verify that the entity exists and has a ModuleComponent, to avoid accidentally despawning an unrelated entity
+        let module_component = self.get_entity(entity)
+            .and_then(|entity_ref| entity_ref.get::<ModuleComponent>())
+            .ok_or_else(|| {
+                HyError::msg(format!(
+                    "Failed to remove module with entity id {:?}, the entity does not exist or does not have a ModuleComponent",
+                    entity
+                ))
+            })?;
+
+        let num_functions = module_component.functions.len();
+        let num_globals = module_component.globals.len();
+        let num_external_functions = module_component.external_functions.len();
+
+        hydebug!(self; "Module removed with entity id {:?} (entity with {} globals, {} functions and {} external functions)",
+            entity,
+            num_globals,
+            num_functions,
+            num_external_functions,
+        );
+
+        self.world.despawn(entity);
+        Ok(())
+    }
+
+    pub fn flush(&mut self) {
+        self.world.flush();
+    }
 }
 
 impl std::ops::Drop for Instance {
@@ -334,6 +440,9 @@ impl std::ops::Drop for Instance {
     fn drop(&mut self) {
         // Transition state to dropping, so that no more plugin can be added, and call the `cleanup` method of each plugin
         self.state = InstanceState::Dropping;
+
+        // Ensure all modules have been dropped before cleaning up plugins
+        self.run_schedule(DropSchedule);
 
         // Cleanup plugins in reverse order of their initialization, as some plugin might depend on another plugin, and we
         // want to make sure that the dependent plugin is cleaned up before the plugin it depends on.
@@ -353,6 +462,33 @@ impl Plugin for _InstanceDummyPlugin {
     }
 
     fn init(&mut self, _instance: &mut Instance, _ext_list: Option<&mut ExtList>) -> HyResult<()> {
+        Ok(())
+    }
+}
+
+pub fn drop_module_warning_system(
+    logger: Res<LoggerStateRes>,
+    modules: Query<(Entity, &ModuleComponent)>,
+) {
+    for (module_entity, module_component) in modules.iter() {
+        if !module_component.globals.is_empty()
+            || !module_component.functions.is_empty()
+            || !module_component.external_functions.is_empty()
+        {
+            hywarn!(logger; "Module entity {:?} is being dropped but still has globals/functions/external functions. This likely means that the module was not properly removed before the instance started dropping, which can lead to memory leaks. Make sure to remove all modules before dropping the instance", module_entity);
+        }
+    }
+}
+
+pub struct DropModuleWarningPlugin;
+
+impl Plugin for DropModuleWarningPlugin {
+    fn is_public(&self) -> bool {
+        false
+    }
+
+    fn init(&mut self, instance: &mut Instance, _ext: Option<&mut ExtList>) -> HyResult<()> {
+        instance.add_systems(DropSchedule, drop_module_warning_system);
         Ok(())
     }
 }

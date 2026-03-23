@@ -15,7 +15,7 @@ use crate::{
     HyResult,
     api::{ModuleCompileInfo, ModuleCompileInfoFlags},
     hyinfo, hytrace, hywarn,
-    instance::Instance,
+    instance::{Instance, core::ModuleHandle},
 };
 
 // This struct represents the on-disk format of a compiled module, which includes the module itself,
@@ -436,6 +436,41 @@ pub fn compile_sources(instance: &Instance, compile_info: ModuleCompileInfo) -> 
     );
 
     Ok(encoded_storage)
+}
+
+pub fn load_compiled_module(instance: &mut Instance, data: &[u8]) -> HyResult<ModuleHandle> {
+    let storage = CompiledModuleStorage::decode(instance, data).with_context(|| {
+        format!("Failed to load module, probably due to corruption or version mismatch")
+    })?;
+    hytrace!(
+        instance;
+        "Loaded compiled module with {} functions from {} bytes",
+        storage.module.functions.len(),
+        data.len()
+    );
+    hytrace!(
+        instance;
+        "Module originally compiled from: {:?}",
+        storage.filenames
+    );
+
+    // 1. Merge type registry, construct table mapping old to new type IDs
+    hytrace!(
+        instance;
+        "Merging type registry ({} types) into instance's registry ({} types)",
+        storage.type_registry.len(),
+        instance.type_registry().len()
+    );
+    let mapping = instance.type_registry().merge_with(&storage.type_registry);
+
+    // 2. Remap types in module using the mapping
+    let mut module = storage.module;
+    module.remap_types(&mapping);
+
+    // 3. Add module to instance's module list
+    instance.add_module(module).with_context(|| {
+        format!("Failed to load module, probably due to corruption or version mismatch")
+    })
 }
 
 // pub fn load_module(instance: &mut Instance, data: &[u8]) -> HyResult<ModuleKey> {

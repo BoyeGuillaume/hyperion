@@ -1,3 +1,4 @@
+use bevy_ecs::entity::Entity;
 use semver::Version;
 
 use crate::{
@@ -6,7 +7,7 @@ use crate::{
         hy_compile_module,
     },
     hydebug,
-    instance::Instance,
+    instance::{Instance, core::ModuleHandle},
 };
 
 struct LastError {
@@ -17,7 +18,7 @@ static LAST_ERROR: std::sync::Mutex<Option<LastError>> = std::sync::Mutex::new(N
 
 fn return_error(error: anyhow::Error) -> std::ffi::c_int {
     let backtrace = error.backtrace().to_string();
-    let message = error.to_string();
+    let message = format!("{:?}", error);
     let last_error = LastError { message, backtrace };
     *LAST_ERROR.lock().unwrap() = Some(last_error);
     -1
@@ -209,5 +210,60 @@ pub unsafe extern "C" fn hyFreeCompiledModuleBuffer(p_buffer: *mut u8) {
 
     unsafe {
         libc::free(p_buffer as *mut std::ffi::c_void);
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyLoadCompiledModule(
+    p_instance: *mut HyInstance,
+    p_module_buffer: *const u8,
+    module_buffer_size: u32,
+    p_module: *mut HyModule,
+) -> std::ffi::c_int {
+    if p_instance.is_null() {
+        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+    }
+
+    if p_module.is_null() {
+        return return_error(anyhow::anyhow!("Module output pointer cannot be null"));
+    }
+
+    if p_module_buffer.is_null() || module_buffer_size == 0 {
+        return return_error(anyhow::anyhow!(
+            "Module buffer pointer cannot be null or size cannot be zero"
+        ));
+    }
+
+    let instance: &mut Instance = unsafe { &mut *(p_instance as *mut Instance) };
+    let module_buffer =
+        unsafe { std::slice::from_raw_parts(p_module_buffer, module_buffer_size as usize) };
+
+    match crate::api::hy_load_compiled_module(instance, module_buffer) {
+        Ok(entity) => {
+            // If system sizeof pointer is larger than sizeof u64
+            let entityptr: &mut u64 = unsafe { &mut *p_module };
+            *entityptr = entity.get().to_bits();
+
+            0
+        }
+        Err(e) => return_error(e),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn hyDestroyModule(
+    p_instance: *mut HyInstance,
+    module: HyModule,
+) -> std::ffi::c_int {
+    if p_instance.is_null() {
+        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+    }
+
+    let instance: &mut Instance = unsafe { &mut *(p_instance as *mut Instance) };
+    let module_handle = ModuleHandle(Entity::from_bits(module as u64));
+
+    match crate::api::hy_destroy_module(instance, module_handle) {
+        Ok(()) => 0,
+        Err(e) => return_error(e),
     }
 }

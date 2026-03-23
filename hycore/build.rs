@@ -94,6 +94,7 @@ mod cffi {
             .with_after_include(prefix)
             .include_item("HyLoggerPluginCreateInfo")
             .include_item("HyModuleCompileInfoFlagBits")
+            .exclude_item("ModuleCompileInfoFlags")
             .with_braces(cbindgen::Braces::NextLine)
             .generate()
             .expect("Unable to generate bindings");
