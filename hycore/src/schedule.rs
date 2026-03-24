@@ -3,7 +3,7 @@ use bevy_ecs::{
     schedule::{ExecutorKind, InternedScheduleLabel, ScheduleLabel},
 };
 
-use crate::{hywarn, instance::plugin::Plugin};
+use crate::{hydebug, instance::plugin::Plugin};
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub(crate) struct MainStartup;
@@ -17,13 +17,12 @@ fn main_startup_system(world: &mut World, mut run_at_least_once: Local<bool>) {
     // Run startup schedules in order
     world.resource_scope(|world, schedule_order: Mut<ScheduleOrder>| {
         for label in &schedule_order.startup_labels.list {
-            if let Err(e) = world.try_run_schedule(*label) {
-                hywarn!(world;
-                    "Failed to run startup schedule {:?}: {:?}",
-                    label,
-                    e
-                );
-            }
+            hydebug!(world;
+                "Running startup schedule {:?}",
+                label
+            );
+            let _ = world.try_run_schedule(*label);
+            world.flush();
         }
     });
 }

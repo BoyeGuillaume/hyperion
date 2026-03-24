@@ -1017,15 +1017,6 @@ impl Function {
         None
     }
 
-    /// Get analysis context for the function.
-    pub fn analyze(self: Arc<Self>) -> FunctionAnalysis {
-        FunctionAnalysis {
-            cfg: self.derive_function_flow(),
-            dest_map: self.derive_dest_map(),
-            function: self,
-        }
-    }
-
     /// Remap types in the function according to the provided mapping.
     pub fn remap_types(&mut self, mapping: &BTreeMap<Typeref, Typeref>) {
         // Remap parameter types
@@ -1051,20 +1042,6 @@ impl Function {
             bb.terminator.remap_types(|ty| mapping.get(&ty).cloned());
         }
     }
-}
-
-/// Analyze context for a function.
-///
-/// This contains a list of acceleration structures to speed up analysis and
-/// ease lookups when dealing with functions.
-#[derive(Debug, Clone)]
-pub struct FunctionAnalysis {
-    /// The function being analyzed.
-    pub function: Arc<Function>,
-    /// The control flow graph of the function.
-    pub cfg: DiGraphMap<Label, Option<Operand>>,
-    /// The destination map of the function.
-    pub dest_map: BTreeMap<Name, InstructionRef>,
 }
 
 /// A reference to a symbol defined in the module, which can be either a function or a global variable.

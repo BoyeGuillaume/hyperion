@@ -38,7 +38,7 @@ def main():
                 f.write(line)
 
     # Similarly for hyinstr/Cargo.toml, hycore/Cargo.toml, cffi/Cargo.toml
-    for crate in ["hyinstr", "hycore", "cffi"]:
+    for crate in ["hyinstr", "hycore"]:
         cargo_file = join(WORKSPACE_ROOT, crate, "Cargo.toml")
         with open(cargo_file, "r") as f:
             lines = f.readlines()
