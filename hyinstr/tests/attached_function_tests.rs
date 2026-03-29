@@ -53,7 +53,7 @@ fn attached_function_initializes_counters_from_target() {
     assert_eq!(attached.next_available_label(), expected_label);
     assert_eq!(
         attached.next_available_label(),
-        Label(expected_label.0 + 1),
+        expected_label.next_after(),
         "attached label counter should keep advancing"
     );
 

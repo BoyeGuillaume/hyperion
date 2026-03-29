@@ -24,6 +24,7 @@ use strum::{EnumIter, IntoEnumIterator};
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Invoke {
     /// Should be a reference to a function pointer (either internal or external). We
     /// describe it as an `Operand` to allow dynamic function calls to achieve virtualization
@@ -92,6 +93,7 @@ impl Instruction for Invoke {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Phi {
     /// The destination SSA name for the result of the phi instruction.
     pub dest: Name,
@@ -146,6 +148,7 @@ impl Instruction for Phi {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Select {
     /// The destination SSA name for the result of the select instruction.
     pub dest: Name,
@@ -207,6 +210,7 @@ impl Instruction for Select {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum CastVariant {
     /// Truncate integer
     ///
@@ -310,6 +314,7 @@ impl std::str::FromStr for CastVariant {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Cast {
     /// The destination SSA name for the casted result.
     pub dest: Name,
@@ -368,6 +373,7 @@ impl Instruction for Cast {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct InsertValue {
     /// Destination SSA name receiving the updated aggregate.
     pub dest: Name,
@@ -426,6 +432,7 @@ impl Instruction for InsertValue {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ExtractValue {
     /// Destination SSA name receiving the extracted element.
     pub dest: Name,

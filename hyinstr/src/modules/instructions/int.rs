@@ -23,6 +23,7 @@ use crate::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum OverflowPolicy {
     /// Wrap around on overflow
     Wrap,
@@ -40,6 +41,7 @@ pub enum OverflowPolicy {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum OverflowSignednessPolicy {
     /// Wrap (signedness does not matter for wrap)
     Wrap,
@@ -100,6 +102,7 @@ impl OverflowSignednessPolicy {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum IntegerSignedness {
     Signed,
     Unsigned,
@@ -132,6 +135,7 @@ impl IntegerSignedness {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum ICmpVariant {
     /// Equal
     Eq,
@@ -214,6 +218,8 @@ impl ICmpVariant {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+
 pub enum IShiftVariant {
     /// Logical left shift
     Lsl,
@@ -255,6 +261,7 @@ impl IShiftVariant {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IAdd {
     /// Destination SSA name receiving the sum.
     pub dest: Name,
@@ -309,6 +316,7 @@ impl Instruction for IAdd {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ISub {
     /// Destination SSA name receiving the difference.
     pub dest: Name,
@@ -363,6 +371,7 @@ impl Instruction for ISub {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IMul {
     /// Destination SSA name receiving the product.
     pub dest: Name,
@@ -417,6 +426,7 @@ impl Instruction for IMul {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IDiv {
     /// Destination SSA name receiving the quotient.
     pub dest: Name,
@@ -471,6 +481,7 @@ impl Instruction for IDiv {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IRem {
     /// Destination SSA name receiving the remainder.
     pub dest: Name,
@@ -525,6 +536,7 @@ impl Instruction for IRem {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ICmp {
     /// Destination SSA name receiving the predicate result.
     pub dest: Name,
@@ -581,6 +593,7 @@ impl Instruction for ICmp {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ISht {
     /// Destination SSA name receiving the shifted value.
     pub dest: Name,
@@ -636,6 +649,7 @@ impl Instruction for ISht {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct INeg {
     /// Destination SSA name receiving the negated value.
     pub dest: Name,
@@ -687,6 +701,7 @@ impl Instruction for INeg {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct INot {
     /// Destination SSA name receiving the inverted value.
     pub dest: Name,
@@ -737,6 +752,7 @@ impl Instruction for INot {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IAnd {
     /// Destination SSA name receiving the bitwise conjunction.
     pub dest: Name,
@@ -789,6 +805,7 @@ impl Instruction for IAnd {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IOr {
     /// Destination SSA name receiving the bitwise disjunction.
     pub dest: Name,
@@ -841,6 +858,7 @@ impl Instruction for IOr {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IXor {
     /// Destination SSA name receiving the bitwise exclusive-or.
     pub dest: Name,
@@ -893,6 +911,7 @@ impl Instruction for IXor {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IImplies {
     /// Destination SSA name receiving the implication result.
     pub dest: Name,
@@ -945,6 +964,7 @@ impl Instruction for IImplies {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IEquiv {
     /// Destination SSA name receiving the equivalence result.
     pub dest: Name,

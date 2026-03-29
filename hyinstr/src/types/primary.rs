@@ -33,6 +33,7 @@ use uuid::Uuid;
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
 #[repr(transparent)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct IType {
     num_bits: u32,
 }
@@ -153,6 +154,7 @@ impl std::fmt::Display for IType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum FType {
     /// 16-bit floating point value (IEEE-754 binary16)
     /// Also known as "half precision".
@@ -240,6 +242,8 @@ impl std::fmt::Display for FType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(opaque))]
 pub struct ExtType {
     /// Unique identifier describing the external type class.
     pub ext: Uuid,
@@ -281,6 +285,7 @@ impl std::fmt::Display for ExtType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct WType {
     /// Ordinal identifier used to distinguish wildcard placeholders.
     pub id: u16,
@@ -308,6 +313,7 @@ impl std::fmt::Display for WType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct PtrType;
 
 impl std::fmt::Display for PtrType {
@@ -323,6 +329,7 @@ impl std::fmt::Display for PtrType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum PrimaryBasicType {
     Int(IType),
     Float(FType),
@@ -392,6 +399,7 @@ impl std::fmt::Display for PrimaryBasicType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum VcSize {
     /// Fixed size vector with the given number of elements.
     ///
@@ -424,6 +432,7 @@ pub enum VcSize {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct VcType {
     /// Element type stored in the vector lanes.
     pub ty: PrimaryBasicType,
@@ -474,6 +483,7 @@ impl From<usize> for VcSize {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct LblType;
 
 impl std::fmt::Display for LblType {
@@ -492,6 +502,7 @@ impl std::fmt::Display for LblType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum PrimaryType {
     /// Integer type
     ///

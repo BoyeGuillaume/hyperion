@@ -19,6 +19,7 @@ use strum::{EnumIs, EnumTryAs};
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Name(pub u32);
 
 impl std::ops::Add<u32> for Name {
@@ -47,15 +48,6 @@ impl Debug for Name {
     }
 }
 
-/// Represents a meta operand used internally in attributes and properties.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(
-    feature = "borsh",
-    derive(borsh::BorshSerialize, borsh::BorshDeserialize)
-)]
-pub struct MetaLabel(pub u32);
-
 /// Represents a code label used as a target for control‑flow instructions (besides invokes).
 ///
 /// Notice that in hyperion, labels and control-flow may not cross function boundaries. Thus,
@@ -66,16 +58,71 @@ pub struct MetaLabel(pub u32);
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-pub struct Label(pub u32);
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+pub struct Label(u32);
 
 impl Label {
     /// Reserved entry label used for the first basic block.
     pub const ENTRY: Label = Label(0);
 
+    /// Reserved labels (EXIT label, used in analysis)
+    pub const RESERVED_1: Label = Label(u32::MAX);
+
+    /// Returns labels (including reserved )
+    pub const RESERVED_2: Label = Label(u32::MAX - 1);
+
+    /// Reserved internally for [`super::super::attached::AttachedFunction`]
+    pub(crate) const RESERVED_3: Label = Label(u32::MAX - 2);
+
+    /// Reserved internally for [`super::super::attached::AttachedFunction`]
+    pub(crate) const RESERVED_4: Label = Label(u32::MAX - 3);
+
+    /// Creates a new label with the given index.
+    #[inline]
+    pub fn new(index: u32) -> Self {
+        let label = Label(index);
+        assert!(
+            !label.is_special(),
+            "Cannot create a label with index reserved for special labels."
+        );
+        label
+    }
+
+    /// Returns the next available label after the given label.
+    #[inline]
+    pub fn next_after(&self) -> Self {
+        let next = Label(self.0.wrapping_add(1));
+        assert!(
+            !next.is_special(),
+            "Cannot create a label with index reserved for special labels."
+        );
+        next
+    }
+
+    /// Returns the raw index of this label.
+    #[inline]
+    #[must_use]
+    pub fn raw(&self) -> u32 {
+        self.0
+    }
+
     /// Returns true if this is the "nil" label (i.e., label 0).
     /// This label is reserved as the function entry label and should always be present.
+    #[inline]
     pub fn is_nil(&self) -> bool {
         self == &Label::ENTRY
+    }
+
+    /// Returns true if this label is a reserved label (i.e., EXIT or RESERVED_2).
+    #[inline]
+    pub fn is_reserved(&self) -> bool {
+        self >= &Label::RESERVED_4
+    }
+
+    /// Returns true if this label is a special label (i.e., either nil or reserved).
+    #[inline]
+    pub fn is_special(&self) -> bool {
+        self.is_nil() || self.is_reserved()
     }
 }
 
@@ -86,6 +133,7 @@ impl Label {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Operand {
     /// Reference to a previously defined SSA value.
     Reg(Name),

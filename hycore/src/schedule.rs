@@ -1,12 +1,17 @@
+use std::any::Any;
+
 use bevy_ecs::{
     prelude::*,
     schedule::{ExecutorKind, InternedScheduleLabel, ScheduleLabel},
 };
 
-use crate::{hydebug, instance::plugin::Plugin};
+use crate::{hydebug, hytrace, instance::plugin::Plugin};
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub(crate) struct MainStartup;
+
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub(crate) struct Main;
 
 fn main_startup_system(world: &mut World, mut run_at_least_once: Local<bool>) {
     if *run_at_least_once {
@@ -39,18 +44,22 @@ pub struct PostStartup;
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Startup;
 
+/// Planning phase where we determine what functions/elements to focus on when optimising.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub(crate) struct Main;
+pub struct Plan;
 
-/// Update the main schedule, which runs every frame. See [`Main`] for more details.
+/// Runs every frame, perform update duty. Depends on [`Plan`] to determine what to run.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Update;
 
-/// Runs every frame, perform post update duty.
+/// Runs once every frame, perform post update duty. Notably, this is where all analysis
+/// that should be performed (outside of repeatable updating) should be performed.
+///
+/// Things such as CFG construction, call graph detection...
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct PostUpdate;
 
-/// Runs every frame at the very last. This is where all executed are guaranteed to have been executed
+/// Last schedule to run every frame.
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct Last;
 
@@ -67,7 +76,19 @@ pub struct ScheduleOrderList {
 fn main_schedule_system(world: &mut World) {
     world.resource_scope(|world, schedule_order: Mut<ScheduleOrder>| {
         for label in &schedule_order.main_labels.list {
-            world.run_schedule(*label);
+            if label.0.type_id() == Update.type_id() {
+                for update_schedule_label in &schedule_order.udpate_labels.list {
+                    hytrace!(world;
+                        "Running update schedule {:?}",
+                        update_schedule_label
+                    );
+                    let _ = world.try_run_schedule(*update_schedule_label);
+                    world.flush();
+                }
+            } else {
+                let _ = world.try_run_schedule(*label);
+                world.flush();
+            }
         }
     });
 }
@@ -116,6 +137,9 @@ pub(super) struct ScheduleOrder {
 
     /// Instance main schedule order list.
     pub main_labels: ScheduleOrderList,
+
+    /// Instance update schedule order list. This is the order in which the update schedules will be run every frame (can run multiple times per frame).
+    pub udpate_labels: ScheduleOrderList,
 }
 
 impl Default for ScheduleOrder {
@@ -123,7 +147,14 @@ impl Default for ScheduleOrder {
         Self {
             startup_labels: vec![PreStartup.intern(), Startup.intern(), PostStartup.intern()]
                 .into(),
-            main_labels: vec![Update.intern(), PostUpdate.intern(), Last.intern()].into(),
+            main_labels: vec![
+                Plan.intern(),
+                Update.intern(),
+                PostUpdate.intern(),
+                Last.intern(),
+            ]
+            .into(),
+            udpate_labels: vec![Update.intern()].into(),
         }
     }
 }

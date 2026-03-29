@@ -1,5 +1,6 @@
 use std::{borrow::Cow, path::PathBuf};
 
+use bevy_tasks::tick_global_task_pools_on_main_thread;
 use bitflags::bitflags;
 
 use crate::{
@@ -8,6 +9,7 @@ use crate::{
     hyerror,
     hyir::{compile_sources, load_compiled_module},
     instance::{Instance, core::ModuleHandle},
+    schedule::Main,
 };
 
 #[cfg(feature = "cffi")]
@@ -146,4 +148,11 @@ pub fn hy_destroy_module(instance: &mut Instance, module_handle: ModuleHandle) -
     instance.remove_module(module_handle).inspect_err(|error| {
         hyerror!(instance; "{:?}", error);
     })
+}
+
+pub fn hy_run(instance: &mut Instance) -> ! {
+    loop {
+        instance.world.run_schedule(Main);
+        tick_global_task_pools_on_main_thread();
+    }
 }

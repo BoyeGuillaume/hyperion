@@ -11,6 +11,11 @@ members = [
 [workspace.dependencies]
 semver = "^1"
 bevy_ecs = "0.18.1"
+bevy_remote = { version = "0.18.1", default-features = false }
+bevy_reflect = { version = "0.18.1", default-features = false }
+hashbrown = "^0.15"
+async-io = "^2"
+hyper = ">1.4"
 bevy_tasks = "0.18.1"
 single_thread_cell = "0.3.0"
 thread_local = "1.1.9"
@@ -30,6 +35,7 @@ stackalloc = "^1.1.1"
 clap = ">=4.0"
 chrono = "^0.4"
 serde = "^1"
+serde_json = "^1"
 uuid = "^1"
 crossbeam = "^0.8"
 parking_lot = "^0.12"

@@ -41,6 +41,7 @@ pub mod primary;
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Typeref(Uuid);
 
 impl Typeref {
@@ -109,6 +110,7 @@ impl Typeref {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum AnyType {
     /// Primary types
     ///

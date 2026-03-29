@@ -28,6 +28,7 @@ use uuid::Uuid;
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ArrayType {
     /// Element type of the array.
     pub ty: Typeref,
@@ -83,6 +84,7 @@ impl ArrayType {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct StructType {
     /// Element types of the structure, in order.
     pub element_types: Vec<Typeref>,

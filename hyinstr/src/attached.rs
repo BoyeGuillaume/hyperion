@@ -33,8 +33,8 @@ pub struct AttachedFunction {
 }
 
 impl AttachedFunction {
-    pub const BEGIN_LABEL: Label = Label(u32::MAX - 1);
-    pub const END_LABEL: Label = Label(u32::MAX - 2);
+    pub const BEGIN_LABEL: Label = Label::RESERVED_3;
+    pub const END_LABEL: Label = Label::RESERVED_4;
 
     fn compute_hash(instr: &mut HyInstr, label: Label) -> u64 {
         use std::hash::{Hash, Hasher};
@@ -63,7 +63,11 @@ impl AttachedFunction {
         );
 
         let label = self.next_available_label;
-        self.next_available_label = Label(self.next_available_label.0 + 1);
+        self.next_available_label = self.next_available_label.next_after();
+        assert!(
+            !self.next_available_label.is_special(),
+            "Reserved labels for attached function have been exhausted."
+        );
         label
     }
 

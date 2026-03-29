@@ -19,6 +19,7 @@ use crate::{modules::CallingConvention, types::Typeref};
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct ExternalFunction {
     /// Unique identifier for the external function. This is used internally to
     /// reference the function within the module.
@@ -76,4 +77,5 @@ impl ExternalFunction {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Pointer(pub Uuid);

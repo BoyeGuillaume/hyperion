@@ -18,9 +18,9 @@ use crate::{
 impl std::fmt::Display for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
-            write!(f, "label block_{}", self.0)
+            write!(f, "label block_{}", self.raw())
         } else {
-            write!(f, "block_{}", self.0)
+            write!(f, "block_{}", self.raw())
         }
     }
 }

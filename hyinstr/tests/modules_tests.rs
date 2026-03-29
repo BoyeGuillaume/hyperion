@@ -192,9 +192,11 @@ fn function_verify_requires_entry_block() {
         "no_entry",
         vec![(Name(0), ty)],
         vec![block(
-            Label(1),
+            Label::new(1),
             vec![],
-            HyTerminator::from(Jump { target: Label(1) }),
+            HyTerminator::from(Jump {
+                target: Label::new(1),
+            }),
         )],
         Some(ty),
         BTreeSet::new(),
@@ -223,7 +225,7 @@ fn function_verify_detects_undefined_operand_and_block() {
             vec![add],
             HyTerminator::from(Branch {
                 cond: Operand::Reg(Name(0)),
-                target_true: Label(1), // missing block
+                target_true: Label::new(1), // missing block
                 target_false: Label::ENTRY,
             }),
         )],
@@ -377,25 +379,29 @@ fn function_analysis_helpers_produce_expected_graphs() {
         })],
         HyTerminator::from(Branch {
             cond: Operand::Reg(Name(1)),
-            target_true: Label(1),
-            target_false: Label(2),
+            target_true: Label::new(1),
+            target_false: Label::new(2),
         }),
     );
     // l1: jump l3
     let l1 = block(
-        Label(1),
+        Label::new(1),
         vec![],
-        HyTerminator::from(Jump { target: Label(3) }),
+        HyTerminator::from(Jump {
+            target: Label::new(3),
+        }),
     );
     // l2: jump l3
     let l2 = block(
-        Label(2),
+        Label::new(2),
         vec![],
-        HyTerminator::from(Jump { target: Label(3) }),
+        HyTerminator::from(Jump {
+            target: Label::new(3),
+        }),
     );
     // l3: ret %0
     let l3 = block(
-        Label(3),
+        Label::new(3),
         vec![HyInstr::from(IAdd {
             dest: Name(2),
             ty,
@@ -422,14 +428,14 @@ fn function_analysis_helpers_produce_expected_graphs() {
     let cfg = func.derive_function_flow();
     assert!(cfg.contains_node(Label::ENTRY));
     assert_eq!(cfg.edge_count(), 4);
-    assert!(cfg.edge_weight(Label::ENTRY, Label(1)).is_some());
-    assert!(cfg.edge_weight(Label::ENTRY, Label(2)).is_some());
-    assert!(cfg.edge_weight(Label(1), Label(3)).is_some());
-    assert!(cfg.edge_weight(Label(2), Label(3)).is_some());
+    assert!(cfg.edge_weight(Label::ENTRY, Label::new(1)).is_some());
+    assert!(cfg.edge_weight(Label::ENTRY, Label::new(2)).is_some());
+    assert!(cfg.edge_weight(Label::new(1), Label::new(3)).is_some());
+    assert!(cfg.edge_weight(Label::new(2), Label::new(3)).is_some());
 
     let dest_map = func.derive_dest_map();
     assert_eq!(dest_map.get(&Name(1)).unwrap().block, Label::ENTRY);
-    assert_eq!(dest_map.get(&Name(2)).unwrap().block, Label(3));
+    assert_eq!(dest_map.get(&Name(2)).unwrap().block, Label::new(3));
 
     let phis: Vec<_> = func
         .gather_instructions_by_predicate(|instr| instr.is_simple())

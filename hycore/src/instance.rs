@@ -1,7 +1,11 @@
 use anyhow::Context;
 use bevy_ecs::{prelude::*, schedule::ScheduleLabel, system::ScheduleSystem};
+use bevy_reflect::ReflectSerialize;
 use build_info::build_info;
-use hyinstr::{modules::Module, types::TypeRegistry};
+use hyinstr::{
+    modules::{Function, Module},
+    types::TypeRegistry,
+};
 use smallbox::{SmallBox, smallbox, space};
 
 use crate::{
@@ -23,6 +27,7 @@ use crate::{
     task_pool::TaskPoolPlugin,
 };
 
+pub mod analysis;
 pub mod core;
 pub mod plugin;
 
@@ -70,10 +75,7 @@ impl Instance {
     }
 
     #[inline]
-    fn internal_world_init(
-        world: &mut World,
-        create_info: &mut InstanceCreateInfo<'_>,
-    ) -> HyResult<()> {
+    fn internal_world_init(&mut self, create_info: &mut InstanceCreateInfo<'_>) -> HyResult<()> {
         // Add the type registry resource to the world, so that it can be accessed by plugins and systems
         let node_id = {
             let node_id: [u8; 8] = create_info.node_rank.to_ne_bytes();
@@ -89,9 +91,16 @@ impl Instance {
             node_id_truncated
         };
 
-        world.insert_resource(TypeRegistryRes {
+        self.world.insert_resource(TypeRegistryRes {
             type_registry: TypeRegistry::new(node_id),
         });
+
+        self.world
+            .insert_resource(AppTypeRegistry::new_with_derived_types());
+
+        let _app_type_registry = self.world.resource_mut::<AppTypeRegistry>();
+        let mut app_type_registry = _app_type_registry.write();
+        app_type_registry.register_type_data::<std::sync::Arc<Function>, ReflectSerialize>();
 
         // At this point we consider the world to be fully initialized, we can now call the `build` method of each plugin
         Ok(())
@@ -162,7 +171,7 @@ impl Instance {
             plugins: Vec::new(),
             state: InstanceState::Initializing,
         };
-        Self::internal_world_init(&mut instance.world, &mut create_info)?;
+        instance.internal_world_init(&mut create_info)?;
 
         // Add public plugins specified in the create info, by looking them up in the inventory
         instance.add_plugin(SchedulePlugin)?;
@@ -280,13 +289,21 @@ impl Instance {
 
     /// Insert a resource based on the current state of the instance
     #[inline]
-    pub fn insert_resource<T: Resource + 'static>(&mut self, resource: T) {
+    pub fn insert_resource<T: Resource + 'static>(&mut self, resource: T) -> &mut Self {
         debug_assert!(
             self.state != InstanceState::Dropping,
             "Cannot insert resource after the instance has started dropping"
         );
 
         self.world.insert_resource(resource);
+        self
+    }
+
+    /// Init a resource with the defaultvalue
+    #[inline]
+    pub fn init_resource<T: Resource + Default + 'static>(&mut self) -> &mut Self {
+        self.insert_resource(T::default());
+        self
     }
 
     /// Insert default of a resource based on the current state of the instance
@@ -297,18 +314,21 @@ impl Instance {
 
     /// Inserts a new `schedule` under the provided `label`, overwriting any existing
     /// schedule with the same label.
+    #[inline]
     pub fn add_schedule(&mut self, schedule: Schedule) -> &mut Self {
         self.world.add_schedule(schedule);
         self
     }
 
     /// Returns a reference to the [`Schedule`] with the provided `label` if it exists.
+    #[inline]
     pub fn run_schedule(&mut self, label: impl ScheduleLabel) -> &mut Self {
         self.world.run_schedule(label);
         self
     }
 
     /// Add a system to the schedule with the provided `label`.
+    #[inline]
     pub fn add_systems<M>(
         &mut self,
         label: impl ScheduleLabel,
@@ -320,11 +340,21 @@ impl Instance {
     }
 
     /// Get a specific resource from the world, if it exists
+    #[inline]
     pub fn get_resource<T: Resource>(&self) -> Option<&T> {
         self.world.get_resource::<T>()
     }
 
+    /// Get a specific resource from the world, if it exists, with mutable access
+    #[inline]
+    pub fn get_resource_mut<T: Resource>(
+        &mut self,
+    ) -> Option<bevy_ecs::change_detection::Mut<'_, T>> {
+        self.world.get_resource_mut::<T>()
+    }
+
     /// Get the type registry of the instance
+    #[inline]
     pub fn type_registry(&self) -> &TypeRegistry {
         &self
             .get_resource::<TypeRegistryRes>()
@@ -333,11 +363,13 @@ impl Instance {
     }
 
     /// Get an entity from the world, if it exists
+    #[inline]
     pub fn get_entity(&self, entity: Entity) -> Option<EntityRef<'_>> {
         self.world.get_entity(entity).ok()
     }
 
     /// Add a module to the instance, meant to be used internally (or by extensions)
+    #[inline]
     pub fn add_module(&mut self, module: Module) -> HyResult<ModuleHandle> {
         // Verify & Typecheck
         module.verify()?;
@@ -364,23 +396,43 @@ impl Instance {
         let mut module_entity_component = ModuleComponent::default();
 
         for (uuid, global) in module.globals.into_iter() {
-            let global_entity = module_entity.with_child(GlobalComponent { inner: global });
+            let global_entity = module_entity.with_child((
+                Name::new(format!(
+                    "global ({})",
+                    global
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| format!("@{}", global.uuid))
+                )),
+                GlobalComponent { inner: global },
+            ));
             module_entity_component
                 .globals
                 .insert(uuid, global_entity.id());
         }
 
         for (uuid, function) in module.functions.into_iter() {
-            let function_entity = module_entity.with_child(FunctionComponent { inner: function });
+            let name = function
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("@{}", function.uuid));
+
+            let function_entity = module_entity.with_child((
+                FunctionComponent { inner: function },
+                Name::new(format!("func ({})", name)),
+            ));
             module_entity_component
                 .functions
                 .insert(uuid, function_entity.id());
         }
 
         for (uuid, external_function) in module.external_functions.into_iter() {
-            let external_function_entity = module_entity.with_child(ExternalFunctionComponent {
-                inner: external_function,
-            });
+            let external_function_entity = module_entity.with_child((
+                Name::new(format!("external_func ({})", &external_function.name)),
+                ExternalFunctionComponent {
+                    inner: external_function,
+                },
+            ));
             module_entity_component
                 .external_functions
                 .insert(uuid, external_function_entity.id());
@@ -402,6 +454,7 @@ impl Instance {
         Ok(ModuleHandle(entity_id))
     }
 
+    #[inline]
     pub fn remove_module(&mut self, module_handle: ModuleHandle) -> HyResult<()> {
         let entity = module_handle.get();
 
@@ -430,6 +483,7 @@ impl Instance {
         Ok(())
     }
 
+    #[inline]
     pub fn flush(&mut self) {
         self.world.flush();
     }

@@ -48,6 +48,16 @@ pub struct LoggerPluginCreateInfo {
     pub sink_callback: Box<dyn Fn(LoggerRecord) + Send>,
 }
 
+impl std::fmt::Debug for LoggerPluginCreateInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoggerPluginCreateInfo")
+            .field("level", &self.level)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ExtObject for LoggerPluginCreateInfo {}
+
 #[cfg(feature = "cffi")]
 pub mod cffi {
     use crate::{
@@ -213,16 +223,6 @@ pub mod cffi {
         }
     }
 }
-
-impl std::fmt::Debug for LoggerPluginCreateInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LoggerPluginCreateInfo")
-            .field("level", &self.level)
-            .finish_non_exhaustive()
-    }
-}
-
-impl ExtObject for LoggerPluginCreateInfo {}
 
 /// Main logger resource which holds the logger state, including the logger level and the sender/receiver
 /// for logging messages from other threads. See [`LoggerStateRes`] for more details.

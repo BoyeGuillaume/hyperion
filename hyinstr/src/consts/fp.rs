@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 /// A floating‑point literal paired with its `FType`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(opaque))]
 pub struct FConst {
     /// Floating-point type describing how to interpret `value`.
     pub ty: FType,

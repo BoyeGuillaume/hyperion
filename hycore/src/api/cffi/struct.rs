@@ -15,9 +15,10 @@ use crate::{
 #[repr(u32)]
 pub enum HyStructureType {
     ApplicationInfo = 1,
-    InstanceCreateInfo,
-    LoggerPluginCreateInfo,
-    ModuleCompileInfo,
+    InstanceCreateInfo = 2,
+    ModuleCompileInfo = 3,
+    LoggerPluginCreateInfo = 0x8000,
+    RemotePluginCreateInfo = 0x8001,
 }
 
 impl HyStructureType {

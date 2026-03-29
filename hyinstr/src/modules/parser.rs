@@ -220,7 +220,11 @@ impl<'a> State<'a> {
         if let Some(label) = self.label_namespace.get(name) {
             *label
         } else {
-            let label = Label(self.label_namespace.len() as u32);
+            let label = if self.label_namespace.is_empty() {
+                Label::ENTRY
+            } else {
+                Label::new(self.label_namespace.len() as u32)
+            };
             self.label_namespace.insert(name.to_string(), label);
             label
         }
