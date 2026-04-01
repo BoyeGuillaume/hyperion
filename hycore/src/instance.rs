@@ -102,6 +102,8 @@ impl Instance {
         let mut app_type_registry = _app_type_registry.write();
         app_type_registry.register_type_data::<std::sync::Arc<Function>, ReflectSerialize>();
 
+        // app_type_registry.register::<bevy_ecs::system::SystemIdMarker>();
+
         // At this point we consider the world to be fully initialized, we can now call the `build` method of each plugin
         Ok(())
     }

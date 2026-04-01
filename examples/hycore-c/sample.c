@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 
   HyLoggerPluginCreateInfo loggerPluginCreateInfo;
   loggerPluginCreateInfo.sType = HY_STRUCTURE_TYPE_LOGGER_PLUGIN_CREATE_INFO;
-  loggerPluginCreateInfo.level = HY_LOGGER_LEVEL_DEBUG;
+  loggerPluginCreateInfo.level = HY_LOGGER_LEVEL_TRACE;
   loggerPluginCreateInfo.pSinkCallback = logCallback;
   loggerPluginCreateInfo.pUserData = NULL;
   loggerPluginCreateInfo.pNext = NULL;

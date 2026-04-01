@@ -48,7 +48,7 @@ fn main() {
             base_path: None,
             source_descriptors: vec![ModuleCompileInfoSourceDescriptor {
                 data: None,
-                filename: Some("examples/library/example.hyir".into()),
+                filename: Some("examples/library/all.hyir".into()),
             }],
             flags: ModuleCompileInfoFlags::ZSTD_COMPRESSION,
             ext: ExtList::new(),

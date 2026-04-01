@@ -401,6 +401,26 @@ pub fn compile_sources(instance: &Instance, compile_info: ModuleCompileInfo) -> 
         })?;
     }
 
+    hytrace!(instance; "Type checking compiled global");
+    for global in module.globals.values() {
+        hytrace!(
+            instance;
+            "Type checking global '{}'",
+            global.name
+                .clone()
+                .unwrap_or_else(|| format!("@{}", global.uuid))
+        );
+        global.type_check(&type_registry).with_context(|| {
+            anyhow!(
+                "In global '{}'",
+                global
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("@{}", global.uuid))
+            )
+        })?;
+    }
+
     // Produce compiled module storage or further processing here
     let storage = CompiledModuleStorage {
         module,

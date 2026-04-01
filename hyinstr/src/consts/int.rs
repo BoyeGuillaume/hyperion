@@ -9,7 +9,7 @@ use crate::types::primary::IType;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-#[cfg_attr(feature = "reflect", reflect(opaque))]
+#[reflect(opaque)]
 pub struct IConst {
     /// Integer type describing the bit-width of the literal.
     pub ty: IType,

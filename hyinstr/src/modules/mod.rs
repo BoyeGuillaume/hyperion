@@ -413,6 +413,12 @@ impl Global {
     pub fn is_internal(&self) -> bool {
         self.value.is_some()
     }
+
+    fn remap_types(&mut self, mapping: impl Fn(&Typeref) -> Option<Typeref>) {
+        if let Some(new_ty) = mapping(&self.ty) {
+            self.ty = new_ty;
+        }
+    }
 }
 
 /// A function made of basic blocks and parameter metadata.
@@ -1257,6 +1263,11 @@ impl Module {
         // Remap types in each external function
         for ext_func in self.external_functions.values_mut() {
             ext_func.remap_types(|ty| mapping.get(ty).cloned());
+        }
+
+        // Remap types in each global variable
+        for global in self.globals.values_mut() {
+            global.remap_types(|ty| mapping.get(ty).cloned());
         }
     }
 }
