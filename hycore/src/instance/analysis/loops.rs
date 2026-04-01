@@ -12,7 +12,6 @@ use crate::{
     schedule::PostUpdate,
 };
 use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 use hyinstr::modules::operand::Label;
 use petgraph::algo::dominators::Dominators;
 use smallvec::SmallVec;
@@ -68,8 +67,7 @@ pub struct NaturalLoop {
     pub body: BTreeSet<Label>,
 }
 
-#[derive(Component, Clone, Reflect)]
-#[reflect(opaque)]
+#[derive(Component, Clone)]
 pub struct LoopAnalysis {
     pub dominator: Dominators<Label>,
     pub post_dominator: Dominators<Label>,

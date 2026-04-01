@@ -30,7 +30,6 @@ use crate::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum MemoryOrdering {
     Unordered,
     Monotonic,
@@ -75,7 +74,6 @@ impl MemoryOrdering {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MLoad {
     /// Destination SSA name receiving the loaded value.
     pub dest: Name,
@@ -141,7 +139,6 @@ impl Instruction for MLoad {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MStore {
     /// Pointer operand describing the destination address.
     pub addr: Operand,
@@ -199,7 +196,6 @@ impl Instruction for MStore {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MAlloca {
     /// Destination SSA name receiving the pointer to the allocated storage.
     pub dest: Name,
@@ -255,7 +251,6 @@ impl Instruction for MAlloca {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MGetElementPtr {
     /// Destination SSA name receiving the computed address.
     pub dest: Name,

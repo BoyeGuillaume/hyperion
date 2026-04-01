@@ -21,18 +21,6 @@ bitflags.workspace = true
 chumsky = { workspace = true, optional = true }
 borsh = { workspace = true, optional = true }
 slotmap = { workspace = true }
-bevy_reflect = { workspace = true, features = [
-    "uuid",
-    "debug",
-    "indexmap",
-    "smallvec",
-    "auto_register_inventory",
-    "auto_register",
-    "petgraph",
-    "functions",
-    "hashbrown",
-    "reflect_documentation",
-], default-features = true, optional = true }
 
 [features]
 default = ["chumsky", "chumsky/either"]
@@ -48,4 +36,3 @@ serde = [
 ]
 chumsky = ["dep:chumsky"]
 borsh = ["dep:borsh", "borsh/derive", "borsh/rc", "uuid/borsh"]
-reflect = ["bevy_reflect"]

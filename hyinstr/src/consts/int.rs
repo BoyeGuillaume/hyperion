@@ -8,8 +8,6 @@ use crate::types::primary::IType;
 /// An integer literal paired with its `IType` width.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-#[reflect(opaque)]
 pub struct IConst {
     /// Integer type describing the bit-width of the literal.
     pub ty: IType,

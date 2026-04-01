@@ -27,7 +27,6 @@ use strum::{EnumDiscriminants, EnumIs, EnumIter, EnumTryAs, IntoEnumIterator};
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaAssert {
     /// The condition to assert. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -93,7 +92,6 @@ impl Instruction for MetaAssert {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaAssume {
     /// The condition to assume. This should evaluate to a boolean value.
     pub condition: Operand,
@@ -150,7 +148,6 @@ impl Instruction for MetaAssume {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaIsDef {
     /// Destination SSA name holding the boolean result.
     pub dest: Name,
@@ -219,7 +216,6 @@ impl Instruction for MetaIsDef {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaForall {
     /// Destination SSA name holding the quantified value.
     pub dest: Name,
@@ -273,7 +269,6 @@ impl Instruction for MetaForall {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum MetaProbOperand {
     /// Operand (boolean) value, this is the probability that the given operand is true. Input
     /// should be a boolean value.
@@ -338,7 +333,6 @@ impl std::str::FromStr for MetaProbVariant {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaProb {
     /// The destination SSA name for the result of the probability function.
     pub dest: Name,
@@ -406,7 +400,6 @@ impl Instruction for MetaProb {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct MetaAnalysisStat {
     /// The destination SSA name for the result of the analysis statistic instruction.
     pub dest: Name,

@@ -53,7 +53,6 @@ pub mod terminator;
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Visibility {
     /// Default visibility
     ///
@@ -106,7 +105,6 @@ impl std::str::FromStr for Visibility {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 
 pub enum CallingConvention {
     /// The C calling convention
@@ -264,7 +262,6 @@ impl std::str::FromStr for CallingConvention {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct InstructionRef {
     /// Label of the basic block containing the instruction.
     pub block: Label,
@@ -305,7 +302,6 @@ impl From<InstructionRef> for (Label, usize) {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct BasicBlock {
     /// Unique block label.
     pub label: Label,
@@ -369,7 +365,6 @@ impl BasicBlock {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Global {
     /// The unique identifier (UUID) of the global variable.
     pub uuid: Uuid,
@@ -444,7 +439,6 @@ impl Global {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Function {
     /// The unique identifier (UUID) of the function.
     pub uuid: Uuid,
@@ -1076,7 +1070,6 @@ pub enum Symbol<'a> {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Module {
     /// List of global variables keyed by their UUID.
     pub globals: BTreeMap<Uuid, Global>,

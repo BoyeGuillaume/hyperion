@@ -22,7 +22,6 @@ use crate::{
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum FCmpVariant {
     /// Ordered and equal (i.e., neither operand is NaN and lhs == rhs)
     Oeq,
@@ -88,7 +87,6 @@ impl FCmpVariant {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FAdd {
     /// Destination SSA name receiving the sum.
     pub dest: Name,
@@ -141,7 +139,6 @@ impl Instruction for FAdd {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FSub {
     /// Destination SSA name receiving the difference.
     pub dest: Name,
@@ -194,7 +191,6 @@ impl Instruction for FSub {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FMul {
     /// Destination SSA name receiving the product.
     pub dest: Name,
@@ -247,7 +243,6 @@ impl Instruction for FMul {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FDiv {
     /// Destination SSA name receiving the quotient.
     pub dest: Name,
@@ -300,7 +295,6 @@ impl Instruction for FDiv {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 
 pub struct FRem {
     /// Destination SSA name receiving the remainder.
@@ -354,7 +348,6 @@ impl Instruction for FRem {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FNeg {
     /// Destination SSA name receiving the negated value.
     pub dest: Name,
@@ -405,7 +398,6 @@ impl Instruction for FNeg {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct FCmp {
     /// Destination SSA name receiving the comparison result.
     pub dest: Name,

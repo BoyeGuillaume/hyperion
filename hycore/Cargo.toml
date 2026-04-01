@@ -8,37 +8,18 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 single_thread_cell = { workspace = true }
-bevy_reflect = { workspace = true, features = [
-    "uuid",
-    "debug",
-    "indexmap",
-    "smallvec",
-    "auto_register_inventory",
-    "auto_register",
-    "petgraph",
-    "functions",
-    "hashbrown",
-    "reflect_documentation",
-], default-features = false }
+bevy_reflect = { workspace = true, features = ["auto_register_inventory"] }
 bevy_ecs = { workspace = true, features = [
     "async_executor",
     "debug",
     "reflect_auto_register",
-] }
-bevy_remote = { workspace = true, optional = true, default-features = false, features = [
-    "http",
 ] }
 hashbrown = { workspace = true }
 bevy_tasks = { workspace = true }
 thread_local = { workspace = true }
 smallbox = { workspace = true }
 anyhow = { workspace = true, features = ["backtrace"] }
-hyinstr = { workspace = true, features = [
-    "serde",
-    "chumsky",
-    "borsh",
-    "reflect",
-] }
+hyinstr = { workspace = true, features = ["serde", "chumsky", "borsh"] }
 uuid = { workspace = true, features = ["v4", "serde"] }
 borsh = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
@@ -70,10 +51,6 @@ pyo3 = { workspace = true, features = [
 ], optional = true }
 serde_json.workspace = true
 async-io = { workspace = true, optional = true }
-hyper = { workspace = true, optional = true }
-smol-hyper = { version = "0.1.1", optional = true }
-http-body-util = { version = "0.1.3", optional = true }
-async-channel = { version = "2.5", optional = true }
 
 # cffi dependencies
 libc = { workspace = true, optional = true }
@@ -87,11 +64,4 @@ default = ["remote"]
 pyo3 = ["dep:pyo3"]
 cffi = ["dep:libc", "dep:cbindgen"]
 
-remote = [
-    "dep:bevy_remote",
-    "dep:async-io",
-    "dep:hyper",
-    "dep:smol-hyper",
-    "dep:http-body-util",
-    "dep:async-channel",
-]
+remote = ["dep:async-io"]

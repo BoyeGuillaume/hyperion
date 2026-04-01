@@ -9,12 +9,10 @@ use crate::{
     schedule::PostUpdate,
 };
 use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 use hyinstr::modules::operand::{Label, Operand};
 use petgraph::prelude::DiGraphMap;
 
-#[derive(Component, Clone, Reflect)]
-#[reflect(opaque)]
+#[derive(Component, Clone)]
 pub struct ControlFlowGraph {
     pub cfg: DiGraphMap<Label, Option<Operand>>,
 }

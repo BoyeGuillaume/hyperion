@@ -19,7 +19,6 @@ use strum::{EnumIs, EnumTryAs};
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Name(pub u32);
 
 impl std::ops::Add<u32> for Name {
@@ -58,7 +57,6 @@ impl Debug for Name {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Label(u32);
 
 impl Label {
@@ -133,7 +131,6 @@ impl Label {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum Operand {
     /// Reference to a previously defined SSA value.
     Reg(Name),

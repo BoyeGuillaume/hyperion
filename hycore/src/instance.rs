@@ -1,6 +1,5 @@
 use anyhow::Context;
 use bevy_ecs::{prelude::*, schedule::ScheduleLabel, system::ScheduleSystem};
-use bevy_reflect::ReflectSerialize;
 use build_info::build_info;
 use hyinstr::{
     modules::{Function, Module},
@@ -97,10 +96,6 @@ impl Instance {
 
         self.world
             .insert_resource(AppTypeRegistry::new_with_derived_types());
-
-        let _app_type_registry = self.world.resource_mut::<AppTypeRegistry>();
-        let mut app_type_registry = _app_type_registry.write();
-        app_type_registry.register_type_data::<std::sync::Arc<Function>, ReflectSerialize>();
 
         // app_type_registry.register::<bevy_ecs::system::SystemIdMarker>();
 

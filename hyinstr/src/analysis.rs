@@ -61,7 +61,6 @@ impl TerminationBehavior {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum TerminationScope {
     /// Termination is defined as reaching the end of the current block.
     BlockExit,
@@ -87,8 +86,6 @@ pub enum TerminationScope {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-#[cfg_attr(feature = "reflect", reflect(opaque))]
 pub enum AnalysisStatistic {
     /// Count of instructions executed containing any of the specified flags.
     ///

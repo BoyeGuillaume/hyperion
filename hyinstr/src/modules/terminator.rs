@@ -34,7 +34,6 @@ pub trait Terminator: Instruction {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Branch {
     /// The condition operand; should evaluate to a boolean value.
     ///
@@ -96,7 +95,6 @@ impl Terminator for Branch {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Jump {
     /// The label to jump to.
     pub target: Label,
@@ -147,7 +145,6 @@ impl Terminator for Jump {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Ret {
     pub value: Option<Operand>,
 }
@@ -195,7 +192,6 @@ impl Terminator for Ret {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Trap;
 
 impl Instruction for Trap {
@@ -248,7 +244,6 @@ impl Terminator for Trap {
     feature = "borsh",
     derive(borsh::BorshSerialize, borsh::BorshDeserialize)
 )]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub enum HyTerminator {
     Branch(Branch),
     Jump(Jump),

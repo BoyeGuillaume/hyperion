@@ -9,12 +9,10 @@ use crate::{
     schedule::PostUpdate,
 };
 use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 use hyinstr::modules::{InstructionRef, operand::Name};
 use std::collections::BTreeMap;
 
-#[derive(Component, Clone, Reflect)]
-#[reflect(opaque)]
+#[derive(Component, Clone)]
 pub struct DestMap {
     pub dest_map: BTreeMap<Name, InstructionRef>,
 }
