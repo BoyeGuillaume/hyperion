@@ -1,6 +1,5 @@
 use std::{borrow::Cow, path::PathBuf};
 
-use bevy_tasks::tick_global_task_pools_on_main_thread;
 use bitflags::bitflags;
 
 use crate::{
@@ -15,6 +14,7 @@ use crate::{
 #[cfg(feature = "cffi")]
 pub mod cffi;
 pub mod constants;
+pub mod ext;
 pub mod function;
 #[cfg(feature = "pyo3")]
 pub mod pyo3;
@@ -153,6 +153,5 @@ pub fn hy_destroy_module(instance: &mut Instance, module_handle: ModuleHandle) -
 pub fn hy_run(instance: &mut Instance) -> ! {
     loop {
         instance.world.run_schedule(Main);
-        tick_global_task_pools_on_main_thread();
     }
 }

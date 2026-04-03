@@ -15,7 +15,6 @@ bevy_ecs = { workspace = true, features = [
     "reflect_auto_register",
 ] }
 hashbrown = { workspace = true }
-bevy_tasks = { workspace = true }
 thread_local = { workspace = true }
 smallbox = { workspace = true }
 anyhow = { workspace = true, features = ["backtrace"] }
@@ -43,6 +42,9 @@ inventory.workspace = true
 zstd.workspace = true
 dashmap.workspace = true
 paste.workspace = true
+tokio = { workspace = true, features = ["full"] }
+atomic_enum = { workspace = true }
+tokio-util = { workspace = true }
 pyo3 = { workspace = true, features = [
     "uuid",
     "extension-module",
@@ -51,6 +53,9 @@ pyo3 = { workspace = true, features = [
 ], optional = true }
 serde_json.workspace = true
 async-io = { workspace = true, optional = true }
+actix-web = { workspace = true, optional = true }
+actix-tls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
 
 # cffi dependencies
 libc = { workspace = true, optional = true }
@@ -64,4 +69,5 @@ default = ["remote"]
 pyo3 = ["dep:pyo3"]
 cffi = ["dep:libc", "dep:cbindgen"]
 
-remote = ["dep:async-io"]
+remote = ["dep:async-io", "dep:actix-web"]
+remote-tls = ["dep:rustls", "dep:actix-tls", "actix-web/rustls-0_23"]

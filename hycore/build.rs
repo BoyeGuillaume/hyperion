@@ -21,7 +21,8 @@ mod cffi {
                #define HY_VERSION_MINOR {}\n\
                #define HY_VERSION_PATCH {}\n\
                #define HY_VERSION \"{}\"\n\n\
-               static const char *HY_LOGGER_PLUGIN_NAME = \"hycore::plugin::logger::LoggerPlugin\";",
+               static const char *HY_LOGGER_PLUGIN_NAME = \"hycore::plugin::logger::LoggerPlugin\";\n\
+               static const char *HY_REMOTE_PLUGIN_NAME = \"hycore::plugin::remote::RemotePlugin\";",
             version.major,
             version.minor,
             version.patch,
@@ -95,6 +96,8 @@ mod cffi {
             .include_item("HyLoggerPluginCreateInfo")
             .include_item("HyModuleCompileInfoFlagBits")
             .exclude_item("ModuleCompileInfoFlags")
+            .include_item("HyTlsServerCertificateInfo")
+            .include_item("HyTlsClientAuthentificationInfo")
             .with_braces(cbindgen::Braces::NextLine)
             .generate()
             .expect("Unable to generate bindings");

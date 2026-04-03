@@ -1,9 +1,12 @@
 #include <hycore.h>
 #include <math.h>
 #include <memory.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <threads.h>
+#include <unistd.h>
 
 #if defined(_MSC_VER)
 #define COLOR_RESET ""
@@ -21,12 +24,15 @@
 #define COLOR_BRIGHT_BLACK "\x1b[90m"
 #endif
 
+static volatile bool gShouldExit = false;
+
 static const char *logLevelToColour(HyLoggerLevel level);
 static const char *logLevelToString(HyLoggerLevel level);
 static void logCallback(const HyLoggerRecord *pMessage, void *pUserData);
 static void printHexASCII(const uint8_t *data, uint32_t length,
                           bool compute_stats);
 static void printErrorMessage();
+static void handleInterruptSignal(int signal);
 
 int main(int argc, char **argv) {
   if (argc < 1)
@@ -61,6 +67,7 @@ int main(int argc, char **argv) {
 
   const char *extensions[] = {
       HY_LOGGER_PLUGIN_NAME,
+      HY_REMOTE_PLUGIN_NAME,
   };
   HyInstanceCreateInfo createInfo;
   createInfo.sType = HY_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -113,6 +120,40 @@ int main(int argc, char **argv) {
     return -1;
   }
   hyFreeCompiledModuleBuffer(outputBuffer);
+
+  /* Launch the remote module on the instance */
+  HyStartRemoteServerInfo launchInfo;
+  launchInfo.sType = HY_STRUCTURE_TYPE_START_REMOTE_SERVER_INFO;
+  launchInfo.maxConnections = 256;
+  launchInfo.pHost = "127.0.0.1";
+  launchInfo.port = 8080;
+  launchInfo.pNext = NULL;
+
+  if (hyStartRemoteServer(instance, &launchInfo) < 0) {
+    // printErrorMessage();
+    hyDestroyModule(instance, module);
+    hyDestroyInstance(instance);
+    return -1;
+  }
+
+  /* Wait until we get a cancel signal (e.g. Ctrl+C) */
+  printf("Module launched. Press Ctrl+C to exit.\n");
+  signal(
+      SIGINT,
+      handleInterruptSignal); // Register signal handler for graceful shutdown
+  while (!gShouldExit) {
+    usleep(50);
+  }
+  printf("Ctrl+C received. Shutting down...\n");
+  signal(SIGINT, SIG_DFL); // Restore default signal handler
+
+  /* Finally gracefully shutdown the remote server */
+  if (hyShutdownRemoteServer(instance) < 0) {
+    // printErrorMessage();
+    hyDestroyModule(instance, module);
+    hyDestroyInstance(instance);
+    return -1;
+  }
 
   /* Finally destroy the module and instance */
   hyDestroyModule(instance, module);
@@ -251,5 +292,11 @@ static const char *logLevelToString(HyLoggerLevel level) {
     return "[ERROR]";
   default:
     return "[UNKNOWN]";
+  }
+}
+
+static void handleInterruptSignal(int signal) {
+  if (signal == SIGINT) {
+    gShouldExit = true;
   }
 }

@@ -21,6 +21,8 @@
     "rust-analyzer.cargo.features": [
         "pyo3",
         "cffi",
+        "remote",
+        "remote-tls"
     ],
     "clangd.fallbackFlags": [
         "-I${workspaceFolder}/hycore/include/"

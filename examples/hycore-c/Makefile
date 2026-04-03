@@ -25,7 +25,7 @@ LDFLAGS := -L$(SO_DIR) -Wl,-rpath,$(SO_DIR) -l$(SO_STEM) -lm
 all: sample.out
 
 lib:
-	cargo build $(CARGO_FLAGS) --manifest-path ../../hycore/Cargo.toml -F cffi
+	cargo build $(CARGO_FLAGS) --manifest-path ../../hycore/Cargo.toml -F cffi,remote,remote-tls
 
 sample.out: sample.c lib
 	echo $(SO_PATH)

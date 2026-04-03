@@ -1,12 +1,12 @@
 use crate::HyResult;
-use downcast_rs::{Downcast, impl_downcast};
+use downcast_rs::{DowncastSend, impl_downcast};
 use std::fmt::Debug;
 
 #[cfg(feature = "pyo3")]
 use pyo3::{prelude::*, types::PyList};
 
 /// Empty trait to mark objects that are extension objects, that is portion of the API that is fully extendable
-pub trait ExtObject: Downcast + Debug {}
+pub trait ExtObject: Debug + DowncastSend {}
 impl_downcast!(ExtObject);
 
 pub type DynExtObject = Box<dyn ExtObject>;

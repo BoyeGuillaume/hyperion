@@ -1,10 +1,7 @@
 use anyhow::Context;
 use bevy_ecs::{prelude::*, schedule::ScheduleLabel, system::ScheduleSystem};
 use build_info::build_info;
-use hyinstr::{
-    modules::{Function, Module},
-    types::TypeRegistry,
-};
+use hyinstr::{modules::Module, types::TypeRegistry};
 use smallbox::{SmallBox, smallbox, space};
 
 use crate::{
@@ -23,7 +20,7 @@ use crate::{
     plugin::logger::LoggerStateRes,
     resource::TypeRegistryRes,
     schedule::{DropSchedule, MainStartup, SchedulePlugin},
-    task_pool::TaskPoolPlugin,
+    tokio::TokioPlugin,
 };
 
 pub mod analysis;
@@ -172,8 +169,8 @@ impl Instance {
 
         // Add public plugins specified in the create info, by looking them up in the inventory
         instance.add_plugin(SchedulePlugin)?;
-        instance.add_plugin(TaskPoolPlugin)?;
         instance.add_plugin(DropModuleWarningPlugin)?;
+        instance.add_plugin(TokioPlugin)?;
         for enabled_plugin_name in create_info.enabled_plugins {
             let constructor = inventory::iter::<plugin::PublicPluginInventory>
                 .into_iter()
@@ -215,7 +212,8 @@ impl Instance {
         'main_await_loop: loop {
             for plugin in &instance.plugins {
                 if !plugin.ready() {
-                    bevy_tasks::tick_global_task_pools_on_main_thread();
+                    // bevy_tasks::tick_global_task_pools_on_main_thread();
+                    // tokio::
                     continue 'main_await_loop;
                 }
             }

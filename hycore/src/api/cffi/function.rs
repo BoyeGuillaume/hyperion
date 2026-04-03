@@ -16,7 +16,7 @@ struct LastError {
 }
 static LAST_ERROR: std::sync::Mutex<Option<LastError>> = std::sync::Mutex::new(None);
 
-fn return_error(error: anyhow::Error) -> std::ffi::c_int {
+pub fn cffi_return_error(error: anyhow::Error) -> std::ffi::c_int {
     let backtrace = error.backtrace().to_string();
     let message = format!("{:?}", error);
     let last_error = LastError { message, backtrace };
@@ -94,13 +94,13 @@ pub unsafe extern "C" fn hyCreateInstance(
     // Convert the p_create_info pointer to a Rust reference
     let create_info = unsafe {
         if p_create_info.is_null() {
-            return return_error(anyhow::anyhow!(
+            return cffi_return_error(anyhow::anyhow!(
                 "Instance create info pointer cannot be null"
             ));
         }
 
         if pp_instance.is_null() {
-            return return_error(anyhow::anyhow!(
+            return cffi_return_error(anyhow::anyhow!(
                 "Cannot create instance: output instance pointer cannot be null"
             ));
         }
@@ -111,13 +111,13 @@ pub unsafe extern "C" fn hyCreateInstance(
     // Convert the create info to the internal Rust representation
     let create_info = match unsafe { create_info.to_instance_create_info() } {
         Ok(info) => info,
-        Err(e) => return return_error(e),
+        Err(e) => return cffi_return_error(e),
     };
 
     // Create the instance (this is where you would call your actual instance creation logic)
     let instance = match Instance::new(create_info) {
         Ok(instance) => instance,
-        Err(e) => return return_error(e),
+        Err(e) => return cffi_return_error(e),
     };
 
     // Allocate a new Box containing the instance and return a pointer to it
@@ -159,22 +159,22 @@ pub unsafe extern "C" fn hyCompileModule(
     p_output_buffer_size: *mut u32,
 ) -> std::ffi::c_int {
     if p_instance.is_null() {
-        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Instance pointer cannot be null"));
     }
 
     if p_compile_info.is_null() {
-        return return_error(anyhow::anyhow!("Compile info pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Compile info pointer cannot be null"));
     }
 
     if pp_output_buffer.is_null() || p_output_buffer_size.is_null() {
-        return return_error(anyhow::anyhow!("Output buffer pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Output buffer pointer cannot be null"));
     }
 
     // Convert the compile info to the internal Rust representation
     let compile_info = unsafe { &*p_compile_info };
     let compile_info = match unsafe { compile_info.to_module_compile_info() } {
         Ok(info) => info,
-        Err(e) => return return_error(e),
+        Err(e) => return cffi_return_error(e),
     };
     let instance: &Instance = unsafe { &*(p_instance as *mut Instance) };
 
@@ -184,7 +184,7 @@ pub unsafe extern "C" fn hyCompileModule(
             let buffer_size = compiled_module.len() as u32;
             let buffer = unsafe { libc::malloc(buffer_size as usize) } as *mut u8;
             if buffer.is_null() {
-                return return_error(anyhow::anyhow!("Failed to allocate output buffer"));
+                return cffi_return_error(anyhow::anyhow!("Failed to allocate output buffer"));
             }
 
             unsafe {
@@ -198,7 +198,7 @@ pub unsafe extern "C" fn hyCompileModule(
             }
             0
         }
-        Err(e) => return_error(e),
+        Err(e) => cffi_return_error(e),
     }
 }
 
@@ -221,15 +221,15 @@ pub unsafe extern "C" fn hyLoadCompiledModule(
     p_module: *mut HyModule,
 ) -> std::ffi::c_int {
     if p_instance.is_null() {
-        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Instance pointer cannot be null"));
     }
 
     if p_module.is_null() {
-        return return_error(anyhow::anyhow!("Module output pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Module output pointer cannot be null"));
     }
 
     if p_module_buffer.is_null() || module_buffer_size == 0 {
-        return return_error(anyhow::anyhow!(
+        return cffi_return_error(anyhow::anyhow!(
             "Module buffer pointer cannot be null or size cannot be zero"
         ));
     }
@@ -246,7 +246,7 @@ pub unsafe extern "C" fn hyLoadCompiledModule(
 
             0
         }
-        Err(e) => return_error(e),
+        Err(e) => cffi_return_error(e),
     }
 }
 
@@ -256,7 +256,7 @@ pub unsafe extern "C" fn hyDestroyModule(
     module: HyModule,
 ) -> std::ffi::c_int {
     if p_instance.is_null() {
-        return return_error(anyhow::anyhow!("Instance pointer cannot be null"));
+        return cffi_return_error(anyhow::anyhow!("Instance pointer cannot be null"));
     }
 
     let instance: &mut Instance = unsafe { &mut *(p_instance as *mut Instance) };
@@ -264,6 +264,6 @@ pub unsafe extern "C" fn hyDestroyModule(
 
     match crate::api::hy_destroy_module(instance, module_handle) {
         Ok(()) => 0,
-        Err(e) => return_error(e),
+        Err(e) => cffi_return_error(e),
     }
 }

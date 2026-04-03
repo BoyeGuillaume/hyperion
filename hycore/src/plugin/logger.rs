@@ -1,3 +1,5 @@
+use std::sync::{Arc, Weak};
+
 use crate::{
     HyResult,
     ext::ExtObject,
@@ -5,12 +7,14 @@ use crate::{
     register_plugin,
     schedule::Last,
 };
+use atomic_enum::atomic_enum;
 use bevy_ecs::{prelude::*, system::NonSendMarker};
 use chrono::DateTime;
 use crossbeam::channel::{Receiver, Sender};
 use single_thread_cell::{SingleThreadRefCell, SingleThreadType};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[atomic_enum]
 #[repr(u32)]
 pub enum LoggerLevel {
     Trace,
@@ -228,18 +232,34 @@ pub mod cffi {
 /// for logging messages from other threads. See [`LoggerStateRes`] for more details.
 #[derive(Resource)]
 pub struct LoggerStateRes {
-    pub level: LoggerLevel,
+    pub level: Arc<AtomicLoggerLevel>,
     sender: Sender<LoggerRecord>,
     receiver: Receiver<LoggerRecord>,
-    sink_point: SingleThreadRefCell<Box<dyn Fn(LoggerRecord) + Send>>,
+    sink_point: Arc<SingleThreadRefCell<Box<dyn Fn(LoggerRecord) + Send>>>,
 }
 
 fn logger_receiver_system(logger_state: Res<LoggerStateRes>, _: NonSendMarker) {
     // Drain the receiver and log all messages
     let sink_point = logger_state.sink_point.borrow_mut();
     while let Ok(msg) = logger_state.receiver.try_recv() {
-        sink_point(msg);
+        if msg.level
+            >= logger_state
+                .level
+                .load(std::sync::atomic::Ordering::Acquire)
+        {
+            sink_point(msg);
+        }
     }
+}
+
+/// Retrieve a cross-thread logger callback that can be used outside of systems. This is notably independent from
+/// any start linked with bevy-ecs and therefore can be easier to use in some cases.
+pub struct Logger {
+    sender: Option<(
+        Sender<LoggerRecord>,
+        Weak<AtomicLoggerLevel>,
+        Weak<SingleThreadRefCell<Box<dyn Fn(LoggerRecord) + Send>>>,
+    )>,
 }
 
 /// Logger plugin, which provides logging capabilities to the instance. See [`LoggerPluginCreateInfo`] for the configuration of the plugin.
@@ -261,16 +281,16 @@ impl Plugin for LoggerPlugin {
                 )
             })?;
 
-        // Logging statement that are not executed directly on the main thread will be delayed via the sender/receiver
+        // Logging statements that are not executed directly on the main thread will be delayed via the sender/receiver
         // to the end of the frame
         let (sender, receiver) = crossbeam::channel::unbounded::<LoggerRecord>();
 
         // Insert the logger state resource
         instance.world.insert_resource(LoggerStateRes {
-            level: create_info.level,
+            level: Arc::new(AtomicLoggerLevel::new(create_info.level)),
             sender,
             receiver,
-            sink_point: SingleThreadRefCell::new(create_info.sink_callback),
+            sink_point: Arc::new(SingleThreadRefCell::new(create_info.sink_callback)),
         });
         instance.add_systems(Last, logger_receiver_system);
         Ok(())
@@ -283,8 +303,13 @@ impl Plugin for LoggerPlugin {
 
 register_plugin!(LoggerPlugin);
 
+/// Extension trait for logging.
+///
+/// This trait provides a convenient `log` method that can be called on various types
 pub trait LoggerExt {
     fn log(&self, msg: LoggerRecord);
+
+    fn logger(&self) -> Logger;
 }
 
 impl LoggerExt for LoggerStateRes {
@@ -300,15 +325,26 @@ impl LoggerExt for LoggerStateRes {
             }
 
             // 2. Log the current message
-            if msg.level >= self.level {
+            if msg.level >= self.level.load(std::sync::atomic::Ordering::Acquire) {
                 sink_point(msg);
             }
         } else {
             // Just send it to the receiver to be logged at the end of the frame
-            if msg.level >= self.level {
+            if msg.level >= self.level.load(std::sync::atomic::Ordering::Acquire) {
                 self.sender.send(msg)
                     .expect("Failed to send log message to logger system. This likely means the logger system has panicked or is otherwise not running.");
             }
+        }
+    }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        Logger {
+            sender: Some((
+                self.sender.clone(),
+                Arc::downgrade(&self.level),
+                Arc::downgrade(&self.sink_point),
+            )),
         }
     }
 }
@@ -317,6 +353,11 @@ impl<'a> LoggerExt for Res<'a, LoggerStateRes> {
     #[inline]
     fn log(&self, msg: LoggerRecord) {
         self.as_ref().log(msg);
+    }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        self.as_ref().logger()
     }
 }
 
@@ -327,12 +368,26 @@ impl<T: LoggerExt> LoggerExt for Option<T> {
             logger.log(msg);
         }
     }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        if let Some(logger) = self.as_ref() {
+            logger.logger()
+        } else {
+            Logger { sender: None }
+        }
+    }
 }
 
 impl<T: LoggerExt> LoggerExt for &T {
     #[inline]
     fn log(&self, msg: LoggerRecord) {
         (*self).log(msg);
+    }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        (*self).logger()
     }
 }
 
@@ -341,6 +396,11 @@ impl<T: LoggerExt> LoggerExt for &mut T {
     fn log(&self, msg: LoggerRecord) {
         (*self as &T).log(msg);
     }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        (*self as &T).logger()
+    }
 }
 
 impl LoggerExt for World {
@@ -348,12 +408,59 @@ impl LoggerExt for World {
     fn log(&self, msg: LoggerRecord) {
         self.get_resource::<LoggerStateRes>().log(msg);
     }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        self.get_resource::<LoggerStateRes>().logger()
+    }
 }
 
 impl LoggerExt for Instance {
     #[inline]
     fn log(&self, msg: LoggerRecord) {
         self.world.log(msg);
+    }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        self.world.logger()
+    }
+}
+
+impl LoggerExt for Logger {
+    #[inline]
+    fn log(&self, msg: LoggerRecord) {
+        if let Some((sender, atomic_level, sink_point)) = &self.sender {
+            // Attempt to update atomic_level/sink_point
+            let atomic_level = atomic_level.upgrade();
+            let sink_point = sink_point.upgrade();
+            if atomic_level.is_none() || sink_point.is_none() {
+                // The logger system has likely been dropped, so we can't log anymore. Just return silently.
+                return;
+            }
+
+            let atomic_level = atomic_level.unwrap();
+            let sink_point = sink_point.unwrap();
+
+            // Check the log level before sending to avoid unnecessary cross-thread communication
+            if msg.level < atomic_level.load(std::sync::atomic::Ordering::Acquire) {
+                return;
+            }
+            if sink_point.check_same_thread() {
+                let sink_point = sink_point.borrow_mut();
+                sink_point(msg);
+            } else {
+                sender.send(msg)
+                    .expect("Failed to send log message to logger system. This likely means the logger system has panicked or is otherwise not running.");
+            }
+        }
+    }
+
+    #[inline]
+    fn logger(&self) -> Logger {
+        Logger {
+            sender: self.sender.clone(),
+        }
     }
 }
 

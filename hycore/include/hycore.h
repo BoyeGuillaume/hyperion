@@ -38,6 +38,7 @@
 #define HY_VERSION "0.1.3"
 
 static const char *HY_LOGGER_PLUGIN_NAME = "hycore::plugin::logger::LoggerPlugin";
+static const char *HY_REMOTE_PLUGIN_NAME = "hycore::plugin::remote::RemotePlugin";
 
 enum HyLoggerLevel
 #ifdef __cplusplus
@@ -77,7 +78,9 @@ enum HyStructureType
   HY_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 2,
   HY_STRUCTURE_TYPE_MODULE_COMPILE_INFO = 3,
   HY_STRUCTURE_TYPE_LOGGER_PLUGIN_CREATE_INFO = 32768,
-  HY_STRUCTURE_TYPE_REMOTE_PLUGIN_CREATE_INFO = 32769,
+  HY_STRUCTURE_TYPE_START_REMOTE_SERVER_INFO = 32769,
+  HY_STRUCTURE_TYPE_TLS_SERVER_CERTIFICATE_INFO = 32770,
+  HY_STRUCTURE_TYPE_TLS_CLIENT_AUTHENTIFICATION_INFO = 32771,
 };
 #ifndef __cplusplus
 typedef uint32_t HyStructureType;
@@ -136,6 +139,15 @@ typedef uint64_t HyModule;
 
 typedef struct
 {
+  HyStructureType sType;
+  uint16_t port;
+  const char *pHost;
+  uintptr_t maxConnections;
+  void *pNext;
+} HyStartRemoteServerInfo;
+
+typedef struct
+{
   int64_t timestamp;
   HyLoggerLevel level;
   const char *pMessage;
@@ -155,6 +167,21 @@ typedef struct
   void *pUserData;
   void *pNext;
 } HyLoggerPluginCreateInfo;
+
+typedef struct
+{
+  HyStructureType sType;
+  const char *pCertPemPath;
+  const char *pKeyPemPath;
+  void *pNext;
+} HyTlsServerCertificateInfo;
+
+typedef struct
+{
+  HyStructureType sType;
+  const char *pRootCaPemPath;
+  void *pNext;
+} HyTlsClientAuthentificationInfo;
 
 
 
@@ -188,6 +215,10 @@ int hyLoadCompiledModule(HyInstance *pInstance,
                          HyModule *pModule);
 
 int hyDestroyModule(HyInstance *pInstance, HyModule module);
+
+int hyStartRemoteServer(HyInstance *pInstance, const HyStartRemoteServerInfo *pCreateInfo);
+
+int hyShutdownRemoteServer(HyInstance *pInstance);
 
 #ifdef __cplusplus
 }  // extern "C"

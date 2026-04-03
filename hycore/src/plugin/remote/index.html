@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hyperion | Project Overview</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+        {
+          "imports": {
+            "@material/web/": "https://esm.run/@material/web/"
+          }
+        }
+    </script>
+    <script type="module">
+        import '@material/web/all.js';
+        import { styles as typescaleStyles } from '@material/web/typography/md-typescale-styles.js';
+
+        document.adoptedStyleSheets.push(typescaleStyles.styleSheet);
+    </script>
+
+    <style>
+        :root {
+            color-scheme: dark;
+            --page-bg: #0f1115;
+            --surface: #171a21;
+            --surface-2: #1f2430;
+            --text: #e4e8f1;
+            --muted: #acb4c5;
+            --accent: #8db2ff;
+            --border: #2c3343;
+            --radius: 16px;
+            --max-width: 1080px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Roboto, Arial, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(1200px 500px at 100% -15%, #2c3652 0%, transparent 60%),
+                radial-gradient(800px 400px at 0% 0%, #1e2740 0%, transparent 60%),
+                var(--page-bg);
+            min-height: 100vh;
+        }
+
+        .page {
+            width: min(var(--max-width), calc(100vw - 40px));
+            margin: 28px auto 40px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .card {
+            background: linear-gradient(180deg, var(--surface-2), var(--surface));
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.25);
+        }
+
+        .hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .hero-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 68px;
+            height: 68px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border);
+            padding: 10px;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin-top: 6px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .grid {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+
+        .info {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .info h3 {
+            margin: 0 0 8px;
+        }
+
+        .info p,
+        .info li {
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .stack span {
+            border: 1px solid var(--border);
+            background: rgba(141, 178, 255, 0.08);
+            border-radius: 999px;
+            padding: 6px 12px;
+            color: var(--accent);
+            font-size: 13px;
+        }
+
+        .timeline {
+            margin: 0;
+            padding-left: 18px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .contact {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-width: 540px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <section class="card hero">
+            <div class="hero-left">
+                <img class="logo" src="/favicon.ico" alt="Hyperion icon">
+                <div>
+                    <h1 class="md-typescale-display-small" style="margin:0;">Hyperion</h1>
+                    <p class="subtitle md-typescale-title-medium">A modular IR and execution ecosystem for
+                        high-performance workflows.</p>
+                </div>
+            </div>
+            <div class="actions">
+                <md-filled-button>Get Started</md-filled-button>
+                <md-outlined-button>Read Documentation</md-outlined-button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2 class="md-typescale-headline-small" style="margin-top:0;">What is Hyperion?</h2>
+            <p class="md-typescale-body-large subtitle">
+                Hyperion is a workspace that combines an instruction IR, a core runtime engine,
+                plugin infrastructure, Python bindings, and C FFI support. It is designed to make
+                compilation, analysis, and execution experiments easy to build and extend.
+            </p>
+            <div class="stack">
+                <span>Rust Workspace</span>
+                <span>IR + Parser</span>
+                <span>Plugin System</span>
+                <span>Python API</span>
+                <span>C FFI</span>
+            </div>
+        </section>
+
+        <section class="grid">
+            <article class="info">
+                <h3 class="md-typescale-title-large">Core Engine</h3>
+                <p class="md-typescale-body-medium">
+                    `hycore` provides runtime services, extension loading, scheduling, and plugin hooks.
+                    It is the execution center of the project.
+                </p>
+            </article>
+            <article class="info">
+                <h3 class="md-typescale-title-large">Instruction IR</h3>
+                <p class="md-typescale-body-medium">
+                    `hyinstr` defines module/function/block structures, parsing, type checking,
+                    normalization, and verification workflows.
+                </p>
+            </article>
+            <article class="info">
+                <h3 class="md-typescale-title-large">Interoperability</h3>
+                <p class="md-typescale-body-medium">
+                    Native bindings are available through Python packages and a generated C header,
+                    enabling integration in heterogeneous systems.
+                </p>
+            </article>
+        </section>
+
+        <section class="card">
+            <h2 class="md-typescale-headline-small" style="margin-top:0;">Project roadmap snapshot</h2>
+            <ol class="timeline md-typescale-body-large">
+                <li>Stabilize IR semantics and parser edge cases.</li>
+                <li>Expand optimization and theorem-based simplification passes.</li>
+                <li>Improve remote plugin capabilities and observability.</li>
+                <li>Polish bindings and publish reproducible artifacts.</li>
+            </ol>
+        </section>
+    </main>
+
+</body>
+
+</html>

@@ -18,7 +18,9 @@ pub enum HyStructureType {
     InstanceCreateInfo = 2,
     ModuleCompileInfo = 3,
     LoggerPluginCreateInfo = 0x8000,
-    RemotePluginCreateInfo = 0x8001,
+    StartRemoteServerInfo = 0x8001,
+    TlsServerCertificateInfo = 0x8002,
+    TlsClientAuthentificationInfo = 0x8003,
 }
 
 impl HyStructureType {
